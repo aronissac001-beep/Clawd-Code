@@ -109,7 +109,14 @@ function advice(G) {
   // emergency measures, offered while people are in danger (or about to be)
   for (const e of emergencies(G, dz)) add(e.sev, e.id, e.text, { act: e.act });
   // decisions and deadlines
-  if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
+  if (G.event) add('bad', 'event', 'A decision is waiting: ' + eventInfo(G).title + '.', { act: { k: 'event' } });
+  // the wider world: offers waiting, a beacon about to fade, an idle skimmer
+  if (G.world) {
+    const W = G.world, beacon = W.sites.find(s => s.fades && !s.claimed && !s.exp);
+    if (W.offers.length) add('info', 'trade', W.offers.length + ' trade offer' + (W.offers.length > 1 ? 's' : '') + ' from rival colonies ' + (W.offers.length > 1 ? 'are' : 'is') + ' waiting.', { act: { k: 'tab', tab: 'world', sub: 'trade' } });
+    if (beacon && beacon.fades - sol <= 6) add('warn', 'beacon', 'A distress beacon on the world map fades in ' + Math.max(0, beacon.fades - sol) + ' sols: stranded people need an expedition' + (padOf(G) ? '.' : ' (build an Expedition Pad).'), { act: { k: 'tab', tab: 'world', sub: 'exp' } });
+    else if (padOf(G) && padOf(G).built && !W.exps.length && W.sites.some(s => !s.claimed && !s.exp) && pop >= 20) add('info', 'skimmer', 'The skimmer is on its pad and ' + W.sites.filter(s => !s.claimed).length + ' remote sites are open.', { act: { k: 'tab', tab: 'world', sub: 'exp' } });
+  }
   if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Ark, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
   if (G.council) for (const k in FACTIONS) { const d = G.council.dem[k]; if (!d) continue; const left = (d.due - G.tick) / 24; add(left < 2 ? 'warn' : 'info', 'council-' + k, FACTIONS[k].name + ' (support ' + Math.round(G.council.sup[k]) + ') asks: ' + d.text + ' ' + Math.floor(demandProgress(G, d)) + ' / ' + d.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'people', sub: 'council' } }); }
   // Reshaping Kessa: point at the first step once it is possible

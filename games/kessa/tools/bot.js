@@ -30,7 +30,7 @@ var BOT = (() => {
     const R = opt.R || 22;
     for (let y = Math.max(0, Math.round(near.y - R)); y < Math.min(N, near.y + R); y++) for (let x = Math.max(0, Math.round(near.x - R)); x < Math.min(N, near.x + R); x++) {
       const cx = x + s / 2, cy = y + s / 2, d = Math.hypot(cx - near.x, cy - near.y);
-      if (d >= bd) continue;
+      if (d >= bd || G._occ[y * N + x]) continue; // (an occupied corner fails canPlace anyway: skip the range check)
       if (!opt.anyRange && !inRange(H, cx, cy)) continue;
       if (!KC.canPlace(G, type, x, y).ok) continue;
       if (!opt.loose && !touches(G, x, y, s)) continue;
@@ -179,7 +179,8 @@ var BOT = (() => {
     // Independence needs the Charter: beeline for it once the colony is established
     if (KC.techCount(G) >= 16 && G.colonists.length >= 40 && !KC.techDone(G, 'charter') && G.research.cur !== 'charter' && !G.research.queue.includes('charter')) KC.queueResearch(G, 'charter');
     if (!G.research.cur && !G.research.queue.length) {
-      const bt = G.research.found.find(id => !KC.techDone(G, id));
+      // the 2.1 mysteries wait until the race to Independence is run (their breakthroughs are long)
+      const bt = G.research.found.find(id => !KC.techDone(G, id) && (!['myst_mycel', 'myst_orbit'].includes(id) || G.ms.independence || KC.techCount(G) >= 30));
       const tf = G.ms.independence && ['hazeforge', 'lichens', 'comets', 'seedark', 'supercond', 'lodestone'].find(id => KC.techAvailable(G, id));
       const next = bt || tf || RESEARCH.find(id => !KC.techDone(G, id)) || Object.keys(KC.TECHS).find(id => KC.techAvailable(G, id));
       if (next) KC.queueResearch(G, next);
@@ -283,7 +284,7 @@ var BOT = (() => {
       if (KC.unlocked(G, 'spire') && count(G, 'spire') < 1 && pop >= 60) { if (KC.storageCap(G) < 140) build(G, 'depot', base); const sp = build(G, 'spire', base, { gap: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30 }) || build(G, 'spire', base, { loose: true, R: 30, anyRange: true }); if (sp && sp.id) KC.setPrio(G, sp.id, 2); }
       if (G.buildings.some(b => b.t === 'spire' && !b.paid)) { if (G.res.electronics < 32) B.short.electronics = 1; }
     }
-    for (const mega of ['array', 'mirror', 'vault']) if (KC.unlocked(G, mega) && !G.buildings.some(b => b.t === mega) && pop >= 50 && (mega !== 'vault' || housing(G) - pop >= 12) && G.funds > (KC.BUILDINGS[mega].cost.funds || 0) + savingFor(G) + 500) { const m = build(G, mega, base, { gap: true, R: 30 }) || build(G, mega, base, { loose: true, R: 30, anyRange: true }); if (m && m.id) KC.setPrio(G, m.id, 2); }
+    for (const mega of G.ms.independence ? ['array', 'mirror', 'vault', 'undergrove', 'relay', 'orrery'] : ['array', 'mirror', 'vault']) if (KC.unlocked(G, mega) && !G.buildings.some(b => b.t === mega) && pop >= 50 && (mega !== 'vault' || housing(G) - pop >= 12) && G.funds > (KC.BUILDINGS[mega].cost.funds || 0) + savingFor(G) + 500) { const m = build(G, mega, base, { gap: true, R: 30 }) || build(G, mega, base, { loose: true, R: 30, anyRange: true }); if (m && m.id) KC.setPrio(G, m.id, 2); }
     // the Warden mystery: research Harmonics when it is offered
     if (G.research.found.includes('myst_recorder') && !KC.techDone(G, 'myst_recorder') && !G.research.queue.includes('myst_recorder') && G.research.cur !== 'myst_recorder' && KC.techCount(G) > 14) KC.queueResearch(G, 'myst_recorder');
     if (G.research.found.includes('myst_harmonics') && !KC.techDone(G, 'myst_harmonics') && !G.research.queue.includes('myst_harmonics') && G.research.cur !== 'myst_harmonics' && KC.techCount(G) > 12) KC.queueResearch(G, 'myst_harmonics');
@@ -358,6 +359,11 @@ var BOT = (() => {
     }
     if (!G.survey.length) { const k = N / KC.SECTOR; let best = -1, bd = 1e9; for (let i = 0; i < G.sectors.length; i++) if (!G.sectors[i].st) { const cx = (i % k) * KC.SECTOR + 4, cy = ((i / k) | 0) * KC.SECTOR + 4, dd = Math.hypot(cx - base.x, cy - base.y); if (dd < bd) { bd = dd; best = i; } } if (best >= 0) KC.queueSurvey(G, best); }
     if (G.probes > 0 && sol > 3) { const k = N / KC.SECTOR; for (let i = 0; i < G.sectors.length; i++) if (!G.sectors[i].st) { const cx = (i % k) * KC.SECTOR + 4, cy = ((i / k) | 0) * KC.SECTOR + 4; if (Math.hypot(cx - base.x, cy - base.y) < 22) { KC.useProbe(G, i); break; } } }
+    // ---- 2.1: the monorail, expeditions and the Assembly ----
+    // rail and expeditions once Independence is won, so they never change the race to it (the soak and the tests play on)
+    if (!B.noRail && (G.ms.independence || B.railEarly)) railTurn(G, B, base, pop);
+    if (!B.noExp && (G.ms.independence || B.expEarly)) expTurn(G, B, base, pop);
+    if (!B.noAsm) asmTurn(G, B);
     // ---- rockets ----
     const free = G.rockets.find(r => r.st === 'home');
     if (free) {
@@ -371,7 +377,8 @@ var BOT = (() => {
       // the advisor's upkeep forecast: no new mouths while upkeep materials are draining away
       const draining = ['parts', 'metals', 'sinter'].some(k => net(k) < -0.5 && G.res[k] / -net(k) < 6 && (KC.upkeepPerSol(G)[k] || 0) > 0.3);
       B.why.upkeep = !draining;
-      const enough = pop >= KC.DIFFICULTY[G.cfg.difficulty].pop + 5 && G.buildings.some(b => b.t === 'spire');
+      // after Independence the colony keeps growing towards the Free Kessa goal of 250
+      const enough = G.ms.independence ? pop >= 250 : pop >= KC.DIFFICULTY[G.cfg.difficulty].pop + 5 && G.buildings.some(b => b.t === 'spire');
       const wantArk = !enough && !draining && lsOk && KC.arkReady(G) && homesFree >= 6 && G.funds > KC.arkPrice(G) + 150 + savingFor(G) * 0.5 && foodRate(G) + G.res.food / 4 > pop + 8 && (pop < 10 || Wk.slots > Wk.adults + 4) && G.colonists.every(c => c.health > 60) && !(G.sol.short.food || G.sol.short.oxygen || G.sol.short.water);
       const rich = G.funds > 1400 + savingFor(G) + (wantArk ? KC.arkPrice(G) : 0);
       const proving = G.buildings.some(b => b.t === 'spire' && b.built) && pop >= KC.DIFFICULTY[G.cfg.difficulty].pop && G.res.parts > 12 && G.res.metals > 20 && G.res.sinter > 20; // never let the self-reliance test starve upkeep
@@ -408,6 +415,73 @@ var BOT = (() => {
       } else if (ids.length && KC.orderSummary(G, {}, ids).price <= G.funds) KC.orderRocket(G, {}, ids);
     }
   }
+  // a monorail line from the base to the farthest working hub, so its drones and the base's share the work and miners commute
+  function railTurn(G, B, base, pop) {
+    const sol = KC.solOf(G.tick);
+    if (B.turns % 6 || sol < 30 || pop < 30 || G.res.metals < 25 || G.res.sinter < 30 || G.res.parts < 12) return;
+    const st = G.buildings.filter(b => b.t === 'station');
+    if (st.some(b => !b.built) || st.length >= 4) { tryTrack(G, B); return; }
+    const near = (b, p, r) => KC.cheb(KC.center(b).x, KC.center(b).y, p.x, p.y) <= r;
+    const remote = G.buildings.filter(b => b.t === 'hub' && b.built && Math.hypot(KC.center(b).x - base.x, KC.center(b).y - base.y) > 11 && !st.some(s => near(s, KC.center(b), KC.RAIL.hubLink - 1)))
+      .sort((a, b) => Math.hypot(KC.center(b).x - base.x, KC.center(b).y - base.y) - Math.hypot(KC.center(a).x - base.x, KC.center(a).y - base.y))[0];
+    if (!remote) { tryTrack(G, B); return; }
+    // the home stop: by the lander if there is room, else at the edge of the base (within freight reach of the lander)
+    if (!st.some(s => near(s, base, 24))) { const b = build(G, 'station', base, { R: 8 }) || build(G, 'station', base, { R: 16, loose: true }) || build(G, 'station', base, { R: 24, loose: true }) || build(G, 'station', base, { R: 24, loose: true, anyRange: true }); if (b && b.id) KC.setPrio(G, b.id, 1); return; }
+    const c = KC.center(remote), b = spot(G, 'station', c, { R: 5, loose: true });
+    if (b && KC.cheb(b.x + 1, b.y + 1, c.x, c.y) <= KC.RAIL.hubLink - 1) { const nb = KC.place(G, 'station', b.x, b.y); if (nb && nb.id && !touches(G, b.x, b.y, 2)) connect(G, nb); }
+    tryTrack(G, B);
+  }
+  function tryTrack(G, B) {
+    const L = lander(G), st = G.buildings.filter(b => b.t === 'station'); if (st.length < 2) return;
+    B.track = B.track || {};
+    const home = st.slice().sort((a, b) => KC.cheb(a.x, a.y, L.x, L.y) - KC.cheb(b.x, b.y, L.x, L.y))[0];
+    for (const s2 of st) { if (s2 === home || B.track[s2.id]) continue; const r = KC.layTrack(G, home.id, s2.id); B.track[s2.id] = r.ok ? 1 : -1; if (r.err) B.log.push(KC.solOf(G.tick) + ': track ' + r.err); }
+  }
+  // build an Expedition Pad once the colony is settled, and send crews to the most rewarding sites it can reach
+  function expTurn(G, B, base, pop) {
+    const sol = KC.solOf(G.tick), DF = KC.DIFFICULTY[G.cfg.difficulty];
+    // only once housing and stocks are comfortable: the pad must not compete with domes for sinter and metals
+    if (!KC.padOf(G)) { if (sol >= 45 && pop >= 55 && housing(G) - pop >= 6 && !domes(G).some(d => !d.built) && G.res.metals > 80 && G.res.parts > 25 && G.res.electronics >= 5 && G.res.sinter > 60 && sites(G) < 4) build(G, 'xpad', base, { gap: true, R: 20 }) || build(G, 'xpad', base, { loose: true, R: 30 }) || build(G, 'xpad', base, { loose: true, R: 30, anyRange: true }); return; }
+    if (B.turns % 6 || pop < 50) return;
+    // the skimmer burns fuel: a refinery of its own once the pad stands
+    if (G.res.fuel < 30 && count(G, 'refinery') < 3 + Math.floor(pop / 80) && !G.buildings.some(b => b.t === 'refinery' && !b.built) && G.res.metals > 15) build(G, 'refinery', base, { R: 30, loose: true });
+    if (G.tick < (B.nextExp || 0)) return;
+    // never thin the colony out right before the Independence count
+    if (G.buildings.some(b => b.t === 'spire' && b.built) && !G.ms.independence && pop < DF.pop + 6) return;
+    const W = KC.worldOf(G), homes = housing(G) - pop;
+    const val = s => { const D = KC.SITES[s.kind], rw = D.reward; let v = 0; if (rw.res) for (const k in rw.res) v += rw.res[k] * (KC.TRADE_VAL[k] || 3) / 100; if (rw.rp) v += rw.rp / 150; if (rw.relic) v += 4; if (rw.breakthrough) v += 4; if (rw.survivors) v += homes >= 6 ? 6 : 0; if (rw.prefab) v += 2; return v; };
+    let best = null, bv = 0;
+    for (const s of W.sites) { if (s.claimed || s.exp) continue; const c = KC.expCheck(G, s.id); if (!c.ok || c.chance < 0.5 || G.res.fuel < c.fuel + 15) continue; const v = val(s) * c.chance - c.stand * 0.5; if (v > bv) { bv = v; best = s; } }
+    if (best && bv >= 1.5) { const r = KC.launchExpedition(G, best.id); if (r.err) B.log.push(sol + ': expedition ' + r.err); else B.nextExp = G.tick + 8 * 24; }
+  }
+  // the Assembly: a Commonwealth, then laws that help the colony, put to the vote only when they would pass
+  function asmTurn(G, B) {
+    const A = G.assembly; if (!A || B.turns % 6) return;
+    if (!A.gov) { KC.chooseGov(G, 'commonwealth'); return; }
+    if (KC.backing(G) < 45) return;
+    // slower upkeep, faster research and dearer exports: the three laws that help a colony racing to Independence
+    for (const law of ['wardens', 'openlabs', 'quotas']) {
+      if (!KC.lawCheck(G, law).ok) continue;
+      if (!KC.countVote(G, law).pass) continue;
+      KC.propose(G, law); break;
+    }
+  }
+  // trade with rivals: sell what piles up, buy what is short when the treasury can spare it
+  function tradeTurn(G, B) {
+    const W = G.world; if (!W || !W.offers.length) return;
+    const pop = G.colonists.length, saving = savingFor(G);
+    const keep = { metals: 150, sinter: 150, parts: 60, polymers: 40, electronics: 25, food: (pop + 10) * 6, fuel: 40, rare: KC.unlocked(G, 'foundry') ? 25 : 5, crystals: 2 };
+    const low = { metals: 60, sinter: 60, parts: 30, polymers: 20, electronics: 10, food: (pop + 5) * 3, fuel: 15, rare: 5, crystals: 0 };
+    for (const o of W.offers.slice()) {
+      if (!KC.offerCheck(G, o).ok) continue;
+      // while proving self-reliance for Independence, imported food, parts or metals would reset the count
+      if (saving > 0 && ['food', 'parts', 'metals'].some(k => o.give[k])) continue;
+      const takeOk = Object.entries(o.take).every(([k, n]) => k === 'funds' ? G.funds - n > saving + 700 : G.res[k] - n > (keep[k] || 0));
+      // selling surplus for funding is always welcome; buying only to cover a real shortage when the treasury is full
+      const want = Object.entries(o.give).some(([k, n]) => k === 'funds' || (k !== 'rp' && G.res[k] < (low[k] || 0) && G.funds > 2500 + saving));
+      if (takeOk && want) KC.acceptOffer(G, o.id);
+    }
+  }
   function scoreApp(G, a) {
     let s = 0; for (const t of a.traits) s += KC.TRAITS[t].good ? 2 : -3;
     const want = { engineer: 3, scientist: 2.5, botanist: 3, geologist: 2, medic: 1, security: 1, none: 1.5 };
@@ -419,6 +493,17 @@ var BOT = (() => {
   // events: take the first affordable option unless it would starve a reserve, else the do-nothing option
   function event(G, B) {
     const ch = KC.eventChoices(G); if (!ch.length) return;
+    // rivalry decisions: help and pay only from plenty, take refugees only into free beds
+    const id = G.event && G.event.id, pop = G.colonists.length;
+    if (id && KC.EVENTS[id].world) {
+      const saving = savingFor(G);
+      let pick = ch.length - 1;
+      if (id === 'w_aid' && G.res.parts > 45 && G.res.polymers > 30) pick = 0;
+      if (id === 'w_poach' && G.funds > 700 + saving) pick = 0;
+      if ((id === 'w_joint' || id === 'w_spy') && G.funds > 1500 + saving) pick = 0;
+      if (id === 'w_refugees') pick = housing(G) - pop >= (G.event.n || 4) + 4 && G.res.food > (pop + 10) * 4 ? 0 : G.res.food > (pop + 10) * 6 ? 1 : 2;
+      KC.resolveEvent(G, ch[pick] && ch[pick].ok ? pick : ch.length - 1); return;
+    }
     const saving = savingFor(G);
     let pick = ch.length - 1;
     for (const c of ch) { if (!c.ok) continue; const m = /\((\d+)/.exec(c.label); const cost = m && /funding|\d\)$/.test(c.label) && !/parts|polymers|food/.test(c.label) ? +m[1] : 0; if (G.funds - cost >= saving) { pick = c.i; break; } }
@@ -447,5 +532,5 @@ var BOT = (() => {
     const saving = savingFor(G);
     if (G.funds > saving + KC.grantPrice(G) + 2500 && G.research.cur && pop >= 40) KC.buyGrant(G);
   }
-  return { turn: (G, B) => { turn(G, B); economy(G, B); if (G.event) event(G, B); }, event, savingFor };
+  return { turn: (G, B) => { turn(G, B); economy(G, B); if (!B.noTrade) tradeTurn(G, B); if (G.event) event(G, B); }, event, savingFor };
 })();

@@ -12,7 +12,7 @@
   $('#btnMenu').addEventListener('click', () => { Sound.unlock(); Panels.gameMenu(); });
   $('#btnAdvice').addEventListener('click', () => { Sound.unlock(); Sound.play('open'); if (UI.mode) UI.cancelMode(); if (UI.G && UI.G.event) Screens.event(); else Panels.advice(); });
   $('#clock').addEventListener('click', () => { Sound.unlock(); UI.togglePause(); });
-  const tabs = { build: () => Panels.build(), layers: () => Panels.layers(), people: () => Panels.people(), research: () => Panels.research(), rockets: () => Panels.rockets(), log: () => Panels.log(), goals: () => Panels.goals() };
+  const tabs = { build: () => Panels.build(), layers: () => Panels.layers(), people: () => Panels.people(), research: () => Panels.research(), rockets: () => Panels.rockets(), world: () => Panels.world(), log: () => Panels.log(), goals: () => Panels.goals() };
   $$('#bottom .tb').forEach(b => b.addEventListener('click', () => {
     Sound.unlock(); Sound.play('open');
     if (UI.mode) UI.cancelMode();

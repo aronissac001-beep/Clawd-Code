@@ -66,6 +66,16 @@ const ICONS = {
   domes: '<path d="M3.5 18.5a8.5 8.5 0 0117 0z"/><path d="M8.2 18.5a3.8 6.8 0 017.6 0M3 18.5h18"/>',
   lines: '<path d="M4 7h16M4 17h16"/><path d="M8 7v10M16 7v10"/>',
   mods: '<rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/>',
+  // 2.1: the world, expeditions, trade and the monorail
+  world: '<circle cx="12" cy="12" r="8.6"/><path d="M3.6 12h16.8"/><path d="M12 3.4c2.6 2.4 3.8 5.3 3.8 8.6s-1.2 6.2-3.8 8.6c-2.6-2.4-3.8-5.3-3.8-8.6S9.4 5.8 12 3.4z"/>',
+  skimmer: '<path d="M12 2.8c2.4 1.8 3.4 4.6 3.4 7.6v5.2H8.6v-5.2c0-3 1-5.8 3.4-7.6z"/><path d="M8.6 12.4l-3.4 4.4h3.4M15.4 12.4l3.4 4.4h-3.4"/><path d="M10 18.6l2 2.6 2-2.6"/><path d="M4 20.4h3.4M16.6 20.4H20"/>',
+  trade: '<path d="M4 8.5h13.5l-3.4-3.4"/><path d="M20 15.5H6.5l3.4 3.4"/>',
+  flag: '<path d="M6 21V3.6"/><path d="M6 4.4c4-2.2 6.6 2.2 11.6 0v8.4c-5 2.2-7.6-2.2-11.6 0"/>',
+  relic: '<path d="M12 2.8l3.2 5.4-3.2 12.9-3.2-12.9z"/><path d="M8.8 8.2h6.4"/><path d="M5.2 21h13.6"/>',
+  rail: '<rect x="6" y="3.4" width="12" height="13" rx="3.4"/><path d="M6 10.4h12"/><circle cx="9.4" cy="13.4" r=".9" fill="currentColor"/><circle cx="14.6" cy="13.4" r=".9" fill="currentColor"/><path d="M8.6 16.4l-3 4.2M15.4 16.4l3 4.2M7 19.2h10"/>',
+  station: '<path d="M3.5 9.5L12 4l8.5 5.5"/><path d="M5.5 9.5V20M18.5 9.5V20"/><path d="M3.5 20h17"/><path d="M8.5 14h7"/>',
+  orbit: '<circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="9.2" ry="4.4" transform="rotate(-24 12 12)"/><circle cx="19.6" cy="8.4" r="1.3" fill="currentColor"/>',
+  spore: '<circle cx="12" cy="14" r="3.2"/><path d="M12 10.8V5M9.2 12.4L5.4 9M14.8 12.4L18.6 9M9.6 16.6l-3 3M14.4 16.6l3 3"/><circle cx="12" cy="4.2" r="1.2"/><circle cx="4.8" cy="8.4" r="1.2"/><circle cx="19.2" cy="8.4" r="1.2"/>',
   // specialists
   none: '<circle cx="12" cy="12" r="5"/>',
   engineer: '<path d="M14.7 6.2a4 4 0 00-5.2 5.2L4 16.9 7.1 20l5.5-5.5a4 4 0 005.2-5.2l-2.5 2.5-2.6-.5-.5-2.6z"/>',

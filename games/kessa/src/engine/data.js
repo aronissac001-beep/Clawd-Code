@@ -105,6 +105,16 @@ const BUILDINGS = {
     desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
   vault: { name: 'Revival Vault', cat: 'science', size: 3, cost: { sinter: 40, metals: 30, polymers: 30, electronics: 16, parts: 20 }, work: 150, art: 'vault', tech: 'myst_camp', unique: true, use: { power: 10 }, maint: 'electronics', wear: 0.4,
     desc: 'Thaws the Halcyon sleepers: 12 seasoned colonists who need beds, but no Earth payroll. Its medicine also heals everyone faster.' },
+  xpad: { name: 'Expedition Pad', cat: 'infra', size: 3, cost: { metals: 20, sinter: 14, parts: 8, electronics: 3 }, work: 36, art: 'xpad', use: { power: 3 }, unique: true, maint: 'parts', wear: 0.5,
+    desc: 'A launch pad and hangar for a long-range skimmer rocket. Send crews and drones to remote sites on the world map (World → Expeditions).' },
+  station: { name: 'Rail Station', cat: 'infra', size: 2, cost: { metals: 8, sinter: 6, parts: 3 }, work: 16, art: 'station', use: { power: 2 }, station: true, maint: 'parts', wear: 0.5,
+    desc: 'A monorail stop. Join two stations with track and trains run between them: colonists commute to jobs within 10 tiles of any stop, drone hubs near stops share drones, and extractors near a stop ship 15% more if the line serves the lander or a depot.' },
+  undergrove: { name: 'The Undergrove', cat: 'science', size: 3, cost: { sinter: 50, metals: 30, polymers: 30, funds: 1200 }, work: 150, art: 'undergrove', tech: 'myst_bloom', unique: true, use: { power: 10, water: 0.8 }, prod: { out: { food: 1.8 } }, maint: 'polymers', wear: 0.4,
+    desc: 'A sunken garden round the heart of the Pale Bloom: 1.8 food an hour with no crew, +3 comfort and calmer minds for everyone.' },
+  relay: { name: 'Skyward Relay', cat: 'science', size: 3, cost: { metals: 70, electronics: 26, parts: 24, funds: 2000 }, work: 170, art: 'relay', tech: 'myst_moon', unique: true, use: { power: 16 }, maint: 'electronics', wear: 0.4,
+    desc: 'A lattice tower that talks to the ninth moon: rockets fly 25% faster and 10% cheaper, research +10%, longer disaster warnings.' },
+  orrery: { name: 'The Great Orrery', cat: 'science', size: 3, cost: { metals: 50, rare: 20, crystals: 8, parts: 20, funds: 1500 }, work: 160, art: 'orrery', tech: 'myst_orrery', unique: true, use: { power: 8 }, maint: 'parts', wear: 0.3,
+    desc: 'The ancient orrery, rebuilt from the relics: research +12%, +4 morale, and expeditions are 10% safer.' },
   spire: { name: 'Charter Spire', cat: 'infra', size: 4, cost: { sinter: 120, metals: 80, parts: 40, polymers: 40, electronics: 30 }, work: 260, art: 'spire', use: { power: 20 }, tech: 'charter', maint: 'parts', wear: 0.3, unique: true,
     desc: 'The seat of an independent Kessan government. Required for Independence.' },
 
@@ -177,6 +187,7 @@ const BUILDINGS = {
 
   cable: { name: 'Power Cable', cat: 'lines', line: 'cable', cost: { metals: 0.25 }, work: 0.5, art: 'cable', desc: 'Carries power. Tap a start and an end tile. Buildings that touch also share power.' },
   pipe: { name: 'Life Pipe', cat: 'lines', line: 'pipe', cost: { metals: 0.25 }, work: 0.5, art: 'pipe', desc: 'Carries water and oxygen. Buildings that touch also share their pipes.' },
+  rail: { name: 'Monorail Track', cat: 'lines', line: 'rail', cost: { metals: 0.5, sinter: 0.5 }, work: 0.5, art: 'rail', desc: 'A raised guideway for monorail trains. Build two Rail Stations (Base), then tap one and use Lay track, or tap a start and an end tile here.' },
 };
 
 // dome modules: built inside a dome slot

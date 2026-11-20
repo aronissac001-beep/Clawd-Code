@@ -66,6 +66,8 @@ const UI = {
       else if (e.k === 'intercept') { const l = G.buildings.filter(b => b.t === 'lance').sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0]; if (l) { const z = R.buildingZ(l); R.addAnim({ k: 'intercept', x: e.x, y: e.y, lx: isoX(l.x + 0.5, l.y + 0.5), ly: isoY(l.x + 0.5, l.y + 0.5, z + 14), dur: 1 }); } }
       else if (e.k === 'built') { const b = KC.bById(G, e.id); if (b && !b.mod) R.addAnim({ k: 'built', x: b.x + b.s / 2 - 0.5, y: b.y + b.s / 2 - 0.5, dur: 1.2 }); Sound.play('built'); }
       else if (e.k === 'land' || e.k === 'launch') Sound.play('rocket');
+      else if (e.k === 'xlaunch' || e.k === 'xland') { const pd = KC.padOf(G); if (pd) R.addAnim({ k: 'skim', up: e.k === 'xlaunch', x: pd.x + 1.05, y: pd.y + 1, dur: 2.6 }); Sound.play('rocket'); }
+      else if (e.k === 'trade') { Sound.play('open'); }
       else if (e.k === 'tech') { Sound.play('tech'); this.techPip = !G.research.cur; }
       else if (e.k === 'milestone') Sound.play('good');
       else if (e.k === 'birth') Sound.play('birth');

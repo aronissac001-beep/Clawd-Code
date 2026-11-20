@@ -56,6 +56,7 @@ const HUD = {
     $('[data-tab=research] .pip').hidden = !!G.research.cur || !Object.keys(KC.TECHS).some(id => KC.techAvailable(G, id));
     const unread = G.log.slice(UI.logSeen).some(l => l.k === 'bad' || l.k === 'warn');
     $('[data-tab=log] .pip').hidden = !unread;
+    { const wp = $('[data-tab=world] .pip'); if (wp) wp.hidden = !(G.world && G.world.offers.length); }
     $('#toasts').style.top = (($('#top').getBoundingClientRect().bottom | 0) + 6) + 'px';
   },
   toast(msg, kind, entry) {

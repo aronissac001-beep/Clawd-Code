@@ -304,6 +304,80 @@ await page.tap('#sheet .sh-head button[aria-label=Close]');
 { const r = await G(() => { const T = KC.terraOf(UI.G); Object.assign(T, { warm: 60, water: 55, life: 60, veil: 66 }); KC.terraCheck(UI.G); KC.computeMods(UI.G); const k0 = R.tkey; R.frame(performance.now(), 0.5); const k1 = R.tkey; R.frame(performance.now(), 0.5); return { k0, k1, lakes: !!(R.lakes && R.lakes.list.length), open: KC.terraStage(UI.G, 'openair') }; });
   check(r.k0 !== r.k1 && r.lakes && r.open, 'the map is reshaped: terrain rebuilt (' + r.k0 + ' -> ' + r.k1 + '), lakes drawn, Open Sky reached'); }
 await page.evaluate(() => Sheet.close && Sheet.close()); await shot('28-reshaped');
+// ---------- 2.1: the World tab: map, rivals, the race, trade and expeditions ----------
+{
+  await G(() => { const G = UI.G; for (let h = 0; h < 4 * 24; h++) KC.step(G); G._fx = []; G.event = null; Modal.close(); Sheet.close(); });
+  await page.tap('[data-tab=world]'); await page.waitForTimeout(300);
+  const r = await G(() => ({ map: !!document.querySelector('#sheet canvas.worldmap'), tabs: $$('#sheet .tabs button').map(b => b.dataset.k).join(','), sites: document.querySelectorAll('#sheet [data-site]').length }));
+  check(r.map && r.tabs === 'map,rivals,trade,exp' && r.sites > 0, 'the World tab shows the drawn map, four tabs and the remote sites (' + JSON.stringify(r) + ')');
+  await shot('29-world-map'); await noOverflow('world map'); await smallTargets('#sheet button', 'world map');
+  // tapping a site on the map selects it and shows what it needs
+  const sp = await G(() => { const cv = document.querySelector('#sheet canvas.worldmap'), s = UI.G.world.sites.find(x => !x.claimed), rc = cv.getBoundingClientRect(); return [rc.left + s.x * rc.width, rc.top + s.y * rc.height, s.id]; });
+  await page.touchscreen.tap(sp[0], sp[1]); await page.waitForTimeout(250);
+  check(await page.isVisible('#sheet [data-sitecard="' + sp[2] + '"]') && await page.isVisible('#sheet [data-plan]'), 'tapping a site on the map shows its card and a plan button');
+  await shot('30-world-site');
+  await page.tap('#sheet .tabs button[data-k=rivals]'); await page.waitForTimeout(200);
+  const rv = await G(() => ({ rows: document.querySelectorAll('#sheet [data-board]').length, races: document.querySelectorAll('#sheet [data-race]').length }));
+  check(rv.rows === 4 && rv.races === 7, 'the rivalry board lists your colony and three rivals, and the seven races (' + JSON.stringify(rv) + ')');
+  await shot('31-world-rivals'); await noOverflow('rivals');
+  // a trade offer: accept it with a tap
+  await G(() => { const G = UI.G; G.funds = Math.max(G.funds, 1000); G.world.offers = [{ id: 9901, r: G.world.rivals[0].k, give: { parts: 10 }, take: { funds: 150 }, until: G.tick + 40, kind: 'sell' }]; Sheet.render(true); });
+  await page.tap('#sheet .tabs button[data-k=trade]'); await page.waitForTimeout(200); await shot('32-world-trade');
+  const f0 = await G(() => [UI.G.funds, UI.G.res.parts]);
+  await page.tap('#sheet [data-accept="9901"]'); await page.waitForTimeout(200);
+  check(await G(f0 => UI.G.funds === f0[0] - 150 && UI.G.res.parts === f0[1] + 10 && !UI.G.world.offers.length, f0), 'accepting a trade offer swaps the goods');
+  // expeditions: without a pad the tab says how to start; with one, pick a site, see the crew, launch
+  await page.tap('#sheet .tabs button[data-k=exp]'); await page.waitForTimeout(200);
+  check(await page.isVisible('#sheet [data-buildpad]'), 'the Expeditions tab offers to build an Expedition Pad');
+  await G(() => { const G = UI.G; let pad = null; for (let y = 2; y < 60 && !pad; y++) for (let x = 2; x < 60 && !pad; x++) if (KC.canPlace(G, 'xpad', x, y).ok) pad = KC.place(G, 'xpad', x, y); pad.built = true; pad.pw = 1; G.res.fuel = 100; const hb = G.buildings.find(b => b.t === 'lander'); hb.drones += 10; for (const c of G.colonists) c.health = 100; const s = G.world.sites.find(x => !x.claimed && !KC.SITES[x.kind].rover); UI.wexp = { site: s.id, ids: null }; Sheet.render(true); });
+  await page.waitForTimeout(200);
+  const ex = await G(() => ({ seats: document.querySelectorAll('#sheet .it.seat').length, launch: !!document.querySelector('#sheet [data-launch-exp]:not([disabled])'), why: (document.querySelector('#sheet [data-launch-exp]') || {}).disabled ? $('#sheet .warnc') && $('#sheet .warnc').textContent : '' }));
+  check(ex.seats > 0 && ex.launch, 'the planner shows the crew seats and can launch (' + JSON.stringify(ex) + ')');
+  await shot('33-world-exp'); await smallTargets('#sheet button', 'expeditions');
+  if (await page.isVisible('#sheet [data-swap="0"]')) { const before = await G(() => UI.wexp.ids[0]); await page.tap('#sheet [data-swap="0"]'); await page.waitForTimeout(150); check(await G(b => UI.wexp.ids[0] !== b, before), 'Swap changes who takes a seat'); }
+  const pop0 = await G(() => UI.G.colonists.length);
+  await page.tap('#sheet [data-launch-exp]'); await page.waitForTimeout(250);
+  check(await G(p => UI.G.world.exps.length === 1 && UI.G.colonists.length < p, pop0), 'launching sends the crew away on the skimmer');
+  await G(() => { R.frame(performance.now(), 0.5); }); await shot('34-world-route');
+  await page.tap('#sheet .sh-head button[aria-label=Close]');
+}
+// ---------- 2.1: the monorail: two stations, Lay track from a station, a train runs ----------
+{
+  await page.tap('[data-tab=build]'); await page.tap('#sheet .tabs button[data-k=infra]'); await page.waitForTimeout(150);
+  check(await page.isVisible('[data-build=station]') && await page.isVisible('[data-build=xpad]'), 'Build → Base offers the Rail Station and the Expedition Pad');
+  await page.tap('#sheet .tabs button[data-k=lines]'); await page.waitForTimeout(100);
+  check(await page.isVisible('[data-build=rail]'), 'Build → Grids offers monorail track');
+  await page.tap('#sheet .sh-head button[aria-label=Close]');
+  const ids = await G(() => { const G = UI.G, L = G.buildings.find(b => b.t === 'lander'), N = KC.MAP_N; const find = (cx, cy, R) => { let best = null, bd = 1e9; for (let y = Math.max(0, cy - R); y <= Math.min(N - 2, cy + R); y++) for (let x = Math.max(0, cx - R); x <= Math.min(N - 2, cx + R); x++) if (KC.canPlace(G, 'station', x, y).ok) { const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = { x, y }; } } return best; };
+    const a = find(L.x + 5, L.y, 20), s1 = KC.place(G, 'station', a.x, a.y); let bp = null; for (const [dx, dy] of [[14, 0], [-14, 0], [0, 14], [0, -14], [10, 10], [-10, 10]]) { bp = find(a.x + dx, a.y + dy, 3); if (bp) break; } const s2 = KC.place(G, 'station', bp.x, bp.y);
+    for (const b of [s1, s2]) { b.built = true; b.paid = true; KC.autoConnectSite(G, b.id); } for (let i = 0; i < N * N; i++) { if (G.cable[i] === 3) G.cable[i] = 1; if (G.pipe[i] === 3) G.pipe[i] = 1; } G._netDirty = true; G._railDirty = true; KC.step(G); R.cam.z = 1.2; R.centerOn(s1.x + 1, s1.y + 1); return [s1.id, s2.id]; });
+  await page.waitForTimeout(200);
+  await G(id => { R.sel = { k: 'b', id }; Panels.building(KC.bById(UI.G, id)); }, ids[0]); await page.waitForTimeout(250);
+  check(await page.isVisible('#sheet [data-lay="' + ids[1] + '"]'), 'a station offers Lay track to the other station');
+  await shot('35-station'); await smallTargets('#sheet button', 'station');
+  await page.tap('#sheet [data-lay="' + ids[1] + '"]'); await page.waitForTimeout(200);
+  check(await G(() => UI.G.rail.some(v => v === 3)), 'Lay track plans the track for the drones');
+  const run = await G(() => { const G = UI.G; for (let i = 0; i < G.rail.length; i++) if (G.rail[i] === 3) G.rail[i] = 1; G._railDirty = true; for (let h = 0; h < 12; h++) KC.step(G); const tr = G.trains[0]; let p = null; for (let k = 0; k < 10 && tr && !p; k++) { KC.step(G); const q = KC.trainPos(G, tr, 0.5); if (q && !q.stop) p = q; } if (p) R.centerOn(p.x + 0.5, p.y + 0.5); R.cam.z = 1.5; G._fx = []; return { trains: G.trains.length, moving: !!p }; });
+  check(run.trains === 1 && run.moving, 'a train runs on the finished line (' + JSON.stringify(run) + ')');
+  await page.tap('#sheet .sh-head button[aria-label=Close]'); await page.waitForTimeout(150);
+  const fr = await G(() => { const t0 = performance.now(); for (let i = 0; i < 5; i++) R.frame(performance.now(), 0.5); return performance.now() - t0; });
+  check(fr < 2000, 'the map draws track and trains'); await shot('36-train');
+}
+// ---------- 2.1: mysteries on the Goals screen, and the intros to new systems ----------
+{
+  await page.tap('[data-tab=goals]'); await page.waitForTimeout(200); await page.tap('#sheet .tabs button[data-k=goals]'); await page.waitForTimeout(200);
+  check(await G(() => ['bloom', 'moon', 'orrery'].every(k => document.querySelector('#sheet [data-myst=' + k + ']'))), 'Goals lists the Bloom Below, the Ninth Moon and the Orrery relics');
+  await page.tap('#sheet .sh-head button[aria-label=Close]');
+  await G(() => { Settings.set('tips', false); Settings.set('intros', true); Settings.set('introsDone', []); Tips.shown = null; Tips.check(); });
+  await page.waitForTimeout(200);
+  check(await page.isVisible('#tip [data-intro-show=i_world]'), 'an intro to the world map appears once the guide is done');
+  await shot('37-intro');
+  await page.tap('#tip [data-intro-show=i_world]'); await page.waitForTimeout(300);
+  check(await page.isVisible('#sheet canvas.worldmap') && await G(() => Settings.get('introsDone').includes('i_world')), 'Show me opens the World map and the intro is not shown again');
+  await page.tap('#sheet .sh-head button[aria-label=Close]'); await page.waitForTimeout(200);
+  if (await page.isVisible('#tip [data-intro-skip]')) { const id = await page.getAttribute('#tip [data-intro-skip]', 'data-intro-skip'); await page.tap('#tip [data-intro-skip]'); await page.waitForTimeout(150); check(await G(id => Settings.get('introsDone').includes(id), id), 'Got it skips an intro'); }
+  await G(() => { Settings.set('intros', false); Tips.check(); });
+}
 // a 375 px phone (iPhone mini / SE): every tab row fits, nothing overflows, targets stay at 44 px
 {
   const p2 = await (await browser.newContext({ viewport: { width: 375, height: 667 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })).newPage();
@@ -311,8 +385,11 @@ await page.evaluate(() => Sheet.close && Sheet.close()); await shot('28-reshaped
   await p2.goto(file); await p2.waitForTimeout(300); await p2.evaluate(() => Settings.set('tips', false)); await p2.tap('#btnNew'); await p2.tap('#btnStart'); await p2.waitForTimeout(400);
   await p2.addScriptTag({ path: path.join(here, 'bot.js') });
   await p2.evaluate(() => { const G = UI.G, B = {}; UI.setSpeed(0); for (let h = 0; h < 30 * 24; h++) { if (h % 4 === 0) BOT.turn(G, B); KC.step(G); } G.event = null; G._fx = []; HUD.update(); });
+  // a station and a trade offer, so the 375 px checks cover the new panels with content in them
+  await p2.evaluate(() => { const G = UI.G; for (let y = 2; y < 60; y++) for (let x = 2; x < 60; x++) if (!G.buildings.some(b => b.t === 'station') && KC.canPlace(G, 'station', x, y).ok) { const b = KC.place(G, 'station', x, y); b.built = true; } G.world.offers.push({ id: 991, r: G.world.rivals[0].k, give: { electronics: 12 }, take: { funds: 300 }, until: G.tick + 40, kind: 'sell' }); });
+  { const lb = await p2.evaluate(() => { const r = $$('#bottom .tb span').map(e => e.getBoundingClientRect()); let overlap = 0; for (let i = 1; i < r.length; i++) if (r[i].left < r[i - 1].right - 0.5) overlap++; return { n: r.length, overlap, small: $$('#bottom .tb').filter(b => b.getBoundingClientRect().width < 44).length }; }); check(lb.n === 8 && !lb.overlap && !lb.small, 'at 375 px the eight bottom tabs fit, labels apart and 44 px wide (' + JSON.stringify(lb) + ')'); }
   const bad = [];
-  for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', '(Panels._gt = "reshape", Panels.goals())', 'Panels.advice()']) {
+  for (const js of ['Panels.build("power")', 'Panels.people("list")', 'Panels.people("council")', 'Panels.research()', 'Panels.rockets("fleet")', 'Panels.rockets("exports")', 'Panels.rockets("sponsor")', 'Panels.log()', 'Panels.goals()', '(Panels._gt = "reshape", Panels.goals())', 'Panels.advice()', 'Panels.world("map")', 'Panels.world("rivals")', 'Panels.world("trade")', 'Panels.world("exp")', 'Panels.building(UI.G.buildings.find(b => b.t === "station") || UI.G.buildings[0])']) {
     // measure once the sheet has finished sliding in: mid-animation the translated boxes report sizes like 43.99 px,
     // which failed this check once on a heavily loaded machine
     await p2.evaluate(js); await p2.waitForTimeout(60);

@@ -5,14 +5,14 @@ const { KC, ctx } = loadEngine(); const BOT = ctx.BOT;
 const SOLS = +(process.argv[2] || 420), seed = process.argv[3] || 'e-0';
 let oks = 0, fails = 0; const check = (c, m) => { if (!c) { fails++; console.log('FAIL:', m); } else oks++; };
 const G = KC.newGame({ seed, sponsor: 'orrin', commander: 'engineer', difficulty: 'normal' }), B = {};
-const t0 = Date.now(); let err = null, stepMs = 0, botMs = 0, early = 0, late = 0, bMax = 0;
+const t0 = Date.now(); let err = null, stepMs = 0, botMs = 0, early = 0, late = 0, bMax = 0, peakLate = 0;
 try {
   for (let h = 0; h < SOLS * 24; h++) {
     let a = performance.now(); if (h % 4 === 0) BOT.turn(G, B); if (G.event) BOT.event(G, B); botMs += performance.now() - a;
     a = performance.now(); KC.step(G); const dt = performance.now() - a; stepMs += dt;
-    const sol = KC.solOf(G.tick); if (sol > 20 && sol <= 70) early += dt; if (sol > SOLS - 50) late += dt; bMax = Math.max(bMax, G.buildings.length);
+    const sol = KC.solOf(G.tick); if (sol > 20 && sol <= 70) early += dt; if (sol > SOLS - 50) late += dt; bMax = Math.max(bMax, G.buildings.length); if (sol > 200) peakLate = Math.max(peakLate, G.colonists.length);
     if (G.over && G.over.win) G.over.continued = true; if (G.over && !G.over.win) break;
-    if (h % (60 * 24) === 60 * 24 - 1) { const T = G.terra; console.log('  sol ' + sol + ': pop ' + G.colonists.length + ', ' + G.buildings.length + ' buildings, engine ' + (stepMs / 1440).toFixed(2) + ' ms/h, bot ' + (botMs / 1440).toFixed(1) + ' ms/h, Veil/Warmth/Water/Verdure ' + ['veil', 'warm', 'water', 'life'].map(k => T[k].toFixed(0)).join('/') + ', stages ' + Object.keys(T.st).length); stepMs = 0; botMs = 0; }
+    if (h % (60 * 24) === 60 * 24 - 1) { const T = G.terra; console.log('  sol ' + sol + ': pop ' + G.colonists.length + ', ' + G.buildings.length + ' buildings, engine ' + (stepMs / 1440).toFixed(2) + ' ms/h, bot ' + (botMs / 1440).toFixed(1) + ' ms/h, Veil/Warmth/Water/Verdure ' + ['veil', 'warm', 'water', 'life'].map(k => T[k].toFixed(0)).join('/') + ', stages ' + Object.keys(T.st).length + ', births ' + G.st.births + ', deaths ' + G.st.deaths + ', settlers ' + (G.st.settlers || 0) + ', trains ' + G.trains.length + ', expeditions ' + (G.st.expeditions || 0)); stepMs = 0; botMs = 0; }
   }
 } catch (e) { err = e; console.log(e.stack); }
 const save = KC.serialize(G), T = G.terra, earlyH = early / (50 * 24), lateH = late / (50 * 24);
@@ -27,6 +27,13 @@ const bad = []; const scan = (o, p, d) => { if (d > 6 || !o || typeof o !== 'obj
 scan(JSON.parse(save), '', 0); check(!bad.length, 'no NaN or infinite numbers in the save' + (bad.length ? ': ' + bad.slice(0, 5).join(', ') : ''));
 check(Object.keys(T.st).length >= 5, 'the independent colony reshaped Kessa (' + Object.keys(T.st).join(', ') + ')');
 const G2 = KC.deserialize(save); for (let h = 0; h < 48; h++) KC.step(G2); check(G2.colonists.length > 0, 'the late save loads and keeps running');
+// 2.1: the population no longer halves late in the game, and the late game uses the monorail, expeditions, trade and the Assembly
+check(G.colonists.length >= peakLate * 0.8, 'the population holds up after sol 200 (' + G.colonists.length + ' at the end, peak ' + peakLate + '; settlers ' + (G.st.settlers || 0) + ')');
+check((G.st.trainTrips || 0) > 0 && (G.st.expeditions || 0) > 0, 'trains ran (' + (G.st.trainTrips || 0) + ' arrivals) and expeditions came home (' + (G.st.expeditions || 0) + ')');
+check(G.assembly && G.assembly.history.some(x => x.k === 'pass' && x.ok), 'the Assembly passed laws (' + (G.assembly ? G.assembly.history.map(x => x.law + ':' + x.k).join(' ') : '') + ')');
+check(G.world.rivals.every(r => r.pop > 50) && Object.keys(G.world.races).length >= 5, 'the rival colonies grew and the race was run (' + G.world.rivals.map(r => r.name + ' ' + Math.round(r.pop)).join(', ') + ')');
+if (G.assembly) console.log('  Assembly: ' + G.assembly.history.length + ' votes and crises on record, laws now ' + (Object.keys(G.assembly.laws).join(', ') || 'none') + ', crises ' + G.log.filter(l => /Political crisis/.test(l.m)).length + ' in the last ' + G.log.length + ' log lines');
+console.log('  World: races won ' + Object.values(G.world.races).filter(r => r.who === 'you').length + ' of ' + Object.keys(G.world.races).length + ', trades ' + (G.st.trades || 0) + ', expeditions ' + (G.st.expeditions || 0) + ', relics ' + G.world.relics.length + ', train arrivals ' + (G.st.trainTrips || 0) + ', settlers ' + (G.st.settlers || 0));
 console.log('\nsoak (' + seed + ', ' + SOLS + ' sols) in ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s');
 console.log(oks + ' checks passed, ' + fails + ' failed');
 process.exit(fails ? 1 : 0);

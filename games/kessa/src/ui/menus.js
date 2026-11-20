@@ -82,6 +82,7 @@ const Screens = {
         tog('sfx', 'Sound effects'), tog('music', 'Ambient music'),
         h('div', null, h('div', { class: 'small mut' }, 'Volume'), h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: Settings.get('vol'), oninput: e => { Settings.set('vol', +e.target.value); Sound.apply(); } })),
         tog('tips', 'Tutorial tips', () => { if (Settings.get('tips')) Settings.set('tipsDone', []); }),
+        tog('intros', 'Intros to new systems', () => { if (Settings.get('intros')) Settings.set('introsDone', []); }),
         tog('autosave', 'Autosave every sol'),
         h('div', { class: 'sec' }, 'Graphics'),
         h('div', { class: 'seg' }, ...[['low', 'Battery'], ['auto', 'Balanced'], ['high', 'Sharp']].map(([k, n]) => h('button', { class: Settings.get('quality') === k ? 'on' : '', onclick: () => { Settings.set('quality', k); R.resize(); render(); } }, n))),
@@ -91,7 +92,7 @@ const Screens = {
     render();
   },
   help() {
-    const HI = { Controls: 'menu', 'Phase 1: robots': 'build', Grids: 'lines', 'Phase 2: colonists': 'domes', 'Production': 'industry', 'Research': 'research', 'Hazards': 'dust', 'Winning and losing': 'goals', 'Rockets and funding': 'rockets', 'Advisor and decisions': 'advisor', 'The Wardens': 'star' };
+    const HI = { Controls: 'menu', 'Phase 1: robots': 'build', Grids: 'lines', 'Phase 2: colonists': 'domes', 'Production': 'industry', 'Research': 'research', 'Hazards': 'dust', 'Winning and losing': 'goals', 'Rockets and funding': 'rockets', 'Advisor and decisions': 'advisor', 'The Wardens': 'star', 'The wider world': 'world', 'Expeditions': 'skimmer', 'The monorail': 'rail' };
     const sec2 = (t, ...ps) => [h('h4', { class: 'row', style: 'gap:8px' }, ic(HI[t] || 'star'), t), ...ps.map(p => h('p', null, p))];
     this.show([this.back(() => UI.G ? this.closeAll() : this.main()), h('div', { class: 'menu help' }, h('h2', { style: 'text-align:center' }, 'How to play'),
       ...sec2('Controls', 'Drag to pan, pinch (or mouse wheel) to zoom. Tap anything to inspect it. Speed buttons are at the top: pause, normal, fast, fastest. One sol is 24 hours; at normal speed an hour takes about two seconds.'),
@@ -105,12 +106,15 @@ const Screens = {
       ...sec2('Rockets and funding', 'Your sponsor pays a stipend every sol and grants for milestones, but the stipend shrinks as the colony matures, and every colonist from home costs Earth payroll. Prices and arks get dearer over time. Order cargo, prefabs, drones and vehicles; rockets take about a sol and a half each way. Returning rockets sell rare metals and Kessite: with 5 fuel of your own you keep it all, otherwise the sponsor refuels the rocket and keeps a quarter.', 'Rockets → Sponsor shows sponsor confidence (it scales the stipend), contracts with deadlines and rewards, research grants, recruiting drives, and the Independence buyout. Late-game megaprojects such as the Orbital Mirror cost funding too.'),
       ...sec2('Advisor and decisions', 'The advisor (the bulb at the top) lists what needs attention, worst first: shortage forecasts, empty tanks, ice running out, stranded buildings, missing drones, low funding, and what to build next, each with a shortcut. Now and then the colony faces a decision: choose carefully, each option has a cost.'),
       ...sec2('The Wardens', 'Basalt pillars across the region hum at one pitch. Investigate Wardens and signals to start a mystery that runs through the whole game and ends with a megaproject.'),
+      ...sec2('The wider world', 'Two or three other sponsors landed colonies on Kessa. World shows them on a drawn regional map and on the rivalry board. The first colony to each milestone (first dome, 50 and 100 colonists, 25 technologies, a wonder, an expedition, Independence) wins a prize from its sponsor. Rivals send trade offers, ask for help, poach your people and take in or send refugees: how you answer changes relations, and relations change the offers.'),
+      ...sec2('Expeditions', 'An Expedition Pad launches a skimmer rocket to remote sites on the world map: wrecks, glacier caves, Kessite fields, pillar ruins, distress beacons, deep rifts. Each needs a crew of particular specialists (stand-ins lower the odds), sometimes drones or the Pathfinder, and takes a few sols. Crews bring back supplies, research, breakthroughs, survivors and relics, and risk injury. Rivals race you to the same sites. Three relics reveal a wonder.'),
+      ...sec2('The monorail', 'Place two Rail Stations, tap one and Lay track to the other (or lay track tile by tile under Build → Grids). The guideway rides on pylons, so it crosses steeper ground and water, but not buildings. While a line runs, colonists commute to jobs within 10 tiles of any stop, drone hubs near its stops share their drones, and extractors near a stop ship 15% more if the line serves the lander or a depot.'),
       h('button', { class: 'pri', onclick: () => UI.G ? this.closeAll() : this.main() }, 'Got it'))]);
   },
   event() {
     const G = UI.G; if (!G || !G.event) return;
-    const e = KC.EVENTS[G.event.id], ch = KC.eventChoices(G), art = h('canvas', { class: 'hero' });
-    Modal.show(e.title, [h('div', { class: 'kicker' }, 'Decision · time is paused'), h('p', null, e.text),
+    const e = KC.eventInfo(G), ch = KC.eventChoices(G), art = h('canvas', { class: 'hero' });
+    Modal.show(e.title, [h('div', { class: 'kicker' }, KC.EVENTS[G.event.id].world ? 'Rivalry · time is paused' : KC.EVENTS[G.event.id].myst ? 'Mystery · time is paused' : 'Decision · time is paused'), h('p', null, e.text),
       ...ch.map(c => h('button', { class: 'choice' + (c.ok ? '' : ' lock'), 'data-choice': c.i, disabled: !c.ok, onclick: () => { if (KC.resolveEvent(G, c.i)) { Sound.play('tap'); Modal.close(); HUD.update(); } } }, h('b', null, c.label), c.note ? h('div', { class: 'small' }, c.note) : null))], [], art);
     requestAnimationFrame(() => sceneArt(art, EVENT_ART[G.event.id] || ['day', 'decision']));
   },
@@ -128,7 +132,10 @@ const EMBLEM = {
 };
 // event art: mood and emblem for each decision
 const EVENT_ART = { scrubbers: ['dust', 'parts'], letters: ['night', 'log'], stowaway: ['day', 'pop'], gala: ['dawn', 'star'], meteorite: ['night', 'meteor'], lab: ['day', 'research'], festival: ['dawn', 'social'],
-  strike: ['night', 'moon'], rival: ['dust', 'funds'], seeds: ['day', 'food'], medical: ['day', 'medic'], firmware: ['day', 'build'], wanderer: ['dawn', 'geologist'] };
+  strike: ['night', 'moon'], rival: ['dust', 'funds'], seeds: ['day', 'food'], medical: ['day', 'medic'], firmware: ['day', 'build'], wanderer: ['dawn', 'geologist'],
+  wedding: ['dawn', 'social'], feud: ['day', 'engineer'], mural: ['day', 'star'], anthem: ['night', 'star'], sleepwalker: ['night', 'warn'], teacher: ['dawn', 'book'],
+  m_bloom1: ['night', 'spore'], m_bloom2: ['night', 'spore'], m_moon1: ['night', 'orbit'], m_moon2: ['night', 'orbit'],
+  w_aid: ['dust', 'world'], w_poach: ['day', 'people'], w_joint: ['dawn', 'world'], w_refugees: ['dust', 'pop'], w_spy: ['night', 'world'] };
 // a wide landscape vignette: sky by mood, mesas, a dome, and an emblem medallion
 function sceneArt(cv, spec) {
   const [mood, icon] = spec, dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || 380, H = cv.clientHeight || 132;

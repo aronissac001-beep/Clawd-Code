@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { engineSource, ENGINE_FILES } from './load-engine.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const src = p => fs.readFileSync(path.join(here, '../src', p), 'utf8');
-export const UI_FILES = ['storage.js', 'audio.js', 'art.js', 'art2.js', 'icons.js', 'render.js', 'input.js', 'app.js', 'hud.js', 'panels.js', 'panels2.js', 'menus.js', 'tips.js', 'main.js'];
+export const UI_FILES = ['storage.js', 'audio.js', 'art.js', 'art2.js', 'art3.js', 'icons.js', 'render.js', 'input.js', 'app.js', 'hud.js', 'panels.js', 'panels2.js', 'menus.js', 'world.js', 'tips.js', 'main.js'];
 // refuse to build a page with a syntax error in any source file
 for (const f of ENGINE_FILES) new vm.Script(src('engine/' + f), { filename: 'engine/' + f });
 for (const f of UI_FILES) new vm.Script(src('ui/' + f), { filename: 'ui/' + f });

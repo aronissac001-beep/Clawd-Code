@@ -33,6 +33,22 @@ const TIPS = [
   { id: 'jobs', title: 'Work and homes', text: 'Colonists take jobs near their dome. Build a Machine Works and an Ore Extractor so you make your own parts and metals. In People you can see who is unemployed, homeless or unhappy, and fix it with one tap.', done: G => tipHas(G, 'works'), hl: () => buildPath('industry', 'works'), show: () => UI.beginBuild('works') },
   { id: 'goal', title: 'The long game', text: 'Open Goals to see what Independence needs. Expand with more domes, labs and industry, sell your surplus, and watch the hazard warnings. Good luck, Commander.', done: () => false, manual: true },
 ];
+// short intros to the systems that open up later (2.0 and 2.1): each appears once, when it first matters, and can be skipped
+const tipTab = (tab, k) => () => $('#sheet').hidden ? '[data-tab=' + tab + ']' : !Sheet.cur || Sheet.cur.tab !== tab ? '#sheet .sh-head button[aria-label=Close]' : k && Sheet.cur.tabK !== k ? '#sheet .tabs button[data-k=' + k + ']' : null;
+const INTROS = [
+  { id: 'i_world', title: 'You are not alone', text: 'Other sponsors landed colonies on Kessa too. World shows the regional map, the rivalry board and the race: the first colony to reach each milestone wins a prize from its sponsor.',
+    when: G => KC.solOf(G.tick) >= 4 && G.buildings.some(b => b.built && b.t !== 'lander'), hl: tipTab('world', 'map'), tab: 'world', show: () => Panels.world('map') },
+  { id: 'i_trade', title: 'A trade offer', text: 'A rival colony wants to trade. Offers wait under World → Trade for a few sols. Accepting warms relations; better relations bring better prices. Imported food, parts and metals count against self-reliance.',
+    when: G => G.world && G.world.offers.length > 0, hl: tipTab('world', 'trade'), tab: 'world', k: 'trade', show: () => Panels.world('trade') },
+  { id: 'i_exp', title: 'Expeditions', text: 'Remote sites on the world map hold supplies, relics, breakthroughs and stranded people. Build an Expedition Pad, then pick a site under World → Expeditions: the crew and drones are away for a few sols, and rivals race you to the same sites.',
+    when: G => G.colonists.length >= 30 || !!KC.padOf(G), hl: G => KC.padOf(G) ? tipTab('world', 'exp')() : buildPath('infra', 'xpad'), show: G => KC.padOf(G) ? Panels.world('exp') : UI.beginBuild('xpad') },
+  { id: 'i_rail', title: 'The monorail', text: 'Far mines and a second settlement are easier with rail. Place two Rail Stations (Build → Base), tap one and Lay track to the other. Trains carry commuters to jobs near any stop, link the drone hubs by the line and ship ore 15% faster.',
+    when: G => G.colonists.length >= 40 || G.buildings.some(b => b.t === 'station') || G.buildings.some(b => b.t === 'hub' && b.built && Math.hypot(b.x - G.land.x, b.y - G.land.y) > 13), hl: () => buildPath('infra', 'station'), show: () => UI.beginBuild('station') },
+  { id: 'i_assembly', title: 'The Colony Assembly', text: 'The council has grown into an Assembly of 15 seats. Choose a form of government (it is final), then propose laws: each faction votes by its stance and support, and an angry faction can force a repeal. Independence needs the Assembly behind it.',
+    when: G => !!G.assembly, hl: tipTab('people', 'council'), tab: 'people', k: 'council', show: () => Panels.people('council') },
+  { id: 'i_reshape', title: 'Reshaping Kessa', text: 'Haze Forges and Lichen Spreaders slowly change the planet. Goals → Reshaping shows the four gauges, the seven stages and what each one changes on the map.',
+    when: G => !!G.ms.independence || ['hazeforge', 'lichens', 'comets'].some(t => KC.techDone(G, t)), hl: tipTab('goals', 'reshape'), tab: 'goals', k: 'reshape', show: () => { Panels._gt = 'reshape'; Panels.goals(); } },
+];
 const Tips = {
   reset() { this.shown = null; this.check(); },
   hl(sel) {
@@ -40,8 +56,35 @@ const Tips = {
     if (this._hl && this._hl !== el) this._hl.classList.remove('guide-hl');
     if (el && el.offsetParent !== null) { el.classList.add('guide-hl'); this._hl = el; } else this._hl = null;
   },
+  // the next system intro due, once the first-colony guide is finished or switched off
+  intro(G) {
+    if (Settings.get('intros') === false) return null;
+    if (Settings.get('tips') && TIPS.some(t => !(Settings.get('tipsDone') || []).includes(t.id) && !t.manual)) return null;
+    const done = Settings.get('introsDone') || [];
+    for (const t of INTROS) { if (done.includes(t.id)) continue; try { if (!t.when(G)) continue; } catch (e) { continue; }
+      // opening the screen an intro points at counts as having seen it
+      if (t.tab && Sheet.cur && Sheet.cur.tab === t.tab && (!t.k || Sheet.cur.tabK === t.k)) { this.introDone(t.id); continue; }
+      return t; }
+    return null;
+  },
+  introDone(id) { const d = Settings.get('introsDone') || []; if (!d.includes(id)) d.push(id); Settings.set('introsDone', d); },
+  showIntro(G, t) {
+    const el = $('#tip');
+    let sel = null; try { sel = t.hl ? t.hl(G) : null; } catch (e) { sel = null; }
+    this.hl(Modal.open ? null : sel);
+    if (UI.mode || Modal.open || $('#screens').children.length || !$('#sheet').hidden) { el.hidden = true; this.shown = null; return; }
+    if (this.shown === t.id && !el.hidden) return;
+    this.shown = t.id; el.hidden = false; el.innerHTML = '';
+    el.appendChild(h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', null, t.title), h('span', { class: 'small mut' }, 'New')));
+    el.appendChild(h('p', null, t.text));
+    el.appendChild(h('div', { class: 'row' },
+      h('button', { 'data-intro-off': '1', onclick: () => { Settings.set('intros', false); el.hidden = true; this.shown = null; this.hl(null); } }, 'No more intros'),
+      h('button', { 'data-intro-skip': t.id, onclick: () => { this.introDone(t.id); this.shown = null; this.hl(null); Sound.play('tap'); this.check(); } }, 'Got it'),
+      h('button', { class: 'pri', 'data-intro-show': t.id, onclick: () => { this.introDone(t.id); Sound.play('open'); el.hidden = true; this.shown = null; this.hl(null); t.show(G); } }, 'Show me')));
+  },
   check() {
     const G = UI.G, el = $('#tip');
+    if (G && !(G.over && !G.over.continued)) { const it = this.intro(G); if (it) { this.showIntro(G, it); return; } }
     if (!G || !Settings.get('tips') || G.over) { el.hidden = true; this.hl(null); return; }
     const doneList = Settings.get('tipsDone') || [];
     for (const t of TIPS) if (!doneList.includes(t.id) && t.done(G)) { doneList.push(t.id); Settings.set('tipsDone', doneList); if (t.id !== 'welcome') Sound.play('good'); }

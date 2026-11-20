@@ -1,7 +1,7 @@
 // ===== game.js : game state, modifiers, grids, placement and player actions =====
 function def(b) { return b.mod ? MODULES[b.t] : BUILDINGS[b.t]; }
 function rng(G) { if (!G._rng) G._rng = new RNG(G.rng); return G._rng; }
-function syncRng(G) { if (G._rng) G.rng = G._rng.state(); }
+function syncRng(G) { if (G._rng) G.rng = G._rng.state(); if (G.world && G.world._r) G.world.rng = G.world._r.state(); }
 function log(G, m, k = 'info', at) { const e = { t: G.tick, m, k }; if (at) { e.x = at.x; e.y = at.y; } G.log.push(e); if (G.log.length > 250) G.log.splice(0, G.log.length - 250); fx(G, { k: 'log', e }); }
 function fx(G, e) { const q = (G._fx = G._fx || []); q.push(e); if (q.length > 200) q.splice(0, q.length - 150); }
 
@@ -12,7 +12,7 @@ function newGame(cfg) {
   const G = {
     format: SAVE_FORMAT, version: KC_VERSION, seed: cfg.seed, cfg, tick: 7, rng: RNG.fromSeed(cfg.seed + '/game').state(), nextId: 1,
     deposits: F.deps, anomalies: F.anomalies, land: F.land,
-    sectors: [], survey: [], cable: new Uint8Array(MAP_N * MAP_N), pipe: new Uint8Array(MAP_N * MAP_N),
+    sectors: [], survey: [], cable: new Uint8Array(MAP_N * MAP_N), pipe: new Uint8Array(MAP_N * MAP_N), rail: new Uint8Array(MAP_N * MAP_N), trains: [],
     buildings: [], colonists: [], vehicles: [], rockets: [], applicants: [],
     res: {}, funds: Math.round(SP.funds * DF.funds), prefabs: {}, probes: 2,
     research: { cur: null, queue: [], done: {}, prog: {}, found: [] },
@@ -64,12 +64,17 @@ function hydrate(G) {
   if (!G.trade) G.trade = tradeDefaults();
   if (G.loan === undefined) G.loan = null;
   for (const R of G.rockets) if (R.exp && !R.exp.goods) R.exp.goods = { rare: R.exp.rare || 0, crystals: R.exp.crystals || 0 };
+  // 2.1: the monorail and the wider world
+  if (!G.rail) G.rail = new Uint8Array(MAP_N * MAP_N);
+  if (!G.trains) G.trains = [];
+  if (G.world) G.world._r = null;
   G._T = genTerrain(G.seed);
   G._dep = depositGrid(G);
   G._byId = new Map(); for (const b of G.buildings) G._byId.set(b.id, b);
   G._cById = new Map(); for (const c of G.colonists) G._cById.set(c.id, c);
-  rebuildOcc(G); computeMods(G); G._netDirty = true; G._jobsDirty = true; G._fx = [];
+  rebuildOcc(G); computeMods(G); G._netDirty = true; G._jobsDirty = true; G._fx = []; G._railDirty = true; G._commute = undefined;
   G._rng = null;
+  if (!G.world) worldInit(G);
 }
 function rebuildOcc(G) {
   const occ = new Int32Array(MAP_N * MAP_N);
@@ -86,6 +91,7 @@ function computeMods(G) {
   if (G.council) add(councilMods(G));
   if (G.terra) add(terraMods(G));
   if (G.assembly) add(assemblyMods(G));
+  if (G.world) add(worldMods(G));
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;
@@ -102,7 +108,8 @@ function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return 
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
-const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 }, vault: { health: 0.15 } };
+const SLOPE_RAIL = 0.17;
+const MEGA = { mirror: { solar: 0.4, coldShort: 0.5 }, array: { research: 0.25, morale: 8 }, vault: { health: 0.15 }, undergrove: { comfort: 3, sanity: 0.05 }, relay: { rocketTime: -0.25, rocketCost: -0.1, research: 0.1, warn: 0.3 }, orrery: { research: 0.12, morale: 4, expSafe: 0.1 } };
 const have = (G, k) => k === 'funds' ? G.funds : (G.res[k] || 0);
 function costOf(G, type, isMod) {
   const d = isMod ? MODULES[type] : BUILDINGS[type];
@@ -125,12 +132,12 @@ function addBuilding(G, type, x, y, built) {
   G.buildings.push(b); if (G._byId) G._byId.set(b.id, b);
   if (G._occ) for (let yy = y; yy < y + b.s; yy++) for (let xx = x; xx < x + b.s; xx++) G._occ[yy * MAP_N + xx] = b.id;
   if (built) absorbLines(G, b);
-  G._netDirty = true; G._jobsDirty = true;
+  G._netDirty = true; G._jobsDirty = true; if (type === 'station') G._railDirty = true;
   return b;
 }
 
 // lines under a finished building are absorbed into it (it conducts anyway)
-function absorbLines(G, b) { if (b.mod) return; for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) { G.cable[yy * MAP_N + xx] = 0; G.pipe[yy * MAP_N + xx] = 0; } }
+function absorbLines(G, b) { if (b.mod) return; for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) { G.cable[yy * MAP_N + xx] = 0; G.pipe[yy * MAP_N + xx] = 0; if (G.rail && b.t === 'station') G.rail[yy * MAP_N + xx] = 0; } }
 function canPlace(G, type, x, y) {
   const d = BUILDINGS[type];
   if (!d || d.unbuildable || d.line) return { ok: false, why: 'Cannot be built' };
@@ -144,6 +151,7 @@ function canPlace(G, type, x, y) {
     const i = yy * MAP_N + xx;
     if (G._occ[i]) return { ok: false, why: 'Space is taken' };
     if (T.slope[i] > SLOPE_BUILD) return { ok: false, why: 'Ground too steep' };
+    if (G.rail && G.rail[i] && type !== 'station') return { ok: false, why: 'The monorail track runs here' };
     if (G.anomalies.some(a => !a.done && a.x === xx && a.y === yy)) return { ok: false, why: 'An anomaly is in the way' };
     const dp = depAt(G, xx, yy);
     if (dp) {
@@ -160,6 +168,8 @@ function place(G, type, x, y) {
   const c = canPlace(G, type, x, y); if (!c.ok) return { err: c.why };
   const b = addBuilding(G, type, x, y, false);
   if (G.prefabs[type] > 0) { G.prefabs[type]--; b.prefab = true; b.paid = true; }
+  // an ice drill set into a lake stands on its own little levee
+  if (G.terra && G.terra.st.lakes && lakeTouch(G, x, y, b.s)) (G.terra.levees = G.terra.levees || []).push([x, y, b.s]);
   return b;
 }
 
@@ -191,22 +201,27 @@ function linePath(x0, y0, x1, y1) {
 }
 function lineTileOk(G, kind, x, y) {
   if (x < 0 || y < 0 || x >= MAP_N || y >= MAP_N) return false;
-  const i = y * MAP_N + x; if (G._occ[i]) return 'skip';
+  const i = y * MAP_N + x;
+  // monorail track cannot run under buildings (stations are part of the line) or across open water
+  // (the guideway rides on pylons, so it bridges steeper ground than cables and pipes, and open water)
+  if (kind === 'rail') { if (G._occ[i]) { const b = bById(G, G._occ[i]); return b && b.t === 'station' ? 'skip' : false; } if (G._T.slope[i] > SLOPE_RAIL) return false; return G.rail[i] ? 'skip' : true; }
+  if (G._occ[i]) return 'skip';
   if (G._T.slope[i] > SLOPE_LINE) return false;
   return G[kind][i] ? 'skip' : true;
 }
 function checkLine(G, kind, tiles) {
   let n = 0;
-  for (const [x, y] of tiles) { const r = lineTileOk(G, kind, x, y); if (r === false) return { ok: false, why: 'Ground too steep for a line', n }; if (r === true) n++; }
+  for (const [x, y] of tiles) { const r = lineTileOk(G, kind, x, y); if (r === false) return { ok: false, why: kind === 'rail' ? (G._occ[y * MAP_N + x] ? 'A building is in the way of the track' : 'Too steep even for pylons') : 'Ground too steep for a line', n }; if (r === true) n++; }
   if (!n) return { ok: false, why: 'Nothing new to build', n };
-  return { ok: true, n, cost: { metals: Math.round(n * BUILDINGS[kind].cost.metals * 100) / 100 } };
+  const cost = {}; for (const k in BUILDINGS[kind].cost) cost[k] = Math.round(n * BUILDINGS[kind].cost[k] * 100) / 100;
+  return { ok: true, n, cost };
 }
 function placeLine(G, kind, tiles) {
   const c = checkLine(G, kind, tiles); if (!c.ok) return { err: c.why };
   for (const [x, y] of tiles) if (lineTileOk(G, kind, x, y) === true) G[kind][y * MAP_N + x] = 3;
   return { n: c.n };
 }
-function removeLine(G, kind, x, y) { const i = y * MAP_N + x; if (!G[kind][i]) return false; G[kind][i] = 0; G._netDirty = true; return true; }
+function removeLine(G, kind, x, y) { const i = y * MAP_N + x; if (!G[kind][i]) return false; G[kind][i] = 0; G._netDirty = true; if (kind === 'rail') { G._railDirty = true; G._jobsDirty = true; } return true; }
 
 function demolish(G, id) {
   const b = bById(G, id); if (!b || b.t === 'lander') return false;
@@ -219,7 +234,7 @@ function demolish(G, id) {
   if (d.hub && b.drones) { const L = G.buildings.find(x => x.t === 'lander'); L.drones += b.drones; }
   G.buildings.splice(G.buildings.indexOf(b), 1); G._byId.delete(id);
   if (!b.mod) for (let yy = b.y; yy < b.y + b.s; yy++) for (let xx = b.x; xx < b.x + b.s; xx++) G._occ[yy * MAP_N + xx] = 0;
-  G._netDirty = true; G._jobsDirty = true;
+  G._netDirty = true; G._jobsDirty = true; if (b.t === 'station') G._railDirty = true;
   if (d.dome) rehome(G);
   if (MEGA[b.t]) computeMods(G);
   return true;

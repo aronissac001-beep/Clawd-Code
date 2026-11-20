@@ -5,7 +5,7 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
 };
 const Settings = {
-  data: { sfx: true, music: true, vol: 0.7, tips: true, tipsDone: [], quality: 'auto', autosave: true, lastCfg: null, edgeLabels: true },
+  data: { sfx: true, music: true, vol: 0.7, tips: true, tipsDone: [], intros: true, introsDone: [], quality: 'auto', autosave: true, lastCfg: null, edgeLabels: true },
   load() { try { Object.assign(this.data, JSON.parse(LS.get('kessa.settings') || '{}')); } catch (e) { /* defaults */ } },
   get(k) { return this.data[k]; },
   set(k, v) { this.data[k] = v; LS.set('kessa.settings', JSON.stringify(this.data)); },

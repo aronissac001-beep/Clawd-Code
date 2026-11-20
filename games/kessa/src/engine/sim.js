@@ -58,6 +58,7 @@ function step(G) {
   const heat = coverage(G, 'heat'), brush = coverage(G, 'brush');
   G._heat = heat; G._brush = brush;
   powerStep(G, env, heat);
+  railHour(G, env);
   lifeStep(G, env);
   colonistHour(G, env);
   produceStep(G, env);
@@ -67,7 +68,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G); tradeHour(G); politicsHour(G); assemblyHour(G); terraHour(G);
+  contractHour(G); tradeHour(G); politicsHour(G); assemblyHour(G); terraHour(G); worldHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
@@ -227,6 +228,7 @@ function prodMult(G, b) {
   if (FACTORY.has(b.t)) m += M(G, 'factory');
   if (b.t === 'sinterer') m += M(G, 'sinter');
   if (b.t === 'foundry') m += M(G, 'electronics');
+  if (G._freight && G._freight.has(b.id)) m += RAIL.freight;
   return m;
 }
 // ---- material production and research ----
@@ -275,6 +277,7 @@ function produceStep(G, env) {
       const got = gain(G, k, amt, cap);
       if (dep) dep.amount -= got;
       b._out += got;
+      if (G._freight && G._freight.has(b.id)) G._railCargo = (G._railCargo || 0) + got;
     }
     if (dep && dep.amount <= 0) { dep.amount = 0; log(G, DEPOSITS[dep.type].name + ' deposit exhausted.', 'warn', dep); }
   }
@@ -321,7 +324,7 @@ function hubsOf(G) {
 }
 function droneTasks(G) {
   const tasks = [], n = MAP_N, cap = storageCap(G);
-  for (const kind of ['cable', 'pipe']) {
+  for (const kind of ['cable', 'pipe', 'rail']) {
     const L = G[kind];
     for (let i = 0; i < L.length; i++) {
       if (L[i] === 2) tasks.push({ k: 'fix', p: 5, x: i % n + 0.5, y: ((i / n) | 0) + 0.5, i, kind, max: 1 });
@@ -343,6 +346,7 @@ function droneTasks(G) {
 }
 function droneStep(G, env) {
   const hubs = hubsOf(G); if (!hubs.length) return;
+  hubLinks(G, hubs);
   const tasks = droneTasks(G);
   const rate = (1 + M(G, 'drone')) * (env.dust ? 0.8 : 1);
   const cap = storageCap(G);
@@ -351,7 +355,7 @@ function droneStep(G, env) {
   // materials are paid when the first drone arrives at a site
   const canStart = t => {
     if (t.k === 'build' && !t.b.paid) { const c = costOf(G, t.b.t, t.b.mod); if (!canAffordReserve(G, c, t.b.prio)) { t.b._st = 'materials'; return false; } pay(G, c); t.b.paid = true; }
-    if (t.k === 'line' && !t.paid) { const c = BUILDINGS[t.kind].cost.metals; if (G.res.metals < c) return false; G.res.metals -= c; noteUse(G, 'metals', c); t.paid = true; }
+    if (t.k === 'line' && !t.paid) { const c = BUILDINGS[t.kind].cost; for (const k in c) if (G.res[k] < c[k]) return false; for (const k in c) { G.res[k] -= c[k]; noteUse(G, k, c[k]); } t.paid = true; }
     if (t.k === 'fix' && !t.paid) { if (G.res.metals < 0.5) return false; G.res.metals -= 0.5; noteUse(G, 'metals', 0.5); t.paid = true; }
     if ((t.k === 'maint' || t.k === 'repair') && !t.b.upaid) {
       const r = def(t.b).maint, need = t.k === 'repair' ? 2 : 1;
@@ -371,9 +375,12 @@ function droneStep(G, env) {
     for (const t of tasks) {
       if (t.n >= t.max || t.blocked) continue;
       for (const h of hubs) {
-        if (h.left <= 0 || cheb(h.x, h.y, t.x, t.y) > h.r + 0.5) continue;
+        if (h.left <= 0) continue;
+        // drones from a hub on a running monorail line ride the train to work around the line's other hubs
+        let via = null;
+        if (cheb(h.x, h.y, t.x, t.y) > h.r + 0.5) { if (!h.alt) continue; via = h.alt.find(a => cheb(a.x, a.y, t.x, t.y) <= a.r + 0.5); if (!via) continue; }
         if (t.n === 0 && !canStart(t)) { t.blocked = true; break; }
-        t.n++; h.left--; h.src._dt.push([t.x, t.y, t.k]); any = true;
+        t.n++; h.left--; (via ? via.src : h.src)._dt.push([t.x, t.y, t.k]); any = true;
         break;
       }
     }
@@ -382,7 +389,7 @@ function droneStep(G, env) {
   for (const t of tasks) {
     if (!t.n) continue;
     const w = t.n * rate;
-    if (t.k === 'line') { G[t.kind][t.i] = 1; G._netDirty = true; }
+    if (t.k === 'line') { G[t.kind][t.i] = 1; G._netDirty = true; if (t.kind === 'rail') { G._railDirty = true; G._jobsDirty = true; } }
     else if (t.k === 'fix') { G[t.kind][t.i] = 1; G._netDirty = true; }
     else if (t.k === 'build') {
       const b = t.b, d = def(b);
@@ -415,7 +422,7 @@ function completeBuilding(G, b) {
   const d = def(b);
   b.built = true; b.prog = d.work; b.wear = 0; absorbLines(G, b);
   if (d.hub && !b.drones) b.drones = 0;
-  G._netDirty = true; G._jobsDirty = true;
+  G._netDirty = true; G._jobsDirty = true; if (b.t === 'station') G._railDirty = true;
   if (d.hub && b.t === 'hub') {
     // new hubs get drones from the lander pool if it has spare, else start with what arrives
     if (b.prefab) b.drones += 2;

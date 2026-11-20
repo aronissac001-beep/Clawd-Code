@@ -225,7 +225,7 @@ function iconCanvas(type, px, ph) {
   const banner = ph < pw * 0.6, tv = banner ? top * 0.62 : top, sc = Math.min(pw * dpr * (banner ? 0.62 : 0.92) / (s * TW + 12), ph * dpr * (banner ? 0.96 : 0.92) / (tv + s * TH + 8));
   c.translate(pw * dpr / 2, ph * dpr / 2 + (tv - s * TH) * sc * 0.5); c.scale(sc, sc);
   try {
-    if (A) drawBuilding(c, { id: 1, t: type, s, built: true, wear: 0, on: true, _pop: 6 }, 0, 0, 0, 1, { zoom: 1.4, direct: true, sunTilt: 0.3, windAngle: 0.6, mods: d.dome ? [{ t: 'quarters', built: true }, { t: 'canteen', built: true }, { t: 'hydro', built: true }] : null, pop: 6 });
+    if (A) drawBuilding(c, { id: 1, t: type, s, built: true, wear: 0, on: true, _pop: 6 }, 0, 0, 0, 1, { zoom: 1.4, direct: true, sunTilt: 0.3, windAngle: 0.6, mods: d.dome ? [{ t: 'quarters', built: true }, { t: 'canteen', built: true }, { t: 'hydro', built: true }] : null, pop: 6 }), type === 'station' && drawStationRoof(c, { x: 0, y: 0, s: 2, pw: 1 }, 0, 1, false);
     else if (MODULES[type]) { c.translate(0, -12); box(c, -0.4, -0.4, 0.8, 0.8, 0, 14, MOD_COL[type] || '#c9bba8', { win: { n: 2, at: 0.5, h: 2.4 } }); }
     else if (type === 'cable' || type === 'pipe') { c.strokeStyle = type === 'cable' ? '#ffd84a' : '#9fe4ff'; c.lineWidth = 5; c.beginPath(); c.moveTo(-20, 0); c.lineTo(20, 16); c.stroke(); }
   } catch (e) { /* icon only */ }
@@ -272,7 +272,7 @@ function sceneCanvas(kind, w, h) {
   try {
     if (kind === 'people') { c.translate(w / 2, h * 0.72); c.scale(2.2, 2.2); [[-9, 2, 0], [0, -2, 1], [9, 3, 2], [-3, 6, 3]].forEach(([x, y, k]) => figure(c, x, y, SUIT[k], true, 0, true)); }
     else if (kind === 'rocket') { c.translate(w / 2, h * 0.66); const sc = h / 120; c.scale(sc, sc); drawRocket(c, 0, 0, 0, 0, 1, false); }
-    else { const d = BUILDINGS[kind] || { size: 2 }, s = d.size || 2, A = artOf(kind), top = A ? artTop(A, s) : 40, sc = Math.min(w * 0.8 / (s * TW), h * 0.86 / (top + s * TH)); c.translate(w / 2, h * 0.5 + (top - s * TH) * sc * 0.5); c.scale(sc, sc); if (A) drawBuilding(c, { id: 2, t: kind, s, built: true, wear: 0, on: true, _pop: 8 }, 0, 0, 0, 2, { zoom: 1.3, direct: true, sunTilt: 0.3, windAngle: 0.8, mods: d.dome ? [{ t: 'quarters', built: true }, { t: 'canteen', built: true }, { t: 'hydro', built: true }, { t: 'lounge', built: true }] : null, pop: 8 }); }
+    else { const d = BUILDINGS[kind] || { size: 2 }, s = d.size || 2, A = artOf(kind), top = A ? artTop(A, s) : 40, sc = Math.min(w * 0.8 / (s * TW), h * 0.86 / (top + s * TH)); c.translate(w / 2, h * 0.5 + (top - s * TH) * sc * 0.5); c.scale(sc, sc); if (A) drawBuilding(c, { id: 2, t: kind, s, built: true, wear: 0, on: true, _pop: 8 }, 0, 0, 0, 2, { zoom: 1.3, direct: true, sunTilt: 0.3, windAngle: 0.8, mods: d.dome ? [{ t: 'quarters', built: true }, { t: 'canteen', built: true }, { t: 'hydro', built: true }, { t: 'lounge', built: true }] : null, pop: 8 }); if (kind === 'station') drawStationRoof(c, { x: 0, y: 0, s: 2, pw: 1 }, 0, 2, false); }
   } catch (e) { /* illustration only */ }
   ARTV.night = n0; ARTV.emit = em0; ARTV.lod = L0;
   return cv;

@@ -43,7 +43,7 @@ function terraHour(G) {
   if (G.tick % 24 === 3) {
     const { r } = terraRates(G); T.rate = {};
     for (const k in r) { T[k] = clamp(T[k] + r[k], 0, 100); T.rate[k] = Math.round(r[k] * 100) / 100; }
-    terraCheck(G);
+    terraCheck(G); terraLevees(G);
   }
   for (let i = T.comets.length - 1; i >= 0; i--) if (G.tick >= T.comets[i].at) { cometImpact(G, T.comets[i]); T.comets.splice(i, 1); }
 }
@@ -54,7 +54,7 @@ function terraCheck(G) {
     T.st[S.k] = solOf(G.tick);
     log(G, 'Reshaping Kessa: ' + S.name + '. ' + S.text, 'good'); fx(G, { k: 'milestone' }); fx(G, { k: 'terra', stage: S.k });
     if (S.k === 'thaw') for (const d of G.deposits) if (d.type === 'ice') d.amount = Math.round(d.amount * 0.85 * 10) / 10;
-    if (S.k === 'lakes') terraShores(G);
+    if (S.k === 'lakes') { terraShores(G); terraLevees(G); }
     computeMods(G);
   }
 }
@@ -64,6 +64,16 @@ function isLake(G, x, y) {
   const f = lakeFrac(G); if (!f) return false;
   for (const c of G._T.craters) { if (c.r < 3) continue; if (Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) < c.r * f) return true; }
   return false;
+}
+// buildings that stood on a crater floor before it flooded keep their feet dry: drones raise an earth levee around each,
+// and the map draws it as a dry island in the lake (the island stays even if the building is later taken down)
+function lakeTouch(G, x0, y0, s) { for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) if (isLake(G, x, y)) return true; return false; }
+function terraLevees(G) {
+  const T = G.terra; if (!T || !T.st.lakes) return;
+  const f = lakeFrac(G); if (T.lf === f) return; const first = T.lf === undefined; T.lf = f; T.levees = T.levees || [];
+  let n = 0;
+  for (const b of G.buildings) { if (b.mod || T.levees.some(l => l[0] === b.x && l[1] === b.y && l[2] === b.s) || !lakeTouch(G, b.x, b.y, b.s)) continue; T.levees.push([b.x, b.y, b.s]); n++; }
+  if (n) log(G, (first ? 'The crater floors flooded around ' : 'The lakes rose around ') + n + ' building' + (n > 1 ? 's' : '') + ': drones raised earth levees to keep them dry.', 'info');
 }
 // spore beds take root on the new shores (placed from the map seed, so they never disturb the game's random stream)
 function terraShores(G) {

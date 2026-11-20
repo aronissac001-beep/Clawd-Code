@@ -31,7 +31,7 @@ const R = {
   cornerZ(cx, cy) { const T = this.G._T, n = MAP_N; let s = 0, k = 0; for (let y = cy - 1; y <= cy; y++) for (let x = cx - 1; x <= cx; x++) if (x >= 0 && y >= 0 && x < n && y < n) { s += T.h[y * n + x]; k++; } return s / k * HZ; },
   buildingZ(b) { let z = this.bz.get(b.id); if (z === undefined) { if (b.mod) return 0; let s = 0, m = -1; for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) { const v = this.zAt(x, y); s += v; m = Math.max(m, v); } z = s / (b.s * b.s) * 0.5 + m * 0.5; this.bz.set(b.id, z); } return z; },
   // what the baked terrain shows of Reshaping Kessa; a change rebuilds it (a dozen times in a whole game)
-  terraKey() { const T = this.G && this.G.terra; if (!T) return '0'; return Math.round(clamp((T.warm - 15) / 40, 0, 1) * 4) + '|' + (T.life >= 8 ? Math.min(8, Math.floor(T.life / 9)) : -1) + '|' + Math.round(KC.lakeFrac(this.G) * 20); },
+  terraKey() { const T = this.G && this.G.terra; if (!T) return '0'; return Math.round(clamp((T.warm - 15) / 40, 0, 1) * 4) + '|' + (T.life >= 8 ? Math.min(8, Math.floor(T.life / 9)) : -1) + '|' + Math.round(KC.lakeFrac(this.G) * 20) + '|' + (T.levees ? T.levees.length : 0); },
   buildTerrain() {
     const G = this.G, T = G._T, n = MAP_N;
     this.oX = n * TW / 2; this.oY = HZ + 12;
@@ -197,7 +197,7 @@ const R = {
       c.fillStyle = 'rgba(238,247,255,' + (0.2 + rnd.next() * 0.3).toFixed(2) + ')'; c.beginPath(); c.ellipse(q[0], q[1], rx, ry, 0, 0, 7); c.fill();
       if (rnd.next() < 0.3) { c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(q[0] + (rnd.next() - 0.5) * rx, q[1] + (rnd.next() - 0.5) * ry, 1, 1); }
     }
-    if (G.terra && G.terra.st.lakes) { this.lakes = null; this.lakeGeo(); for (const L of this.lakes.list) this.paintLake(c, L); }
+    if (G.terra && G.terra.st.lakes) { this.lakes = null; this.lakeGeo(); for (const L of this.lakes.list) this.paintLake(c, L); for (const lv of G.terra.levees || []) this.paintLevee(c, lv); }
     this.terrain = cv; this.dirty = true;
   },
   // ---------- camera ----------
@@ -245,6 +245,7 @@ const R = {
     if (this.G.terra && this.G.terra.st.lakes) this.drawLakes(c, t, z);
     this.drawDeposits(c, vis, t);
     this.drawLines(c, t, vis);
+    drawRail(c, G, vis, (x, y) => this.zSmooth(x, y), t);
     if (this.overlay === 'power' || this.overlay === 'life') this.drawNets(c);
     if (this.overlay === 'drones' || (this.ghost && BUILDINGS[this.ghost.type] && BUILDINGS[this.ghost.type].hub)) this.drawCoverage(c);
     // depth-sorted objects
@@ -254,13 +255,22 @@ const R = {
       const cx = isoX(b.x + b.s / 2, b.y + b.s / 2), cy = isoY(b.x + b.s / 2, b.y + b.s / 2, 0);
       if (!vis(cx, cy)) continue;
       items.push({ d: b.x + b.y + b.s * 2, b });
+      if (b.t === 'station' && b.built) items.push({ d: b.x + b.y + b.s * 2 + 0.1, roof: b });
     }
     for (const v of G.vehicles) { const vx = lerp(v.px === undefined ? v.x : v.px, v.x, frac), vy = lerp(v.py === undefined ? v.y : v.py, v.y, frac); items.push({ d: vx + vy + 1.2, v, vx, vy }); }
+    // monorail cars: inside a station they draw over its platform
+    if (G.trains && G.trains.length) for (const tr of G.trains) for (const car of trainCars(G, tr, frac)) {
+      if (!vis(isoX(car.x + 0.5, car.y + 0.5), isoY(car.x + 0.5, car.y + 0.5, 0))) continue;
+      const id = G._occ[Math.round(car.y) * MAP_N + Math.round(car.x)], st = id && KC.bById(G, id);
+      items.push({ d: st && st.t === 'station' ? st.x + st.y + st.s * 2 + 0.05 : car.x + car.y + 1.5, car, tr });
+    }
     items.sort((a, b) => a.d - b.d);
     const glows = [], beacons = [];
     const gl = { sunTilt: clamp((hourF - 12) / 6, -1, 1), windAngle: t * (env.dust ? 6 : 2.5), zoom: z, domeGlow: 1 - sun };
     ARTV.lod = z; ARTV.night = Math.max(1 - Math.min(1, sun / 0.2), (env.dust || 0) * 0.6); ARTV.t = t; ARTV.emit = ARTV.night > 0.3 ? [] : null; SPR.dpr = this.dpr;
     for (const it of items) {
+      if (it.roof) { drawStationRoof(c, it.roof, this.buildingZ(it.roof), t, ARTV.night > 0.3 && it.roof.pw > 0.4); continue; }
+      if (it.car) { const zz = this.zSmooth(it.car.x + 0.5, it.car.y + 0.5), l0 = ARTV.lit, L0 = ARTV.lod; ARTV.lit = ARTV.night > 0.3; ARTV.lod = z; drawTrainCar(c, it.car, zz, t, ARTV.lit, { cargo: !!G._freight }); ARTV.lit = l0; ARTV.lod = L0; if (it.car.head) glows.push([isoX(it.car.x + 0.5, it.car.y + 0.5), isoY(it.car.x + 0.5, it.car.y + 0.5, zz + 12), 16]); continue; }
       if (it.v) { const vz = this.zSmooth(it.vx + 0.5, it.vy + 0.5); drawVehicle(c, it.v, it.vx, it.vy, vz, t, this.sel && this.sel.k === 'v' && this.sel.id === it.v.id); glows.push([isoX(it.vx + 0.5, it.vy + 0.5), isoY(it.vx + 0.5, it.vy + 0.5, vz) - 6, 26]); continue; }
       const b = it.b, d = BUILDINGS[b.t], bz = this.buildingZ(b);
       // a soft contact shadow cast away from the sun, so buildings sit on the ground
@@ -337,6 +347,8 @@ const R = {
       c.strokeStyle = 'rgba(120,255,230,' + (1 - pulse) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 8 + pulse * 22, (8 + pulse * 22) / 2, 0, 0, 7); c.stroke();
       if (a.kind === 'choir') { for (let k = 0; k < 6; k++) { const ang = k / 6 * 6.283, qx = px + Math.cos(ang) * 16, qy = py + Math.sin(ang) * 8; c.fillStyle = '#26262e'; c.fillRect(qx - 2.5, qy - 22, 5, 22); c.fillStyle = 'rgba(140,255,230,' + (0.5 + 0.5 * Math.sin(t * 3 + k)) + ')'; c.fillRect(qx - 1, qy - 20, 2, 16); } c.fillStyle = 'rgba(140,255,230,.25)'; c.beginPath(); c.ellipse(px, py, 12, 6, 0, 0, 7); c.fill(); }
       else if (a.kind === 'camp') { c.fillStyle = '#5a4a40'; c.beginPath(); c.moveTo(px - 14, py); c.lineTo(px - 4, py - 14); c.lineTo(px + 14, py - 6); c.lineTo(px + 8, py + 4); c.closePath(); c.fill(); c.fillStyle = '#8a7a6a'; c.fillRect(px - 10, py - 4, 6, 4); c.fillStyle = 'rgba(150,220,255,' + (0.4 + 0.4 * Math.sin(t * 1.3)) + ')'; c.beginPath(); c.arc(px + 2, py - 5, 3, 0, 7); c.fill(); }
+      else if (a.kind === 'heart') { glow(c, px, py - 6, 26, '150,255,220', 0.35 + 0.15 * Math.sin(t * 1.5)); c.strokeStyle = 'rgba(230,240,220,.85)'; c.lineWidth = 1.2; c.beginPath(); for (let k = 0; k < 7; k++) { const ang = k * 0.9; c.moveTo(px, py - 4); c.quadraticCurveTo(px + Math.cos(ang) * 10, py - 8 + Math.sin(ang) * 3, px + Math.cos(ang) * 20, py + Math.sin(ang) * 9); } c.stroke(); c.fillStyle = '#f2ead6'; c.beginPath(); c.ellipse(px, py - 8, 7, 5, 0, 0, 7); c.fill(); c.fillStyle = 'rgba(140,255,220,' + (0.6 + 0.3 * Math.sin(t * 2)).toFixed(2) + ')'; c.beginPath(); c.ellipse(px, py - 9, 3, 2, 0, 0, 7); c.fill(); }
+      else if (a.kind === 'fragment' || a.kind === 'capsule') { c.fillStyle = 'rgba(30,20,14,.55)'; c.beginPath(); c.ellipse(px, py, 18, 9, 0, 0, 7); c.fill(); c.strokeStyle = 'rgba(255,200,140,.5)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(px, py, 18, 9, 0, Math.PI * 1.05, Math.PI * 1.9); c.stroke(); if (a.kind === 'capsule') { c.fillStyle = '#c9ccd2'; c.beginPath(); c.ellipse(px, py - 6, 7, 9, 0.5, 0, 7); c.fill(); c.fillStyle = 'rgba(190,160,255,' + (0.5 + 0.4 * Math.sin(t * 3)).toFixed(2) + ')'; c.beginPath(); c.arc(px - 1, py - 8, 2.2, 0, 7); c.fill(); } else { c.fillStyle = '#7a7f86'; c.beginPath(); c.moveTo(px - 8, py - 2); c.lineTo(px - 2, py - 14); c.lineTo(px + 9, py - 8); c.lineTo(px + 5, py + 1); c.closePath(); c.fill(); c.strokeStyle = 'rgba(255,230,190,.8)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(px - 4, py - 6); c.lineTo(px + 4, py - 9); c.stroke(); } }
       else if (a.kind === 'warden') { c.fillStyle = '#2a2a33'; c.fillRect(px - 3, py - 26, 6, 26); c.fillStyle = 'rgba(140,255,230,.7)'; c.fillRect(px - 1, py - 24, 2, 20); }
       else { const bob = Math.sin(t * 2 + a.id) * 2.5; glow(c, px, py - 14 + bob, 16, '125,255,224', 0.45); c.fillStyle = '#7dffe0'; c.beginPath(); c.moveTo(px, py - 24 + bob); c.lineTo(px + 7, py - 14 + bob); c.lineTo(px, py - 4 + bob); c.lineTo(px - 7, py - 14 + bob); c.closePath(); c.fill(); c.fillStyle = 'rgba(255,255,255,.5)'; c.beginPath(); c.moveTo(px, py - 24 + bob); c.lineTo(px - 7, py - 14 + bob); c.lineTo(px, py - 14 + bob); c.closePath(); c.fill(); c.fillStyle = '#103a34'; c.font = 'bold 10px sans-serif'; c.textAlign = 'center'; c.fillText('?', px, py - 10 + bob); }
     }
@@ -495,6 +507,11 @@ const R = {
         c.fillStyle = 'rgba(255,220,180,' + (1 - k) + ')'; c.beginPath(); c.arc(px, sy, 6 + k * 20, 0, 7); c.fill();
       } else if (a.k === 'built') {
         c.strokeStyle = 'rgba(255,220,140,' + (1 - k / 1.2) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 20 + k * 40, 10 + k * 20, 0, 0, 7); c.stroke();
+      } else if (a.k === 'skim') {
+        // the skimmer lifts off its pad (or settles back onto it) on a column of fire
+        const up = a.up, f = clamp(k / a.dur, 0, 1), e = up ? f * f : (1 - f) * (1 - f), lift = e * 520;
+        if (lift < 140) for (let j = 0; j < 5; j++) { const ang = j * 1.3 + k * 4, rr = 14 + j * 6; c.fillStyle = 'rgba(200,170,140,' + (0.22 * (1 - lift / 140)).toFixed(2) + ')'; c.beginPath(); c.arc(px + Math.cos(ang) * rr, py + Math.sin(ang) * rr * 0.4, 8 + j * 2, 0, 7); c.fill(); }
+        drawSkimmer(c, px, py - 2 - lift, t, true, 1);
       } else if (a.k === 'ping') {
         c.strokeStyle = 'rgba(255,240,160,' + (1 - k / 1.6) + ')'; c.lineWidth = 3; c.beginPath(); c.ellipse(px, py, 10 + k * 30, 5 + k * 15, 0, 0, 7); c.stroke();
       }
@@ -609,6 +626,17 @@ const R = {
     c.beginPath(); L.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
     c.strokeStyle = 'rgba(70,52,40,.35)'; c.lineWidth = 4; c.stroke(); c.fillStyle = g; c.fill(); c.strokeStyle = 'rgba(225,240,235,.55)'; c.lineWidth = 1.4; c.stroke();
     c.strokeStyle = 'rgba(220,240,255,.18)'; c.lineWidth = 1; for (let k = 0; k < 6; k++) { const wy = cy - L.R * TH * 0.45 + k * L.R * TH * 0.18, w = 8 + (k % 3) * 9; c.beginPath(); c.moveTo(cx - w, wy); c.lineTo(cx + w, wy); c.stroke(); }
+  },
+  // a dry earth island with a raised rim, for buildings that stood on a crater floor before it flooded
+  paintLevee(c, lv) {
+    const [x, y, s] = lv, e = 0.22, zq = (a, b2) => this.zSmooth(a, b2) + 1.5;
+    const pts = [[x - e, y - e], [x + s + e, y - e], [x + s + e, y + s + e], [x - e, y + s + e]].map(([a, b2]) => [isoX(a, b2), isoY(a, b2, zq(a, b2))]);
+    const path = () => { c.beginPath(); pts.forEach(([a, b2], i) => i ? c.lineTo(a, b2) : c.moveTo(a, b2)); c.closePath(); };
+    path(); c.strokeStyle = 'rgba(225,240,235,.55)'; c.lineWidth = 5; c.stroke(); c.strokeStyle = '#5a4232'; c.lineWidth = 3.4; c.stroke(); c.fillStyle = '#8f6c4c'; c.fill();
+    c.strokeStyle = '#b08a62'; c.lineWidth = 1.2; c.stroke();
+    // the outer face of the embankment, towards the camera
+    const fl = pts[3], fr = pts[2], br = pts[1]; c.fillStyle = '#6a4e36'; c.beginPath(); c.moveTo(fl[0], fl[1]); c.lineTo(fr[0], fr[1]); c.lineTo(fr[0], fr[1] + 3); c.lineTo(fl[0], fl[1] + 3); c.closePath(); c.fill();
+    c.fillStyle = '#5a4030'; c.beginPath(); c.moveTo(fr[0], fr[1]); c.lineTo(br[0], br[1]); c.lineTo(br[0], br[1] + 3); c.lineTo(fr[0], fr[1] + 3); c.closePath(); c.fill();
   },
   // per frame only a few moving glints on the water, by day and up close
   drawLakes(c, t, z) {

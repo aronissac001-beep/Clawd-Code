@@ -14,6 +14,7 @@ node games/kessa/tools/build.mjs                 # syntax-check every file, inli
 node games/kessa/tools/test-engine.mjs [n] [sols] # data checks, 24 maps, n bot colonies for `sols` sols (default 6 x 110), disasters, saves, determinism
 node games/kessa/tools/test-ui.mjs [shotDir]      # drives the page at 390x844 with touch; optional screenshot directory
 node games/kessa/tools/soak.mjs [sols] [seed]     # long-run soak: one bot colony for 420 sols, past Independence and through Reshaping Kessa
+node games/kessa/tools/balance.mjs [diff] [from] [to] # bot balance: seeds e-<from>..e-<to-1> for 200 sols (normal 0-8, hard 0-5, easy 0-3)
 ```
 
 `test-ui.mjs` needs Playwright with Chromium already installed (`require('playwright')`).
@@ -28,10 +29,10 @@ node games/kessa/tools/soak.mjs [sols] [seed]     # long-run soak: one bot colon
   - `colonists.js` people, needs, homes, jobs and shifts, births, deaths, homesickness
   - `rockets.js` cargo orders, colonist arks, exports · `vehicles.js` rovers, A* pathing, anomalies
   - `hazards.js` dust storms, meteors, cold waves, quakes, system failures · `goals.js` milestones, independence, defeat, score
-  - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `politics.js` the council · `assembly.js` the Colony Assembly · `terra.js` Reshaping Kessa · `events.js` decisions and the Warden mystery · `advice.js` advisor, auto-connect, ark checks
+  - `economy.js` stipend, payroll, confidence, prices, contracts, purchases · `politics.js` the council · `assembly.js` the Colony Assembly · `terra.js` Reshaping Kessa · `events.js` decisions and the four mysteries · `world.js` rival colonies, the race, trade, remote sites and expeditions (its own random stream) · `rail.js` the monorail: track networks, trains, commuting, shared drones, freight · `advice.js` advisor, auto-connect, ark checks
   - `save.js` JSON with run-length encoded grids; text export `KESSA1:` + base64
-- `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache),
-  `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `tips.js`, `audio.js`, `storage.js`, `style.css`
+- `src/ui/` canvas rendering and DOM UI: `render.js` (terrain cache, world, overlays, lighting, weather, picking), `art.js` (drawing primitives and the building catalogue), `art2.js` (domes, construction, damage, vehicles, rockets, people, deposits, the sprite cache), `art3.js` (the Expedition Pad and its skimmer, Rail Stations, the guideway and trains, the three 2.1 wonders),
+  `input.js` (tap, drag, pinch, wheel), `app.js` (loop and time), `hud.js`, `panels.js`, `panels2.js`, `menus.js`, `world.js` (the World tab and its drawn map, the station and pad panels), `tips.js` (the guide and the intros), `audio.js`, `storage.js`, `style.css`
 - `tools/` build, tests, and `bot.js`, an automated player used only by the tests. It plays through the same public actions as the UI
   (`place`, `placeLine`, `addModule`, `orderRocket`, `queueResearch`, `moveVehicle`...).
 
@@ -295,7 +296,61 @@ Visual assets only: no rules or balance changed.
   - The bot reshapes only after Independence, so the race to Independence is unchanged.
   - The engine's effect queue is now bounded when no screen is reading it, as in headless runs.
 
+## Version 2.1: rivals, expeditions, the monorail and more stories
+
+- **The wider world** (`src/engine/world.js`; the new **World** tab):
+  - **A drawn regional map of Kessa** (`src/ui/world.js`): shaded relief with contour lines, craters, frost at the high latitudes, region names, a compass and a scale. Seas and green spread on it as Kessa is reshaped. Your colony, the rivals and the remote sites are drawn on top, with dashed routes and a moving skimmer for expeditions. Tap anything on it for details.
+  - **Two or three rival colonies** (two on Settled), one for each sponsor that is not yours: Vask Landing (freight town), Concord Ring (fast-growing families), Lyceum Station (researchers), Deepcut (canyon miners) and Hope Hollow (poor but tireless). Each founds a dome, takes colonists, researches, suffers storms and breaches, raises a wonder and in time declares independence.
+  - **The race:** seven milestones (first dome, 50 and 100 colonists, the first expedition home, 25 technologies, the first wonder, the first free colony). Whoever gets there first takes it; your sponsor pays a prize (250-550) and gains confidence, and loses a little confidence when a rival wins. The **rivalry board** compares population, domes and technologies, and each open race shows who leads.
+  - **Trade:** every 5-9 sols a rival offers to sell goods (parts, electronics, metals, research...) for funding, to buy your goods, or to swap. Offers last 3 sols. Prices follow each rival's habits and its relations with you; imported food, parts and metals still count against the five self-reliant sols.
+  - **Rivalry decisions:** storm damage at a rival (send parts and polymers, or not), recruiters poaching your people, a joint survey, sensor logs for sale, and survivors walking in from a rival's wrecked outpost. Your answers move relations; hostile rivals poach more.
+  - **Remote sites and expeditions:** eight kinds of site (derelict freighter, glacier cave, Kessite field, pillar ruins, distress beacon, deep rift, lost supply drop, fresh impact crater). An **Expedition Pad** (Base) launches a skimmer rocket with a crew of the right specialists (stand-ins lower the odds), drones, and for the beacon the Pathfinder. The trip takes 1-3 sols each way plus 1-4 on site and costs fuel. The crew and drones are away for the whole trip. Results: supplies, research, a breakthrough, survivors, relics, or an accident (injuries, lost drones, rarely a death). Rivals send their own crews: whoever works a site first takes it, and distress beacons fade if nobody comes.
+  - **Relics:** seven, each with a lasting bonus (research, vehicles, farms, morale, storms, comfort, safer expeditions). Three reveal the third new wonder.
+  - The world draws from its own random stream, so the colony's own events, hazards and people are not shuffled by it.
+  - The advisor points out waiting trade offers, a distress beacon about to fade and an idle skimmer; the World tab shows a dot while offers wait. Help has new sections on the wider world, expeditions and the monorail.
+- **The monorail** (`src/engine/rail.js`):
+  - **Rail Station** (Base) and **Monorail Track** (Grids). Tap a station and **Lay track** to another: the route is found for you around buildings, and the guideway rides on pylons, so it crosses steeper ground and water than cables and pipes. Track can also be laid tile by tile.
+  - Stations joined by track form a line. Each line runs a train (more for longer lines) that shuttles from stop to stop, waiting an hour at each; a station without power stops its line.
+  - **Commuters:** colonists can take jobs within 10 tiles of any stop on a running line that has a stop within their dome's reach, so far mines and a second settlement can share workers.
+  - **Shared drones:** drone hubs within 7 tiles of the line's stops lend each other drones.
+  - **Freight:** extractors within 10 tiles of a stop ship 15% more, if the line also serves the lander or a depot.
+  - **Art:** a concrete guideway on pylons with a running rail and a shadow, glass-roofed stations with a lift tower and signal light, and two- or three-car cream trains with a teal window band, an orange nose, a headlight and lit windows at night (cargo containers ride on when the line carries freight). Planned track is a dashed amber line. Trains move one game hour at a time in the engine and are interpolated on screen.
+- **More stories:**
+  - **The Bloom Below:** two finds among the fossil bloom beds and warm vents start it. A choice (study the spores or grow them), the breakthrough Mycelial Signalling, the Bloom Heart on the map, and a second choice (commune with it, or harvest its enzymes for the farms). Ends with the Undergrove.
+  - **The Ninth Moon:** a fragment falls on a sol set by the map seed. The Pathfinder finds it machined; report it to the sponsor or keep it quiet; Orbital Forensics shows a derelict relay in a decaying orbit; nudge it down gently with fuel or hail it (its capsule then lands hard and cracks lines). Ends with the Skyward Relay.
+  - **Three wonders with their own art:** the **Undergrove** (a sunken garden of glowing pale caps under a glass lantern, with drifting spores: food, comfort, calmer minds), the **Skyward Relay** (a guyed lattice tower with a turning crown of dishes and a beam to the ninth moon at night: faster, cheaper rockets, research, warnings) and the **Great Orrery** (bronze rings turning round a glowing sun on a stepped plinth, rebuilt from three relics: research, morale, safer expeditions).
+  - **Six new colony events:** a wedding, a workshop feud, a mural, a song of Kessa, a sleepwalker in an airlock, and an old engineer who wants to teach.
+  - Goals lists all four mysteries and the relics; three new milestones and two new Free Kessa goals.
+- **Intros to the newer systems** (`src/ui/tips.js`): short cards for the world map, trade, expeditions, the monorail, the Assembly and Reshaping Kessa, each shown once when it first matters (after the first-colony guide), with Show me, Got it and No more intros. Settings → Intros to new systems turns them back on.
+- **Fixes to 2.0:**
+  - **Lakes no longer drown buildings:** buildings that stood on a crater floor before it flooded get an earth levee, drawn as a dry island with a raised rim, and the log says so. Ice drills set into a lake get one too.
+  - **The bot uses the Assembly:** it takes a Commonwealth and passes Hazard Wardens, Open Laboratories and Export Quotas when the vote would pass and the Assembly is content, so laws, votes and crises (repeals forced by an angry faction) happen in every long bot game.
+  - **The late population fall:** it was not a bug. Colonists age 0.2 years a sol, the founding generation arrived within a few dozen sols, the bot stopped sending arks once it had enough people for Independence, and births need free beds and comfort. A free Kessa now draws **settlers** of its own: every three sols, if there are free beds in domes that breathe, morale is decent and nobody went short, up to 6 people arrive to replace those the colony has lost, until it is back to its largest size so far. The bot also keeps sending arks towards the Free Kessa goal of 250.
+- **Balance:** no 2.0 rule was changed for the race to Independence. The bot builds rail and sends expeditions only after Independence (and in the tests), and researches the two new mysteries late, so the 2.1 systems do not slow its race.
+
 ## Latest test results
+
+- **Bot balance over 200 sols, 2.1** (`tools/balance.mjs`; the same 8 Frontier, 5 Brink and 3 Settled seeds and set-ups as before; the test bot follows the advisor, passes laws in the Assembly, sells surplus to rivals, and keeps rail and expeditions for after Independence):
+  - Frontier 6/8 won (sols 95-124), none lost; the two still standing at sol 200 have 121 and 102 colonists.
+  - Brink 3/5 won (sols 116, 121, 149), none lost; two colonies are still hanging on at sol 200 with 12 and 17 colonists.
+  - Settled 3/3 won (sols 77, 78, 114).
+  - 2.0 for comparison: Frontier 6/8 (sols 109-176), Brink 2/5 (sols 136 and 183), Settled 3/3 (sols 96-162), none lost.
+  - Single runs of one seed swing with any change. Other 2.1 configurations measured on the way: with every 2.1 system in the game but none of the bot's new habits, Frontier 6/8 and Brink 3/5; with laws but no trades, Frontier 7/8 and Brink 2/5. None lost.
+- **`test-engine.mjs`** (default 6 x 110): 869 checks, all passing (24 maps, 6 bot colonies, about 6 minutes). It adds the world (rivals, the race and its prize, trade offers and their expiry, rivalry decisions, refugees, expeditions from launch to return, a rival claiming a site first, relics and the Orrery, the separate random stream), the monorail (routing around buildings, planned track, trains shuttling, interpolation, commuting, shared drones, freight, a power cut stopping the line, save and load, cutting the track), the bot using rail, expeditions and laws, both new mysteries step by step with their choices, the three new wonders, the new events, lake levees, and **a real 2.0 save** (made by the 2.0 engine from git) loading and playing on.
+- **`test-ui.mjs`**: 123 checks, all passing. New: the World tab (the drawn map, tapping a site, the rivalry board and seven races, accepting a trade, the Expedition Pad offer, the crew planner with Swap, launching), Build → Base and Grids offering the station, pad and track, Lay track from a station, a train running, the mystery cards in Goals, the intros (Show me, Got it), and at 375 px the eight bottom tabs fitting with labels apart plus the four World tabs and the station panel without overflow and with 44 px targets.
+- **`soak.mjs`** (420 sols): 14 checks, all passing. New checks: the population holds after sol 200 (326 at the end; in 2.0 it fell from about 225 to 120), trains ran and expeditions came home, the Assembly passed laws, and the rivals grew. Engine time stays at 3-6 ms per game hour.
+- **Frame time** (headless Chromium with software rendering, 390x844 at 3x; mean of the middle 30 of 40 frames):
+  - The same colony in both versions (seed `perf-1` grown 150 sols by the 2.0 bot, 289 buildings, saved and loaded into each page; three fresh browsers each):
+
+    | Version | Day, zoom 0.35 / 0.8 / 1.6 | Storm at night, zoom 0.35 / 0.8 / 1.6 |
+    |---|---|---|
+    | 2.0 | 14.1-17.4 / 17.9-18.1 / 19.2-20.3 ms | 19.6-19.8 / 20.8-21.1 / 23.5-24.8 ms |
+    | 2.1 | 15.1-15.7 / 17.3-17.9 / 18.4-19.6 ms | 19.4-22.2 / 21.0-21.5 / 23.4-24.7 ms |
+
+  - The 2.1 bot's own `perf-1` colony after 150 sols is larger (346 buildings, 227 colonists, 63 tiles of track and a train): 17-17.5 / 18.6-22.9 / 18.8-20.6 ms by day and 22.8-23.6 / 22.1-24.5 / 24.4-26.5 ms in a storm at night; centred on the moving train at zoom 0.8, 9.5-9.7 ms.
+- Built page: about 750 KB (2.0: 603 KB).
+
+### Earlier results (2.0)
 
 - Bot balance over 200 sols, version 1.3, unchanged in 2.0 (game for game the same results; 8 Frontier, 5 Brink, 3 Settled games; 8 Frontier, 5 Brink, 3 Settled games; the test bot follows the advisor's material, water,
   food, emergency and council prompts, sells surplus and takes advances in emergencies):

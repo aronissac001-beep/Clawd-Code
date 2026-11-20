@@ -269,3 +269,30 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .seatbar { display: flex; gap: 2px; height: 22px; margin: 8px 0 4px; border-radius: 6px; overflow: hidden; }
 .seatbar i { display: flex; align-items: center; justify-content: center; font-style: normal; font-size: var(--t-xs); font-weight: 700; color: #1a1411; min-width: 18px; }
 .goodc { color: var(--good); } .badc { color: var(--bad); } .row.wrap { flex-wrap: wrap; }
+
+/* ---------- 2.1: the World tab, the rivalry board, trade, expeditions, the monorail ---------- */
+.mapcard { padding: 6px; background: #1a120d; }
+.mapcard .worldmap { display: block; border-radius: var(--r1); max-width: 100%; height: auto; touch-action: manipulation; }
+.mapcard .legend { gap: 4px 12px; margin: 7px 4px 2px; font-size: var(--t-xs); color: var(--ink2); }
+.legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.legend .dia { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid; display: inline-block; }
+.legend .dia.open { border-color: #8fd6f5; background: #12202a; } .legend .dia.mine { border-color: #8fdc8a; background: #284628; } .legend .dia.gone { border-color: #9a9088; background: #2a2420; }
+.legend .route { width: 18px; height: 0; border-top: 2px dashed #ffc68a; display: inline-block; }
+.board { padding: 4px 10px; }
+.board .brow { display: grid; grid-template-columns: minmax(0, 1fr) 44px 48px 48px; align-items: center; gap: 4px; min-height: 40px; border-bottom: 1px solid rgba(58, 47, 39, .8); font-size: var(--t-md); font-variant-numeric: tabular-nums; }
+.board .brow:last-child { border-bottom: 0; }
+.board .brow > span:not(:first-child) { text-align: right; }
+.board .bhead { min-height: 30px; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--ink3); font-weight: 700; }
+.board .brow.you { color: var(--amber2); }
+.board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.stg.lost { background: var(--badbg); border-color: var(--bad); color: var(--bad); }
+.sitepick { gap: 6px; }
+.sitepick button { flex: 1 1 calc(50% - 6px); min-height: 44px; font-size: var(--t-sm); justify-content: flex-start; gap: 6px; padding: 0 10px; }
+.sitepick button.on { background: var(--amberbg); color: var(--amber2); border-color: var(--amber); }
+.sitepick button .ic { width: 16px; height: 16px; }
+.it.seat { min-height: 52px; } .it.seat button { min-width: 64px; }
+.card.offer h5 .sub { font-weight: 500; }
+.railrow { gap: 6px; }
+/* eight bottom tabs: labels shrink a little on narrow phones so neighbours never touch */
+@media (max-width: 420px) { .tb span { font-size: 10.5px; letter-spacing: -0.015em; } }
+@media (max-width: 380px) { .tb span { font-size: 10px; letter-spacing: -0.03em; } .tb .ic { width: 22px; height: 22px; } }

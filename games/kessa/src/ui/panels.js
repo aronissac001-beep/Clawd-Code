@@ -25,12 +25,12 @@ const Panels = {
           const lock = d.tech && !KC.techDone(G, d.tech), cost = d.line ? d.cost : KC.costOf(G, id), pre = G.prefabs[id] || 0;
           const card = h('button', { class: 'card btn' + (lock ? ' lock' : ''), 'data-build': id, onclick: () => { if (lock) { Sound.play('error'); HUD.toast('Needs research: ' + KC.TECHS[d.tech].name, 'warn'); return; } Sound.play('open'); UI.beginBuild(id); } },
             h('span', { class: 'art' }, iconCanvas(id, 150, 64)), h('h5', null, d.name), pre ? h('span', { class: 'chip good' }, 'prefab ×' + pre) : null,
-            lock ? h('p', { class: 'lockl' }, ic('lock'), KC.TECHS[d.tech].name) : d.line ? h('div', { class: 'cost' }, icv('metals', d.cost.metals), ' per tile') : costEl(G, cost),
+            lock ? h('p', { class: 'lockl' }, ic('lock'), KC.TECHS[d.tech].name) : d.line ? h('div', { class: 'cost' }, ...Object.keys(d.cost).map(k2 => icv(k2, d.cost[k2])), ' per tile') : costEl(G, cost),
             h('p', null, d.desc));
           grid.appendChild(card);
         }
         if (k === 'domes') return [grid, h('p', { class: 'small mut' }, 'Domes hold modules (homes, services, farms, labs). Select a finished dome to add modules.')];
-        if (k === 'lines') return [grid, h('p', { class: 'small mut' }, 'Buildings that touch each other share power and life support. Use lines to reach buildings further away. To remove a line, tap its tile.')];
+        if (k === 'lines') return [grid, h('p', { class: 'small mut' }, 'Buildings that touch each other share power and life support. Use lines to reach buildings further away. To remove a line, tap its tile. Monorail track runs between Rail Stations (Base): the easiest way is to tap a station and use Lay track.')];
         return grid;
       } });
   },
@@ -94,6 +94,9 @@ const Panels = {
     }
     if (d.dome) out.push(...this.domeBody(b));
     if (d.jobs) out.push(...this.jobsBody(b));
+    if (b.t === 'station') out.push(...this.stationBody(b));
+    if (b.t === 'xpad') out.push(...this.padBody(b));
+    if (G._freight && G._freight.has(b.id)) out.push(kv('Monorail freight', '+' + Math.round(KC.RAIL.freight * 100) + '% output', 'good'));
     if (d.maint) {
       const wc = b.wear >= 100 ? 'bad' : b.wear >= 65 ? 'warn' : '';
       out.push(sec('Upkeep'));
@@ -235,6 +238,7 @@ const Panels = {
       const dp = KC.depAt(G, x, y);
       if (dp && KC.depKnown(G, dp)) { out.push(kv('Deposit', DEPOSITS[dp.type].name + ' · ' + fmt(dp.amount) + ' left')); out.push(h('p', { class: 'small mut' }, depositHint(dp.type))); }
       if (!G.sectors[si].st) out.push(h('button', { class: 'pri', onclick: () => Panels.sector(si) }, 'Survey this sector…'));
+      if (G.rail[i]) out.push(h('div', { class: 'row', style: 'margin-top:8px' }, h('span', { class: 'grow' }, BUILDINGS.rail.name + (G.rail[i] === 3 ? ' (planned)' : '')), h('button', { class: 'danger', 'data-rmrail': '1', onclick: () => { KC.removeLine(G, 'rail', x, y); Sound.play('tap'); Sheet.render(); } }, 'Remove')));
       for (const k of ['cable', 'pipe']) if (G[k][i]) out.push(h('div', { class: 'row', style: 'margin-top:8px' }, h('span', { class: 'grow' }, BUILDINGS[k].name + (G[k][i] === 2 ? (k === 'pipe' ? ' (leaking)' : ' (broken)') : G[k][i] === 3 ? ' (planned)' : '')), h('button', { class: 'danger', onclick: () => { KC.removeLine(G, k, x, y); Sound.play('tap'); Sheet.render(); } }, 'Remove')));
       const dr = dronesInRange(G, x + 0.5, y + 0.5); out.push(kv('Drones in range', String(dr), dr ? '' : 'mut'));
       return out;

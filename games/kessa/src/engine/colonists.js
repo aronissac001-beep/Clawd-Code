@@ -180,11 +180,15 @@ function rehome(G) {
 function workplaceReach(G, w, dome) {
   if (w.mod) return w.dome === dome.id;
   const dc = center(dome), wc = center(w);
-  return cheb(dc.x, dc.y, wc.x, wc.y) <= BUILDINGS[dome.t].dome.reach + dome.s / 2;
+  if (cheb(dc.x, dc.y, wc.x, wc.y) <= BUILDINGS[dome.t].dome.reach + dome.s / 2) return true;
+  // or a short monorail ride away
+  if (G._commute === undefined) G._commute = commuteMap(G);
+  return railReach(G, w, dome) ? 'rail' : false;
 }
 function assignJobs(G) {
   G._jobsDirty = false;
   rehome(G);
+  G._commute = commuteMap(G);
   for (const c of G.colonists) { c.job = null; c.shift = null; }
   const places = G.buildings.filter(b => b.built && b.on && !b.broken && b.jobs && (!b.mod || (bById(G, b.dome) || {}).built));
   for (const b of places) b.jobs = [[], [], []];
@@ -224,6 +228,10 @@ function assignJobs(G) {
   for (const sl of slots) if (sl.spec) tryFill(sl, c => c.spec === sl.spec);
   for (const sl of slots) if (!sl.done) tryFill(sl, c => c.spec === 'none');
   for (const sl of slots) if (!sl.done) tryFill(sl, () => true);
+  // how many ride the monorail to work
+  let pax = 0;
+  if (G._commute.size) for (const c of G.colonists) if (c.job) { const w = bById(G, c.job), d = domeOf.get(c.home); if (w && d && !w.mod && workplaceReach(G, w, d) === 'rail') pax++; }
+  G._railPax = pax;
 }
 
 // what kind of work a workplace offers, for dome focus and the job lists

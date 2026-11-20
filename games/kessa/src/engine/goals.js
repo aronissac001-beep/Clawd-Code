@@ -23,6 +23,9 @@ const MILESTONES = {
   spire: { name: 'Charter Spire', desc: 'Raise the Charter Spire.', grant: 0, score: 300 },
   choir: { name: 'The Choir Answers', desc: 'Solve the mystery of the Wardens.', grant: 0, score: 300 },
   halcyon: { name: 'The Halcyon Wakes', desc: 'Wake the Halcyon sleepers.', grant: 0, score: 300 },
+  bloom: { name: 'The Bloom Below', desc: 'Grow the Undergrove from the heart of the Pale Bloom.', grant: 0, score: 300 },
+  moon: { name: 'The Ninth Moon Answers', desc: 'Raise the Skyward Relay.', grant: 0, score: 300 },
+  orrery: { name: 'The Orrery Turns', desc: 'Rebuild the Great Orrery from three relics.', grant: 0, score: 300 },
   independence: { name: 'Independence', desc: 'Declare an independent Kessa.', grant: 0, score: 1000 },
 };
 // after Independence: open-ended goals for a free Kessa, and the Great Storm
@@ -32,11 +35,14 @@ const FREE_GOALS = [
   { k: 'mysteries', name: 'Solve both mysteries', have: G => (G.myst.stage >= 4 ? 1 : 0) + (G.myst2 && G.myst2.stage >= 4 ? 1 : 0), need: 2 },
   { k: 'wonders', name: 'Orbital Mirror, Resonance Array and Revival Vault', have: G => ['mirror', 'array', 'vault'].filter(t => G.buildings.some(b => b.t === t && b.built)).length, need: 3 },
   { k: 'storm', name: 'Weather the Great Storm with no deaths', have: G => G.ms.greatStorm ? 1 : 0, need: 1 },
+  { k: 'stories', name: 'Solve the Bloom Below and the Ninth Moon', have: G => (G.ms.bloom ? 1 : 0) + (G.ms.moon ? 1 : 0), need: 2 },
+  { k: 'wonders2', name: 'The Undergrove, the Skyward Relay and the Great Orrery', have: G => ['undergrove', 'relay', 'orrery'].filter(t => G.buildings.some(b => b.t === t && b.built)).length, need: 3 },
 ];
 function freeGoals(G) { return FREE_GOALS.map(f => ({ k: f.k, name: f.name, have: f.have(G), need: f.need, ok: !!(G.free && G.free[f.k]) || f.have(G) >= f.need })); }
 function freeSol(G) {
   if (!G.ms.independence) return;
   G.free = G.free || {};
+  freeSettlers(G);
   for (const f of freeGoals(G)) if (f.ok && !G.free[f.k]) { G.free[f.k] = solOf(G.tick); log(G, 'Free Kessa goal reached: ' + f.name + '.', 'good'); fx(G, { k: 'milestone', id: f.k }); }
   const due = G.flags.greatStorm;
   if (!G.ms.greatStorm && (due === undefined ? solOf(G.tick) >= G.ms.independence + 6 : due > 1 && G.tick >= due) && !G.hz.active.some(a => a.kind === 'dust') && !G.hz.upcoming.some(u => u.kind === 'dust')) {
@@ -46,6 +52,21 @@ function freeSol(G) {
     log(G, 'Long-range sensors show a planet-wide storm front: the Great Storm arrives in 48 hours and lasts about 4 sols. Solar will be nearly useless. Stock fuel and batteries, build Wind Masts, and keep life support on High priority.', 'bad');
     fx(G, { k: 'warn', kind: 'dust' });
   }
+}
+// a free Kessa draws people of its own: every three sols, settlers from Earth and the other colonies fill empty beds in
+// domes that breathe, if the colony is a happy place, until it is back to its largest size. Without this the founding generation grew old together and the
+// population fell by half late in long games (immigration had ended with the sponsor and births need free beds).
+function freeSettlers(G) {
+  if (solOf(G.tick) % 3) return;
+  const info = G._domes || domeInfo(G); let free = 0;
+  for (const I of info.values()) if (I.ok && lifeOK(I.b)) free += Math.max(0, I.cap - I.res.length);
+  // they replace the people the colony has lost (to old age, accidents or the road home): up to its largest size so far
+  const pop = G.colonists.length, mor = pop ? G.colonists.reduce((s, c) => s + c.morale, 0) / pop : 0, gap = Math.max(G.st.peakPop, DIFFICULTY[G.cfg.difficulty].pop) - pop;
+  if (free < 4 || gap < 2 || mor < 45 || G.sol.short.food || G.sol.short.oxygen || G.sol.short.water) return;
+  const n = Math.min(6, Math.floor(free / 2), gap), r = rng(G);
+  for (let i = 0; i < n; i++) { const p = makePerson(G, { age: Math.round(r.range(19, 40) * 10) / 10 }); const c = addColonist(G, p, null); c.settler = true; c.sanity = Math.max(c.sanity, 80); }
+  G.st.arrived += n; G.st.settlers = (G.st.settlers || 0) + n; rehome(G);
+  log(G, n + ' settlers have come to live in a free Kessa.', 'good');
 }
 function techCount(G) { return Object.keys(G.research.done).length; }
 function hasBuilt(G, pred) { return G.buildings.some(b => b.built && pred(b)); }
@@ -91,6 +112,7 @@ function score(G) {
   s -= G.st.deaths * 10;
   s += Object.keys(G.free || {}).length * 250 + (G.myst2 && G.myst2.stage >= 4 ? 300 : 0);
   s += (G.st.contractsWon || 0) * 60 + (G.myst && G.myst.stage >= 4 ? 500 : 0) + Math.round((G.conf || 0) * 2);
+  s += worldScore(G);
   const mult = { easy: 0.8, normal: 1, hard: 1.4 }[G.cfg.difficulty] * (G.cfg.sponsor === 'pilgrim' ? 1.3 : 1);
   if (G.over && G.over.win) s += Math.max(500, 4000 - G.over.sol * 15);
   return Math.max(0, Math.round(s * mult));
@@ -100,6 +122,7 @@ function solStep(G) {
   const SP = SPONSORS[G.cfg.sponsor], DF = DIFFICULTY[G.cfg.difficulty];
   economySol(G);
   eventsSol(G);
+  storySol(G);
   colonistSol(G);
   systemFailures(G);
   if (sol % 5 === 0) { const r = rng(G); for (const a of G.applicants) if (r.chance(0.35)) a.stale = true; refreshApplicants(G, 24); }
@@ -114,6 +137,7 @@ function solStep(G) {
   G._jobsDirty = true;
   checkMilestones(G);
   freeSol(G);
+  worldSol(G);
   // independence
   if (!G.over && independence(G).every(c => c.ok)) {
     G.ms.independence = sol;

@@ -111,6 +111,12 @@ TECHS.myst_recorder = { id: 'myst_recorder', field: 'bt', tier: 0, name: 'Record
 TECHS.myst_camp = { id: 'myst_camp', field: 'bt', tier: 0, name: 'Halcyon Camp', cost: 0, unlock: ['vault'], req: [], mods: {}, desc: 'What the Pathfinder found at Halcyon Camp.', breakthrough: true, mystery: true, hidden: true };
 TECHS.myst_choir = { id: 'myst_choir', field: 'bt', tier: 0, name: 'The Choir', cost: 0, unlock: ['array'], req: [], mods: {}, desc: 'What the Pathfinder found at the Choir.', breakthrough: true, mystery: true, hidden: true };
 
+TECHS.myst_mycel = { id: 'myst_mycel', field: 'bt', tier: 0, name: 'Mycelial Signalling', cost: 1300, unlock: [], req: [], mods: { farm: 0.05 }, desc: 'Decode how the Pale Bloom talks to itself. Points to its heart.', breakthrough: true, mystery: true };
+TECHS.myst_orbit = { id: 'myst_orbit', field: 'bt', tier: 0, name: 'Orbital Forensics', cost: 1400, unlock: [], req: [], mods: { warn: 0.1 }, desc: 'Track the ninth moon and work out what it is.', breakthrough: true, mystery: true };
+TECHS.myst_bloom = { id: 'myst_bloom', field: 'bt', tier: 0, name: 'The Bloom Heart', cost: 0, unlock: ['undergrove'], req: [], mods: {}, desc: 'What the Pathfinder found at the heart of the Bloom.', breakthrough: true, mystery: true, hidden: true };
+TECHS.myst_moon = { id: 'myst_moon', field: 'bt', tier: 0, name: 'The Moonfall Capsule', cost: 0, unlock: ['relay'], req: [], mods: {}, desc: 'What came down from the ninth moon.', breakthrough: true, mystery: true, hidden: true };
+TECHS.myst_orrery = { id: 'myst_orrery', field: 'bt', tier: 0, name: 'The Orrery Relics', cost: 0, unlock: ['orrery'], req: [], mods: {}, desc: 'Three relics from the ruins fit together.', breakthrough: true, mystery: true, hidden: true };
+
 const ANOMALIES = {
   signal: { name: 'Repeating Signal', desc: 'A faint radio pulse from beneath the dust.' },
   cache: { name: 'Buried Cache', desc: 'Radar shows a dense, regular object.' },
@@ -120,5 +126,8 @@ const ANOMALIES = {
   vent: { name: 'Warm Vent', desc: 'A fissure measurably warmer than its surroundings.' },
   choir: { name: 'The Choir', desc: 'The source of the Wardens\' hum: a ring of basalt pillars around a shaft of glassy rock.' },
   camp: { name: 'Halcyon Camp', desc: 'A buried shelter where the Halcyon crew last reported from.', story: true },
+  heart: { name: 'The Bloom Heart', desc: 'Where every thread of the Pale Bloom leads: a warm hollow full of pale light.', story: true },
+  fragment: { name: 'Fallen Fragment', desc: 'Something came down here last night and did not burn up.', story: true },
+  capsule: { name: 'Moonfall Capsule', desc: 'A capsule dropped by the ninth moon, half buried in fresh glass.', story: true },
 };
 Object.assign(KC, { FIELDS, TECHS, BREAKTHROUGHS, ANOMALIES });
