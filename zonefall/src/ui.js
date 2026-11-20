@@ -1030,7 +1030,7 @@ export const UI = {
           if (!force && rects.some(q => (!overIcons || !q.icon) && R[0] < q[2] && R[2] > q[0] && R[1] < q[3] && R[3] > q[1])) return;
           rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(18,12,16,.78)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
         };
-        const isc = Math.min(1.5, 0.85 + z * 0.17);
+        const isc = Math.min(1.5, 0.7 + z * 0.17); // smaller icons at 1x: the bigger island has ~90 sites
         const mons = G.monuments.slice().sort((a, b) => ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(a)) - ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(b)));
         // icons first, so labels can be laid out around them
         for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 8)) continue; icon(g, catOf(m), x, y, isc, MONUMENTS[m.type].card); const ir = [x - 7 * isc, y - 7 * isc, x + 7 * isc, y + 7 * isc]; ir.icon = true; rects.push(ir); }
