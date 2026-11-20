@@ -271,6 +271,17 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 .empty h5 { margin: 2px 0 0; font-size: var(--t-md); } .empty p { margin: 0 0 6px; max-width: 30ch; } .empty .scene { display: block; }
 /* one stroke weight for every line icon, whatever its size */
 .ic * { vector-effect: non-scaling-stroke; } .ic { stroke-width: 1.6px; }
+/* Reshaping Kessa */
+.globe-card { text-align: center; background: radial-gradient(120% 90% at 50% 30%, #2a2230, #120e14 70%); }
+.globe-card .globe { display: block; margin: -4px auto 6px; max-width: 100%; height: auto; }
+.gauge { margin: 4px 0 10px; } .gauge .row { gap: 8px; align-items: center; } .gauge .bar { height: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; display: inline-block; }
+.stg { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; border: 1.5px solid var(--ln2); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--s0); }
+.stg.on { background: var(--good); border-color: var(--good); } .it.mutd { opacity: .72; }
+/* the Colony Assembly */
+.seatbar { display: flex; gap: 2px; height: 22px; margin: 8px 0 4px; border-radius: 6px; overflow: hidden; }
+.seatbar i { display: flex; align-items: center; justify-content: center; font-style: normal; font-size: var(--t-xs); font-weight: 700; color: #1a1411; min-width: 18px; }
+.goodc { color: var(--good); } .badc { color: var(--bad); } .row.wrap { flex-wrap: wrap; }
 
 </style>
 </head>
@@ -314,7 +325,7 @@ body.sheet-open #toasts { top: auto !important; bottom: calc(var(--sab, 0px) + 7
 // ===== core.js : namespace, seeded RNG, noise, small helpers =====
 'use strict';
 var KC = {};
-const KC_VERSION = '1.3.1';
+const KC_VERSION = '2.0.0';
 const SAVE_FORMAT = 1;
 const HOURS_PER_SOL = 24;
 
@@ -499,6 +510,16 @@ const BUILDINGS = {
     desc: 'A pulsed laser that shatters most meteors heading within 15 tiles.' },
   mirror: { name: 'Orbital Mirror', cat: 'power', size: 3, cost: { metals: 60, polymers: 30, electronics: 20, funds: 2500 }, work: 120, art: 'mirror', tech: 'thinfilm', unique: true, maint: 'electronics', wear: 0.3,
     desc: 'A ground station steering a thin mirror in orbit: solar +40% everywhere and cold waves pass twice as fast. The 2500 funding pays for the launch.' },
+  hazeforge: { name: 'Haze Forge', cat: 'industry', size: 3, cost: { metals: 40, parts: 12, polymers: 10 }, work: 60, art: 'hazeforge', use: { power: 12 }, tech: 'hazeforge', maint: 'parts', wear: 0.9,
+    desc: 'Bakes heat-trapping haze out of the regolith and vents it high: Warmth +0.35 and Veil +0.25 a sol. Reshaping Kessa.' },
+  lichen: { name: 'Lichen Spreader', cat: 'life', size: 2, cost: { sinter: 10, metals: 8, polymers: 6 }, work: 30, art: 'lichen', use: { power: 3, water: 0.4 }, tech: 'lichens', maint: 'sinter', wear: 0.6,
+    desc: 'Sprays hardy lichen spores on the wind: Verdure +0.35 a sol once Warmth reaches 15 and Water 10, a fifth of that before.' },
+  seedvault: { name: 'Seed Ark', cat: 'science', size: 3, cost: { sinter: 40, metals: 30, polymers: 20, electronics: 10, funds: 1500 }, work: 100, art: 'seedvault', use: { power: 6 }, tech: 'seedark', unique: true, maint: 'polymers', wear: 0.3,
+    desc: 'A living library of hardy strains: every Lichen Spreader works 60% faster, and Verdure +0.15 a sol.' },
+  lodestone: { name: 'Lodestone Ring', cat: 'science', size: 3, cost: { metals: 80, electronics: 30, parts: 20, funds: 3000 }, work: 160, art: 'lodestone', use: { power: 20 }, tech: 'lodestone', unique: true, maint: 'electronics', wear: 0.3,
+    desc: 'A superconducting ring that wraps Kessa in a magnetic field: the Veil stops leaking into space, and +0.1 a sol.' },
+  fieldfarm: { name: 'Field Farm', cat: 'industry', size: 3, cost: { sinter: 4, metals: 3 }, work: 12, art: 'fieldfarm', prod: { out: { food: 1.6 } }, jobs: 3, spec: 'botanist', terra: 'openair', maint: 'sinter', wear: 0.5,
+    desc: 'Crops in the open air under the reshaped sky: cheap food with no power or water. Needs the Open Sky stage.' },
   array: { name: 'Resonance Array', cat: 'science', size: 3, cost: { sinter: 60, metals: 50, electronics: 24, funds: 2500 }, work: 160, art: 'array', tech: 'myst_choir', unique: true, use: { power: 12 }, maint: 'electronics', wear: 0.4,
     desc: 'A field of listening masts tuned to the Wardens. Research +25% and +8 morale for everyone.' },
   vault: { name: 'Revival Vault', cat: 'science', size: 3, cost: { sinter: 40, metals: 30, polymers: 30, electronics: 16, parts: 20 }, work: 150, art: 'vault', tech: 'myst_camp', unique: true, use: { power: 10 }, maint: 'electronics', wear: 0.4,
@@ -725,13 +746,19 @@ const TECH_LIST = [
   ['civics', 'soc', 'Civic Councils', {}, { morale: 10, comfort: 5 }, '+10 morale, +5 comfort.'],
   ['charter', 'soc', 'Charter of Kessa', { unlock: ['spire'], req: ['canopy'] }, {}, 'Charter Spire: the path to Independence.'],
   ['identity', 'soc', 'Kessan Identity', {}, { homesick: -0.8, morale: 5 }, 'Colonists rarely want to leave.'],
+  // Reshaping Kessa: late techs with fixed tiers, listed last so they never change the order of the others
+  ['hazeforge', 'eng', 'Haze Forging', { unlock: ['hazeforge'], tier: 7 }, {}, 'Haze Forge: Warmth and Veil for Reshaping Kessa.'],
+  ['lichens', 'bio', 'Pioneer Lichens', { unlock: ['lichen'], tier: 6 }, {}, 'Lichen Spreader: Verdure for Reshaping Kessa.'],
+  ['comets', 'phys', 'Comet Herding', { tier: 8 }, {}, 'Order ice comet strikes (Goals → Reshaping): Water, Veil and Warmth.'],
+  ['seedark', 'bio', 'Seed Ark', { unlock: ['seedvault'], req: ['lichens'], tier: 8 }, {}, 'Seed Ark: lichen spreads 60% faster.'],
+  ['lodestone', 'phys', 'Lodestone Field', { unlock: ['lodestone'], req: ['supercond'], tier: 10 }, {}, 'Lodestone Ring: the Veil stops leaking away.'],
 ];
 const TECHS = {};
 {
   const tierOf = {};
   for (const [id, field, name, opt, mods, desc] of TECH_LIST) {
-    tierOf[field] = (tierOf[field] || 0) + 1;
-    const tier = tierOf[field];
+    if (!opt.tier) tierOf[field] = (tierOf[field] || 0) + 1;
+    const tier = opt.tier || tierOf[field];
     TECHS[id] = { id, field, name, tier, cost: TECH_COST(tier), unlock: opt.unlock || [], req: opt.req || [], mods, desc };
   }
   // within a field, each tech needs the one before it
@@ -918,8 +945,8 @@ Object.assign(KC, { MAP_N, SECTOR, TERR, SLOPE_BUILD, SLOPE_LINE, SLOPE_DRIVE, g
 function def(b) { return b.mod ? MODULES[b.t] : BUILDINGS[b.t]; }
 function rng(G) { if (!G._rng) G._rng = new RNG(G.rng); return G._rng; }
 function syncRng(G) { if (G._rng) G.rng = G._rng.state(); }
-function log(G, m, k = 'info', at) { const e = { t: G.tick, m, k }; if (at) { e.x = at.x; e.y = at.y; } G.log.push(e); if (G.log.length > 250) G.log.splice(0, G.log.length - 250); (G._fx = G._fx || []).push({ k: 'log', e }); }
-function fx(G, e) { (G._fx = G._fx || []).push(e); }
+function log(G, m, k = 'info', at) { const e = { t: G.tick, m, k }; if (at) { e.x = at.x; e.y = at.y; } G.log.push(e); if (G.log.length > 250) G.log.splice(0, G.log.length - 250); fx(G, { k: 'log', e }); }
+function fx(G, e) { const q = (G._fx = G._fx || []); q.push(e); if (q.length > 200) q.splice(0, q.length - 150); }
 
 function newGame(cfg) {
   cfg = Object.assign({ seed: 'basalt-basin-101', sponsor: 'orrin', commander: 'engineer', difficulty: 'normal', tutorial: true }, cfg || {});
@@ -1000,6 +1027,8 @@ function computeMods(G) {
   add(G.bonus || {});
   for (const b of G.buildings || []) if (b.built && MEGA[b.t]) add(MEGA[b.t]);
   if (G.council) add(councilMods(G));
+  if (G.terra) add(terraMods(G));
+  if (G.assembly) add(assemblyMods(G));
   G._mods = m;
 }
 const M = (G, k) => G._mods[k] || 0;
@@ -1012,7 +1041,7 @@ function scannedAt(G, x, y) { const s = sectorOf(x, y); return G.sectors[sectorI
 function depKnown(G, d) { return scannedAt(G, d.x, d.y) && (!d.deep || M(G, 'deep') > 0); }
 function depAt(G, x, y) { if (x < 0 || y < 0 || x >= MAP_N || y >= MAP_N) return null; const i = G._dep[y * MAP_N + x]; return i >= 0 ? G.deposits[i] : null; }
 function techDone(G, id) { return id in G.research.done; }
-function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return !d.tech || techDone(G, d.tech); }
+function unlocked(G, type) { const d = BUILDINGS[type] || MODULES[type]; return (!d.tech || techDone(G, d.tech)) && (!d.terra || terraStage(G, d.terra)); }
 function storageCap(G) { let c = 0; for (const b of G.buildings) if (b.built && def(b).storage) c += def(b).storage; return c + (M(G, 'storage') || 0); }
 function center(b) { return { x: b.x + b.s / 2, y: b.y + b.s / 2 }; }
 
@@ -1048,11 +1077,12 @@ function absorbLines(G, b) { if (b.mod) return; for (let yy = b.y; yy < b.y + b.
 function canPlace(G, type, x, y) {
   const d = BUILDINGS[type];
   if (!d || d.unbuildable || d.line) return { ok: false, why: 'Cannot be built' };
-  if (!unlocked(G, type)) return { ok: false, why: 'Needs research: ' + TECHS[d.tech].name };
+  if (!unlocked(G, type)) return { ok: false, why: d.tech && !techDone(G, d.tech) ? 'Needs research: ' + TECHS[d.tech].name : 'Needs the ' + TERRA_STAGES.find(S => S.k === d.terra).name + ' stage of Reshaping Kessa' };
   if (d.unique && G.buildings.some(b => b.t === type)) return { ok: false, why: 'Only one allowed' };
   const s = d.size, T = G._T;
   if (x < 0 || y < 0 || x + s > MAP_N || y + s > MAP_N) return { ok: false, why: 'Off the map' };
   let depOk = !d.deposit;
+  if (G.terra && G.terra.st.lakes && type !== 'icedrill') for (let yy = y; yy < y + s; yy++) for (let xx = x; xx < x + s; xx++) if (isLake(G, xx, yy)) return { ok: false, why: 'Open water: nothing can be built on the lake' };
   for (let yy = y; yy < y + s; yy++) for (let xx = x; xx < x + s; xx++) {
     const i = yy * MAP_N + xx;
     if (G._occ[i]) return { ok: false, why: 'Space is taken' };
@@ -1232,7 +1262,7 @@ Object.assign(KC, { def, newGame, hydrate, computeMods, M, bById, cById, canPlac
 // ===== sim.js : the hourly tick: environment, power, life support, production, drones, upkeep =====
 const WEAR_BASE = 0.5;
 const UPKEEP_SUB = { sinter: [['metals', 2], ['parts', 1]], metals: [['sinter', 2], ['parts', 1]], polymers: [['parts', 2], ['metals', 4]], parts: [['metals', 3], ['sinter', 4]], electronics: [['parts', 3]] };
-const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae']);
+const FARM = new Set(['greenhouse', 'hydro', 'vfarm', 'bloomfarm', 'algae', 'fieldfarm']);
 const MINE = new Set(['oremine', 'raremine', 'automine', 'harvester']);
 const FACTORY = new Set(['works', 'refinery', 'polymer', 'foundry', 'workshop', 'assembler']);
 function noteProd(G, k, v) { if (!v) return; if (G._hr) G._hr.prod[k] = (G._hr.prod[k] || 0) + v; G.sol.prod[k] = (G.sol.prod[k] || 0) + v; }
@@ -1298,7 +1328,7 @@ function step(G) {
   surveyStep(G);
   rocketStep(G);
   hazardStep(G, env);
-  contractHour(G); tradeHour(G); politicsHour(G);
+  contractHour(G); tradeHour(G); politicsHour(G); assemblyHour(G); terraHour(G);
   eventHour(G);
   // rolling 24h balance per resource
   const h = env.h;
@@ -1397,7 +1427,8 @@ function lifeStep(G, env) {
       const pf = b._pf;
       if (d.make.water) {
         let out = d.make.water * pf * wf * (1 + M(G, 'water'));
-        if (b.t === 'condenser' && env.dust) out *= 0.3;
+        if (b.t === 'condenser') { if (env.dust) out *= 0.3; out *= 1 + M(G, 'condense'); }
+        if (b.t === 'icedrill' && G.terra && G.terra.st.lakes && isLake(G, b.x + 1, b.y + 1)) out *= 1.5;
         if (b.t === 'icedrill') { const dp = G.deposits[b.dep]; if (!dp || dp.amount <= 0) out = 0; else { if (env.cold && !covered(G._heat, b.x + 1, b.y + 1)) out *= 0.5; out = Math.min(out, dp.amount); dp.amount -= out; } }
         b._out = out; n.w.prod += out;
       }
@@ -2392,7 +2423,7 @@ function scheduleHazards(G, initial) {
     const H = HAZARDS[k];
     const span = initial ? H.first : H.every;
     let sols = r.range(span[0], span[1]);
-    if (!initial) sols = sols * Math.max(0.5, 1 - sol / 220) / Math.max(0.5, hzMult(G));
+    if (!initial) sols = sols * Math.max(0.5, 1 - sol / 220) / Math.max(0.5, hzMult(G)) / terraHazard(G, k);
     G.hz.next[k] = Math.round(G.tick + sols * HOURS_PER_SOL + r.int(24));
   }
 }
@@ -2406,7 +2437,7 @@ function hazardStep(G, env) {
     const at = G.hz.next[k];
     if (!at || G.hz.upcoming.some(u => u.kind === k) || G.hz.active.some(u => u.kind === k)) continue;
     if (G.tick >= at - warnHours(G, k)) {
-      const sev = clamp((0.4 + sol / 170 + r.range(0, 0.2)) * Math.sqrt(hm), 0.3, 1);
+      const sev = clamp((0.4 + sol / 170 + r.range(0, 0.2)) * Math.sqrt(hm) * terraSev(G, k), 0.3, 1);
       const L = G.land;
       const u = { kind: k, at, sev: Math.round(sev * 100) / 100, x: clamp(L.x + 1 + r.int(30) - 15, 4, MAP_N - 5), y: clamp(L.y + 1 + r.int(30) - 15, 4, MAP_N - 5) };
       if (k === 'dust') { u.sev = Math.min(0.9, u.sev); u.dur = Math.round(20 + 36 * sev); }
@@ -2579,6 +2610,7 @@ function independence(G) {
     { k: 'spire', name: 'Charter Spire built', have: G.ms.spire ? 1 : 0, need: 1, ok: !!G.ms.spire },
     { k: 'buyout', name: 'Buy out the sponsor\'s stake: ' + buyoutCost(G) + ' funding', have: Math.max(0, G.funds), need: buyoutCost(G), ok: G.funds >= buyoutCost(G) },
     { k: 'self', name: 'Five sols with no shortages and no imported food, parts or metals', have: okSols ? 5 : Math.min(5, countSelf(G)), need: 5, ok: okSols },
+    { k: 'assembly', name: 'The Assembly backs a declaration (mood ' + ASM.backing + '+)', have: backing(G), need: ASM.backing, ok: backing(G) >= ASM.backing },
   ];
 }
 // a self-sufficient sol: nobody went short of food, air or water, and no food, parts or metals were imported
@@ -2621,6 +2653,9 @@ function solStep(G) {
     G.over = { win: true, sol, reason: 'Kessa buys out its sponsor and declares independence. The colony no longer needs anyone\'s permission.' };
     G.over.score = score(G);
     log(G, G.over.reason, 'good'); fx(G, { k: 'over' });
+    // the sponsor's answer to the declaration depends on how much it still trusts the colony
+    const cf = G.conf === undefined ? 60 : G.conf, gift = cf >= 60 ? 1500 : cf >= 35 ? 0 : -1500; G.funds += gift; G.st.sponsorAnswer = gift;
+    log(G, gift > 0 ? 'The sponsor accepts the declaration with grace and sends a parting grant of 1500.' : gift < 0 ? 'The sponsor takes the declaration badly and claws back 1500 funding in penalties.' : 'The sponsor accepts the declaration coldly. No more grants will come.', gift < 0 ? 'bad' : 'info');
   }
   // defeat
   const arkInFlight = G.rockets.some(r => r.st === 'out' && r.ark.length);
@@ -3046,6 +3081,216 @@ function refuseDemand(G, k) {
 }
 Object.assign(KC, { FACTIONS, DEMANDS, factionOf, factionSizes, councilMods, councilState, demandProgress, refuseDemand });
 
+// ===== assembly.js : the Colony Assembly. At 60 colonists the council becomes a legislature: a form of government
+// sets how its 15 seats are shared, laws from five fields pass or fail on the factions' votes, crises can repeal them,
+// and a declaration of Independence needs the Assembly's backing.
+const ASM = { pop: 60, seats: 15, maxLaws: 4, cooldown: 4, backing: 35 };
+const GOVS = {
+  commonwealth: { name: 'Commonwealth', desc: 'Seats follow faction size. Every voice counts the same.', bias: { hearth: 1, forge: 1, lantern: 1 } },
+  guild: { name: 'Guild Compact', desc: 'The workshops hold the purse: the Forge gets half again its share of seats.', bias: { hearth: 1, forge: 1.5, lantern: 1 } },
+  academy: { name: 'Academy Rule', desc: 'Learning leads: the Lantern gets half again its share of seats.', bias: { hearth: 1, forge: 1, lantern: 1.5 } },
+  moot: { name: 'Hearth Moot', desc: 'Households gather to decide: the Hearth gets half again its share of seats.', bias: { hearth: 1.5, forge: 1, lantern: 1 } }
+};
+// stance: +1 the faction wants it, -1 it opposes it
+const LAWS = {
+  shortshifts: { f: 'labor', name: 'Short Shifts', mods: { morale: 6, factory: -0.1 }, text: '+6 morale, factories −10%', st: { hearth: 1, forge: -1, lantern: 0 } },
+  drive: { f: 'labor', name: 'Production Drive', mods: { factory: 0.2, morale: -5 }, text: 'factories +20%, −5 morale', st: { hearth: -1, forge: 1, lantern: 0 } },
+  openhomes: { f: 'rights', name: 'Open Housing Act', mods: { comfort: 6, funding: -0.1 }, text: '+6 comfort, stipend −10%', st: { hearth: 1, forge: 0, lantern: 0 } },
+  freevoice: { f: 'rights', name: 'Free Voice Charter', mods: { morale: 4, homesick: -0.3, export: -0.1 }, text: '+4 morale, fewer homesick, exports −10%', st: { hearth: 0, forge: -1, lantern: 1 } },
+  openlabs: { f: 'research', name: 'Open Laboratories', mods: { research: 0.2, funding: -0.05 }, text: 'research +20%, stipend −5%', st: { hearth: 0, forge: -1, lantern: 1 } },
+  applied: { f: 'research', name: 'Applied Science Mandate', mods: { research: 0.08, factory: 0.08, morale: -2 }, text: 'research and factories +8%, −2 morale', st: { hearth: 0, forge: 1, lantern: -1 } },
+  quotas: { f: 'economy', name: 'Export Quotas', mods: { export: 0.2, comfort: -3 }, text: 'exports +20%, −3 comfort', st: { hearth: -1, forge: 1, lantern: 0 } },
+  commons: { f: 'economy', name: 'Common Granary', mods: { farm: 0.15, factory: -0.05 }, text: 'farms +15%, factories −5%', st: { hearth: 1, forge: -1, lantern: 0 } },
+  wardens: { f: 'security', name: 'Hazard Wardens', mods: { maint: -0.12, morale: -2 }, text: 'upkeep 12% slower, −2 morale', st: { hearth: 0, forge: 1, lantern: -1 } },
+  clinics: { f: 'security', name: 'Public Clinics', mods: { health: 0.15, funding: -0.08 }, text: 'faster healing, stipend −8%', st: { hearth: 1, forge: 0, lantern: 1 } }
+};
+const LAW_FIELDS = { labor: 'Labor', rights: 'Rights', research: 'Research', economy: 'Economy', security: 'Security' };
+function asmRng(G, k) { return RNG.fromSeed(G.seed + '/assembly/' + k + '/' + (G.assembly ? G.assembly.n : 0)); }
+// seats: 15, shared by faction size times the government's bias (largest remainders)
+function seats(G) {
+  const A = G.assembly, sz = factionSizes(G), bias = GOVS[(A && A.gov) || 'commonwealth'].bias, w = {}; let tot = 0;
+  for (const k in FACTIONS) { w[k] = (sz[k] + 1) * bias[k]; tot += w[k]; }
+  const out = {}, rem = []; let used = 0;
+  for (const k in FACTIONS) { const x = w[k] / tot * ASM.seats; out[k] = Math.floor(x); used += out[k]; rem.push([x - out[k], k]); }
+  rem.sort((a, b) => b[0] - a[0]); for (let i = 0; used < ASM.seats; i++, used++) out[rem[i % 3][1]]++;
+  return out;
+}
+// how a faction votes on a law: its stance, shifted by how it feels about the colony (support)
+function yesShare(G, k, law, repeal) { const st = LAWS[law].st[k] * (repeal ? -1 : 1); return clamp(0.5 + 0.38 * st + (G.council.sup[k] - 50) / 120, 0, 1); }
+function countVote(G, law, repeal) { const s = seats(G); let yes = 0; const by = {}; for (const k in FACTIONS) { const y = Math.round(s[k] * yesShare(G, k, law, repeal)); by[k] = [y, s[k]]; yes += y; } return { yes, of: ASM.seats, pass: yes * 2 > ASM.seats, by }; }
+function assemblyHour(G) {
+  if (!G.council) return;
+  if (!G.assembly) {
+    if (G.colonists.length < ASM.pop) return;
+    G.assembly = { gov: null, since: G.tick, laws: {}, next: 0, n: 0, crisisAt: G.tick + 18 * HOURS_PER_SOL, history: [] };
+    log(G, 'The council has grown into the Colony Assembly: 15 seats, shared among the factions. Choose a form of government (People → Council).', 'good'); fx(G, { k: 'milestone' });
+    return;
+  }
+  const A = G.assembly;
+  // with no choice after 5 sols, the Assembly settles on a Commonwealth
+  if (!A.gov && G.tick - A.since > 5 * HOURS_PER_SOL) chooseGov(G, 'commonwealth');
+  // a political crisis: a faction that is angry and opposes a law forces a repeal vote it wins
+  if (G.tick >= A.crisisAt) {
+    A.crisisAt = G.tick + (16 + asmRng(G, 'crisis').int(10)) * HOURS_PER_SOL;
+    for (const k in FACTIONS) {
+      if (G.council.sup[k] >= 30) continue;
+      const law = Object.keys(A.laws).find(l => LAWS[l].st[k] < 0); if (!law) continue;
+      delete A.laws[law]; A.n++; A.history.push({ t: G.tick, law, k: 'crisis' }); computeMods(G);
+      log(G, 'Political crisis: ' + FACTIONS[k].name + ' walked out of the Assembly until ' + LAWS[law].name + ' was repealed.', 'bad');
+      setSupport(G, k, 8, 'their law was repealed'); break;
+    }
+  }
+}
+function chooseGov(G, gov) {
+  const A = G.assembly; if (!A || !GOVS[gov]) return { err: 'No Assembly yet.' }; if (A.gov) return { err: 'The government is already chosen.' };
+  A.gov = gov; log(G, 'The Assembly adopts a ' + GOVS[gov].name + '. ' + GOVS[gov].desc, 'info');
+  for (const k in FACTIONS) if (GOVS[gov].bias[k] > 1) setSupport(G, k, 10, 'the new government favours them');
+  return { ok: true };
+}
+function lawCheck(G, law, repeal) {
+  const A = G.assembly; if (!A || !A.gov) return { ok: false, why: 'The Assembly must first choose a government.' };
+  if (!LAWS[law]) return { ok: false, why: 'No such law.' };
+  if (G.tick < A.next) return { ok: false, why: 'The Assembly sits again in ' + Math.ceil((A.next - G.tick) / 24) + ' sols.' };
+  if (!repeal && A.laws[law]) return { ok: false, why: 'Already law.' };
+  if (repeal && !A.laws[law]) return { ok: false, why: 'Not in force.' };
+  if (!repeal && Object.keys(A.laws).length >= ASM.maxLaws) return { ok: false, why: 'At most ' + ASM.maxLaws + ' laws at once: repeal one first.' };
+  if (!repeal && Object.keys(A.laws).some(l => LAWS[l].f === LAWS[law].f)) return { ok: false, why: 'Already a ' + LAW_FIELDS[LAWS[law].f].toLowerCase() + ' law in force.' };
+  return { ok: true };
+}
+// put a law (or its repeal) to the vote. It passes with a majority of the 15 seats; winners and losers remember it.
+function propose(G, law, repeal) {
+  const c = lawCheck(G, law, repeal); if (!c.ok) return { err: c.why };
+  const A = G.assembly, v = countVote(G, law, repeal); A.next = G.tick + ASM.cooldown * HOURS_PER_SOL; A.n++;
+  A.history.push({ t: G.tick, law, k: repeal ? 'repeal' : 'pass', yes: v.yes, ok: v.pass }); if (A.history.length > 30) A.history.shift();
+  if (v.pass) {
+    if (repeal) delete A.laws[law]; else A.laws[law] = G.tick;
+    for (const k in FACTIONS) { const st = LAWS[law].st[k] * (repeal ? -1 : 1); if (st) setSupport(G, k, st > 0 ? 5 : -6, (st > 0 ? 'won' : 'lost') + ' the vote on ' + LAWS[law].name); }
+    computeMods(G); log(G, (repeal ? 'Repealed: ' : 'New law: ') + LAWS[law].name + ' (' + v.yes + ' of 15 seats).', 'good');
+  } else log(G, 'The Assembly voted down ' + (repeal ? 'the repeal of ' : '') + LAWS[law].name + ' (' + v.yes + ' of 15 seats).', 'warn');
+  return { ok: true, pass: v.pass, vote: v };
+}
+function assemblyMods(G) { const m = {}, A = G.assembly; if (!A) return m; for (const l in A.laws) for (const [k, v] of Object.entries(LAWS[l].mods)) m[k] = (m[k] || 0) + v; return m; }
+// the seat-weighted mood of the Assembly; a declaration of Independence needs it at 35 or more
+function backing(G) { if (!G.assembly) return 100; const s = seats(G); let t = 0; for (const k in FACTIONS) t += s[k] * G.council.sup[k]; return Math.round(t / ASM.seats); }
+Object.assign(KC, { ASM, GOVS, LAWS, LAW_FIELDS, seats, countVote, yesShare, assemblyHour, chooseGov, lawCheck, propose, assemblyMods, backing });
+
+// ===== terra.js : Reshaping Kessa. Four planet gauges, what raises them, the stages they unlock and their side effects =====
+// Veil: how thick the air is. Warmth: how far the long cold has lifted. Water: open water and vapour. Verdure: living cover.
+const TERRA = {
+  veil: { name: 'Veil', color: '#9fc8e8', desc: 'Thickness of the air. Holds heat in, burns up meteors, carries clouds.' },
+  warm: { name: 'Warmth', color: '#ff9a5a', desc: 'How far the long cold has lifted. Melts the frost, shortens cold waves.' },
+  water: { name: 'Water', color: '#5ab4ff', desc: 'Open water and vapour. Fills crater lakes and brings rain.' },
+  life: { name: 'Verdure', color: '#8fdc6a', desc: 'Living cover: lichen first, then moss, then shrubs.' }
+};
+// stages, in the order they usually arrive; each is reached once and stays
+const TERRA_STAGES = [
+  { k: 'thaw', name: 'The Thaw', need: { warm: 20 }, text: 'Frost flats soften and creep back. Cold waves come less often and bite less. Shallow ice sublimes: every ice deposit loses 15%.' },
+  { k: 'lakes', name: 'Meltwater Lakes', need: { warm: 30, water: 25 }, text: 'Crater floors flood. Ice drills on flooded deposits pump meltwater (+50%), condensers gain 20%, and spore beds take root on the shores. Nothing new can be built on open water.' },
+  { k: 'lichen', name: 'Lichen Crust', need: { life: 8 }, text: 'Rust-gold lichen crusts the plains. +2 comfort: the view outside is alive.' },
+  { k: 'rain', name: 'First Rain', need: { veil: 35, water: 40, warm: 30 }, text: 'Clouds form and rain falls. Dust storms come less often and condensers gain 30% more, but cloud cover costs solar 10%.' },
+  { k: 'moss', name: 'Moss Carpets', need: { life: 28, water: 30 }, text: 'Green moss spreads from the lakes. Farms +10%, +3 comfort.' },
+  { k: 'shrubs', name: 'Shrublands', need: { life: 50, warm: 45, water: 30 }, text: 'Low shrubs take hold. Oxygen makers +15% as plants add to the air, +3 comfort.' },
+  { k: 'openair', name: 'Open Sky', need: { veil: 60, warm: 55, life: 50, water: 40 }, text: 'People can step outside with only a breather. Field Farms grow food in the open, domes need 25% less air, morale +5.' }
+];
+const TERRA_MODS = { lakes: { condense: 0.2 }, lichen: { comfort: 2 }, rain: { condense: 0.3, solar: -0.1 }, moss: { farm: 0.1, comfort: 3 }, shrubs: { oxygen: 0.15, comfort: 3 }, openair: { domeAir: -0.25, morale: 5 } };
+// per sol, from each working building of a type
+const TERRA_SRC = { hazeforge: { warm: 0.35, veil: 0.25 }, lichen: { life: 0.35 }, seedvault: { life: 0.15 }, lodestone: { veil: 0.1 }, mirror: { warm: 0.3 } };
+const COMET = { fuel: 15, price: 1600, sols: 4, give: { water: 6, veil: 2.5, warm: 0.8 } };
+
+function terraOf(G) { if (!G.terra) G.terra = { veil: 0, warm: 0, water: 0, life: 0, st: {}, comets: [], n: 0, rate: {} }; return G.terra; }
+function terraStage(G, k) { return !!(G.terra && G.terra.st[k]); }
+function terraMods(G) { const out = {}, T = G.terra; if (!T) return out; for (const k in T.st) for (const [m, v] of Object.entries(TERRA_MODS[k] || {})) out[m] = (out[m] || 0) + v; return out; }
+// what each gauge gains per sol right now, by source (for the panel and the hourly update)
+function terraRates(G) {
+  const T = terraOf(G), r = { veil: 0, warm: 0, water: 0, life: 0 }, by = [];
+  const cnt = {}; for (const b of G.buildings) if (TERRA_SRC[b.t] && b.built && b.on && !b.broken && (b._pf === undefined || b._pf > 0.4)) cnt[b.t] = (cnt[b.t] || 0) + (b._pf === undefined ? 1 : Math.min(1, b._pf));
+  const lifeOk = T.warm >= 15 && T.water >= 10, vault = cnt.seedvault ? 1.6 : 1;
+  for (const t in cnt) { const add = {}; for (const [k, v] of Object.entries(TERRA_SRC[t])) { let x = v * cnt[t]; if (k === 'life') x *= (lifeOk ? 1 : 0.2) * vault; r[k] += x; add[k] = x; } by.push({ t, n: Math.round(cnt[t] * 10) / 10, add }); }
+  // warmth melts the frost flats and buried ice into open water, fast at first and slower once the basins are full
+  const melt = 0.3 * clamp((T.warm - 20) / 40, 0, 1) * (T.water < 50 ? 1 : 0.3);
+  if (melt > 0) { r.water += melt; by.push({ t: 'melt', name: 'Melting frost', n: 1, add: { water: melt } }); }
+  // losses: thin air leaks away without the Lodestone Ring, heat escapes thin air, life dies back in the cold and dry
+  const loss = { veil: cnt.lodestone ? 0 : T.veil * 0.006, warm: T.veil < 30 ? T.warm * 0.003 : 0, water: 0, life: lifeOk ? 0 : T.life * 0.01 };
+  for (const k in r) r[k] -= loss[k];
+  return { r, by, loss };
+}
+function terraHour(G) {
+  const T = terraOf(G);
+  if (G.tick % 24 === 3) {
+    const { r } = terraRates(G); T.rate = {};
+    for (const k in r) { T[k] = clamp(T[k] + r[k], 0, 100); T.rate[k] = Math.round(r[k] * 100) / 100; }
+    terraCheck(G);
+  }
+  for (let i = T.comets.length - 1; i >= 0; i--) if (G.tick >= T.comets[i].at) { cometImpact(G, T.comets[i]); T.comets.splice(i, 1); }
+}
+function terraCheck(G) {
+  const T = terraOf(G);
+  for (const S of TERRA_STAGES) {
+    if (T.st[S.k] || !Object.entries(S.need).every(([k, v]) => T[k] >= v)) continue;
+    T.st[S.k] = solOf(G.tick);
+    log(G, 'Reshaping Kessa: ' + S.name + '. ' + S.text, 'good'); fx(G, { k: 'milestone' }); fx(G, { k: 'terra', stage: S.k });
+    if (S.k === 'thaw') for (const d of G.deposits) if (d.type === 'ice') d.amount = Math.round(d.amount * 0.85 * 10) / 10;
+    if (S.k === 'lakes') terraShores(G);
+    computeMods(G);
+  }
+}
+// lakes fill crater floors from the middle out: tiles nearer the centre than this fraction of the radius are open water
+function lakeFrac(G) { const T = G.terra; return T && T.st.lakes ? clamp(0.25 + (T.water - 25) / 90, 0.25, 0.8) : 0; }
+function isLake(G, x, y) {
+  const f = lakeFrac(G); if (!f) return false;
+  for (const c of G._T.craters) { if (c.r < 3) continue; if (Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) < c.r * f) return true; }
+  return false;
+}
+// spore beds take root on the new shores (placed from the map seed, so they never disturb the game's random stream)
+function terraShores(G) {
+  const r = RNG.fromSeed(G.seed + '/shores'), f = lakeFrac(G); let n = 0;
+  for (const c of G._T.craters.filter(c => c.r >= 3).slice(0, 4)) {
+    const a = r.next() * 6.283, d = c.r * f + 1.6, x = Math.round(c.x + Math.cos(a) * d), y = Math.round(c.y + Math.sin(a) * d);
+    if (x < 2 || y < 2 || x >= MAP_N - 2 || y >= MAP_N - 2 || G._dep[y * MAP_N + x] >= 0 || G._occ[y * MAP_N + x]) continue;
+    G.deposits.push({ id: G.deposits.length, type: 'bloom', x, y, r: 0, amount: 60, max: 60, deep: false }); n++;
+  }
+  if (n) { G._dep = depositGrid(G); log(G, n + ' spore bed' + (n > 1 ? 's' : '') + ' took root on the new lake shores.', 'good'); }
+}
+function cometPrice(G) { return Math.round(COMET.price * priceInflation(G)); }
+function cometCheck(G) {
+  const T = terraOf(G);
+  if (!techDone(G, 'comets')) return { ok: false, why: 'Needs Comet Herding research.' };
+  if (T.comets.length) return { ok: false, why: 'A comet is already on its way.' };
+  if (G.funds < cometPrice(G)) return { ok: false, why: 'Needs ' + cometPrice(G) + ' funding.' };
+  if ((G.res.fuel || 0) < COMET.fuel) return { ok: false, why: 'Needs ' + COMET.fuel + ' fuel for the tug.' };
+  return { ok: true };
+}
+// a tug nudges a small ice comet onto Kessa, well away from the colony
+function orderComet(G) {
+  const c = cometCheck(G); if (!c.ok) return { err: c.why };
+  const T = terraOf(G); G.funds -= cometPrice(G); G.res.fuel -= COMET.fuel; noteUse(G, 'fuel', COMET.fuel); T.n++;
+  const r = RNG.fromSeed(G.seed + '/comet' + T.n), L = G.land; let x = 0, y = 0;
+  for (let k = 0; k < 40; k++) { x = 4 + r.int(MAP_N - 8); y = 4 + r.int(MAP_N - 8); if (Math.hypot(x - L.x, y - L.y) > 16 && !G._occ[y * MAP_N + x]) break; }
+  T.comets.push({ at: G.tick + COMET.sols * HOURS_PER_SOL, x, y });
+  log(G, 'A tug has nudged an ice comet towards Kessa. Impact in ' + COMET.sols + ' sols, far from the colony.', 'info', { x, y });
+  return { ok: true };
+}
+function cometImpact(G, cm) {
+  const T = terraOf(G); for (const [k, v] of Object.entries(COMET.give)) T[k] = clamp(T[k] + v, 0, 100);
+  // the blast cracks nearby grid lines like a meteor would
+  for (let yy = cm.y - 2; yy <= cm.y + 2; yy++) for (let xx = cm.x - 2; xx <= cm.x + 2; xx++) { if (xx < 0 || yy < 0 || xx >= MAP_N || yy >= MAP_N) continue; const i = yy * MAP_N + xx; for (const k of ['cable', 'pipe']) if (G[k][i] === 1) { G[k][i] = 2; G._netDirty = true; } }
+  fx(G, { k: 'comet', x: cm.x, y: cm.y });
+  log(G, 'The comet struck Kessa. Water +' + COMET.give.water + ', Veil +' + COMET.give.veil + ', Warmth +' + COMET.give.warm + '.', 'good', { x: cm.x, y: cm.y });
+  terraCheck(G);
+}
+// hazards in a reshaped world: frequency multipliers (below 1 = rarer) and severity multipliers
+function terraHazard(G, kind) {
+  const T = G.terra; if (!T) return 1;
+  if (kind === 'cold') return Math.max(0.35, 1 - T.warm / 140);
+  if (kind === 'dust') return Math.max(0.4, 1 - T.veil / 250 - T.water / 250);
+  if (kind === 'meteor') return Math.max(0.4, 1 - T.veil / 130);
+  return 1;
+}
+function terraSev(G, kind) { const T = G.terra; if (!T) return 1; return kind === 'cold' ? Math.max(0.5, 1 - T.warm / 200) : 1; }
+// overall progress 0..1 for goals and the score
+function terraProgress(G) { const T = G.terra; if (!T) return 0; return (Math.min(T.veil, 60) / 60 + Math.min(T.warm, 55) / 55 + Math.min(T.water, 40) / 40 + Math.min(T.life, 50) / 50) / 4; }
+Object.assign(KC, { TERRA, TERRA_STAGES, TERRA_MODS, TERRA_SRC, COMET, terraOf, terraStage, terraMods, terraRates, terraHour, terraCheck, lakeFrac, isLake, cometPrice, cometCheck, orderComet, terraHazard, terraSev, terraProgress });
+
 // ===== advice.js : the colony advisor: forecasts, problems and what to build next =====
 // each item: { sev: 'bad'|'warn'|'info', id, text, at?: {x,y}, act?: { k: 'build'|'connect'|'tab'|'show', ... } }
 function mainNets(G) { const L = G.buildings.find(b => b.t === 'lander'); return { pn: L ? L._pn : -1, wn: L ? L._wn : -1, L }; }
@@ -3160,6 +3405,8 @@ function advice(G) {
   if (G.event) add('bad', 'event', 'A decision is waiting: ' + EVENTS[G.event.id].title + '.', { act: { k: 'event' } });
   if (!G.st.everColonists && !G.rockets.some(r => r.ark.length)) { const left = DIFFICULTY[G.cfg.difficulty].patience - sol, why = arkBlock(G); add(left < 12 ? 'bad' : why ? 'info' : 'warn', 'patience', 'The sponsor expects colonists within ' + left + ' sols. ' + (why ? 'Before an ark can launch: ' + why : 'Ready: open Rockets → Ark, pick applicants and launch an ark.'), { act: why && /Living Quarters/.test(why) && freeDome(G, 1) ? { k: 'module', dome: freeDome(G, 1).id, type: 'quarters' } : { k: 'tab', tab: 'rockets' } }); }
   if (G.council) for (const k in FACTIONS) { const d = G.council.dem[k]; if (!d) continue; const left = (d.due - G.tick) / 24; add(left < 2 ? 'warn' : 'info', 'council-' + k, FACTIONS[k].name + ' (support ' + Math.round(G.council.sup[k]) + ') asks: ' + d.text + ' ' + Math.floor(demandProgress(G, d)) + ' / ' + d.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'people', sub: 'council' } }); }
+  // Reshaping Kessa: point at the first step once it is possible
+  if (techDone(G, 'hazeforge') && G.colonists.length >= 30 && !G.buildings.some(b => b.t === 'hazeforge')) add('info', 'terra-forge', 'Reshaping Kessa: a Haze Forge warms the planet and thickens the Veil. Over many sols the frost melts, lakes fill the craters and the ground turns green (Goals → Reshaping).', { act: { k: 'build', type: 'hazeforge' } });
   const C = G.contracts && G.contracts.active;
   if (C) { const left = (C.due - G.tick) / 24; add(left < 3 ? 'warn' : 'info', 'contract', 'Contract "' + C.name + '": ' + Math.floor(contractProgress(G, C)) + ' / ' + C.need + ', ' + Math.max(0, Math.ceil(left)) + ' sols left.', { act: { k: 'tab', tab: 'rockets' } }); }
   if (G.contracts && G.contracts.offer) add('info', 'offer', 'The sponsor offers a contract worth ' + G.contracts.offer.reward + ' funding.', { act: { k: 'tab', tab: 'rockets' } });
@@ -3978,6 +4225,68 @@ const ART = {
     },
     a(c, x, y, s, z, t, b, g) { const m = P(x + 1.5, y + 2.8, z); if (g && g.on) { c.fillStyle = 'rgba(159,224,255,' + (0.7 + 0.3 * Math.sin(t)).toFixed(2) + ')'; c.fillRect(m[0] - 6, m[1] - 6, 12, 1.6); const p = P(x + 1.5, y + 1.5, z + 12); glow(c, p[0], p[1], 30, '160,220,255', 0.18 + 0.08 * Math.sin(t * 1.2)); } } }
 };
+// ---------- Reshaping Kessa ----------
+Object.assign(ART, {
+  hazeforge: { top: 96,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5e544c');
+      box(c, x + 0.2, y + 1.3, 2.6, 1.45, z, 14, '#8a6a58', { seams: 4, win: { n: 4, at: 0.6, h: 2.4 }, door: 0.25, band: [0.3, 'rgba(232,138,60,.75)', 1.4] });
+      // three kiln stacks, tallest at the back, ringed with heat bands
+      for (const [a, d, h] of [[0.6, 0.6, 62], [1.5, 0.5, 70], [2.4, 0.7, 56]]) { cyl(c, x + a, y + d, 0.3, z, h, '#5a504a', '#3a3230', [0.2, 0.5, 0.8]); if (ARTV.lod > 0.7) { const q = P(x + a, y + d, z + h * 0.82); c.strokeStyle = ORANGE; c.lineWidth = 1.6; c.beginPath(); c.ellipse(q[0], q[1], 13.6, 6.8, 0, 0, Math.PI); c.stroke(); } }
+      if (ARTV.lod > 0.8) pipe(c, [[x + 0.6, y + 0.9, z + 10], [x + 0.6, y + 1.3, z + 10]], '#6b625b', 2.2), pipe(c, [[x + 2.4, y + 1.0, z + 10], [x + 2.4, y + 1.3, z + 10]], '#6b625b', 2.2);
+      const m = P(x + 1.5, y + 2.75, z + 6); c.fillStyle = '#2a201a'; c.fillRect(m[0] - 9, m[1] - 6, 18, 6);
+    },
+    a(c, x, y, s, z, t, b, g) {
+      if (!(g && g.on)) return; const m = P(x + 1.5, y + 2.75, z + 6); c.fillStyle = 'rgba(255,150,60,' + (0.75 + 0.25 * Math.sin(t * 3)).toFixed(2) + ')'; c.fillRect(m[0] - 8, m[1] - 5, 16, 4.5); glow(c, m[0], m[1] - 2, 16, '255,140,60', 0.4);
+      if (ARTV.lod < 0.5) return;
+      // thick ochre haze rolls out of the stacks and climbs high
+      for (const [a, d, h, sd] of [[0.6, 0.6, 62, 1], [1.5, 0.5, 70, 2], [2.4, 0.7, 56, 3]]) { const q = P(x + a, y + d, z + h); for (let k = 0; k < 4; k++) { const ph = (t * 0.12 + k / 4 + sd * 0.29) % 1, al = 0.34 * (1 - ph) * Math.min(1, ph * 6); c.fillStyle = 'rgba(214,160,104,' + al.toFixed(3) + ')'; c.beginPath(); c.arc(q[0] + Math.sin(ph * 2 + sd) * 6 + ph * 26, q[1] - ph * 70, 5 + ph * 18, 0, 7); c.fill(); } }
+    } },
+  lichen: { top: 64,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5e5a48');
+      cyl(c, x + 0.75, y + 1.15, 0.5, z, 16, '#6a9a6a', '#8fc48a', [0.3, 0.7]); box(c, x + 1.3, y + 0.25, 0.5, 0.55, z, 8, '#c4b8a6', { win: { n: 1, at: 0.5, h: 2 } });
+      pole(c, x + 0.75, y + 1.15, z + 16, 24, '#9a8d80', 2); if (ARTV.lod > 0.8) pipe(c, [[x + 1.15, y + 1.15, z + 4], [x + 1.45, y + 0.8, z + 4]], '#78a8b8', 1.6);
+    },
+    a(c, x, y, s, z, t, b, g) { const p = P(x + 0.75, y + 1.15, z + 40), act = g && g.on, a = act ? t * 0.8 : 0.4, ex = p[0] + Math.cos(a) * 20, ey = p[1] + Math.sin(a) * 8; c.strokeStyle = '#d8cdbd'; c.lineWidth = 1.8; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(ex, ey); c.stroke(); c.fillStyle = '#9a8d80'; c.beginPath(); c.arc(p[0], p[1], 2.4, 0, 7); c.fill();
+      if (act && ARTV.lod > 0.55) for (let k = 0; k < 4; k++) { const ph = (t * 0.5 + k / 4) % 1; c.fillStyle = 'rgba(170,220,120,' + (0.35 * (1 - ph)).toFixed(3) + ')'; c.beginPath(); c.arc(ex + ph * 14, ey + ph * 8 - ph * 6, 2 + ph * 7, 0, 7); c.fill(); } } },
+  seedvault: { top: 62,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#5a524c');
+      // an earth-covered archive mound with a concrete portal and a glass growing house on top
+      const q = (a, b, h) => P(x + a, y + b, z + h); const mg = c.createLinearGradient(0, q(1.5, 1.5, 22)[1], 0, q(1.5, 2.9, 0)[1]); mg.addColorStop(0, '#8a7a52'); mg.addColorStop(1, '#5a4a36');
+      c.fillStyle = mg; c.beginPath(); const m0 = q(0.2, 2.8, 0), m1 = q(2.8, 2.8, 0), m2 = q(2.8, 0.2, 0); c.moveTo(m0[0], m0[1]); c.quadraticCurveTo(q(0.6, 0.6, 30)[0], q(0.6, 0.6, 30)[1], m2[0], m2[1]); c.lineTo(m1[0], m1[1]); c.closePath(); c.fill();
+      if (ARTV.lod > 0.8) { c.fillStyle = 'rgba(120,150,70,.55)'; for (let k = 0; k < 9; k++) { const p = q(0.8 + (k % 3) * 0.6, 1.0 + ((k / 3) | 0) * 0.55, 14); c.beginPath(); c.ellipse(p[0], p[1], 6, 2.6, 0, 0, 7); c.fill(); } }
+      box(c, x + 1.15, y + 2.3, 0.7, 0.55, z, 12, '#c9c2b6', { door: 0.5 }); poly(c, [q(1.1, 2.3, 12), q(1.9, 2.3, 12), q(1.9, 2.85, 16), q(1.1, 2.85, 16)], '#d8d2c6');
+      const gp = P(x + 1.3, y + 1.1, z + 18); c.fillStyle = 'rgba(160,220,200,.45)'; c.beginPath(); c.ellipse(gp[0], gp[1], 16, 8, 0, Math.PI, 0); c.bezierCurveTo(gp[0] + 16, gp[1] - 14, gp[0] - 16, gp[1] - 14, gp[0] - 16, gp[1]); c.fill(); c.strokeStyle = 'rgba(240,250,255,.6)'; c.lineWidth = 0.8; c.stroke();
+      if (ARTV.lod > 0.8) { c.fillStyle = '#6fbf5a'; for (let k = -2; k <= 2; k++) { c.beginPath(); c.arc(gp[0] + k * 5, gp[1] - 3, 2.2, 0, 7); c.fill(); } }
+    },
+    a(c, x, y, s, z, t, b, g) { if (!(g && g.on)) return; const d = P(x + 1.5, y + 2.85, z + 3); c.fillStyle = 'rgba(160,255,190,' + (0.6 + 0.3 * Math.sin(t)).toFixed(2) + ')'; c.fillRect(d[0] - 3, d[1] - 6, 6, 1.5); if (ARTV.night > 0.3) glow(c, d[0], d[1] - 6, 14, '160,255,190', 0.4); } },
+  lodestone: { top: 110,
+    s(c, x, y, s, z) {
+      pad(c, x, y, s, z, '#4f4a48');
+      box(c, x + 0.2, y + 2.1, 1.1, 0.7, z, 10, '#bfc6cc', { win: { n: 2, at: 0.5, h: 2.4 }, door: 0.5 });
+      // two pylons hold a great upright ring of superconducting coil
+      const cx = isoX(x + 1.6, y + 1.4), cy = isoY(x + 1.6, y + 1.4, z) - 50;
+      for (const sx of [-1, 1]) { c.fillStyle = '#6f777c'; c.beginPath(); c.moveTo(cx + sx * 30, cy + 54); c.lineTo(cx + sx * 36, cy + 54); c.lineTo(cx + sx * 40, cy + 6); c.lineTo(cx + sx * 34, cy + 6); c.fill(); }
+      c.lineWidth = 9; c.strokeStyle = '#7a4a2a'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, 0, 7); c.stroke();
+      c.lineWidth = 6; c.strokeStyle = '#c58b4e'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, 0, 7); c.stroke();
+      if (ARTV.lod > 0.8) { c.lineWidth = 1; c.strokeStyle = 'rgba(255,220,170,.55)'; c.beginPath(); c.ellipse(cx, cy, 42, 40, 0.5, Math.PI * 1.05, Math.PI * 1.6); c.stroke(); c.strokeStyle = 'rgba(60,30,10,.4)'; c.beginPath(); for (let k = 0; k < 24; k++) { const a = k / 24 * 6.283, ca = Math.cos(a), sa = Math.sin(a), rx = ca * 42 * Math.cos(0.5) - sa * 40 * Math.sin(0.5), ry = ca * 42 * Math.sin(0.5) + sa * 40 * Math.cos(0.5); c.moveTo(cx + rx * 0.9, cy + ry * 0.9); c.lineTo(cx + rx * 1.1, cy + ry * 1.1); } c.stroke(); }
+    },
+    a(c, x, y, s, z, t, b, g) { if (!(g && g.on)) return; const cx = isoX(x + 1.6, y + 1.4), cy = isoY(x + 1.6, y + 1.4, z) - 50; glow(c, cx, cy, 34, '120,200,255', 0.22 + 0.08 * Math.sin(t * 2));
+      c.strokeStyle = 'rgba(140,210,255,.55)'; c.lineWidth = 1.2; for (let k = 0; k < 3; k++) { const ph = (t * 0.4 + k / 3) % 1; c.beginPath(); c.ellipse(cx, cy, 14 + ph * 26, 40 + ph * 30, 0.5, 0, 7); c.globalAlpha = 1 - ph; c.stroke(); } c.globalAlpha = 1;
+      if (Math.sin(t * 7) > 0.7) { const a = t * 3, px = cx + Math.cos(a) * 42 * 0.88, py = cy + Math.sin(a) * 40 * 0.88; c.strokeStyle = '#dff4ff'; c.lineWidth = 1; c.beginPath(); c.moveTo(px, py); c.lineTo(px + 5, py - 6); c.lineTo(px + 1, py - 9); c.stroke(); } } },
+  fieldfarm: { top: 40,
+    s(c, x, y, s, z) {
+      // furrowed rows of crops in the open, alternating green and gold, a pivot tower in the middle and a shed
+      poly(c, [P(x + 0.05, y + 0.05, z), P(x + s - 0.05, y + 0.05, z), P(x + s - 0.05, y + s - 0.05, z), P(x + 0.05, y + s - 0.05, z)], '#6a4e38');
+      for (let r = 0; r < 9; r++) { const y0 = y + 0.15 + r * 0.31, col = r % 3 === 2 ? '#c8a848' : r % 2 ? '#5f9a44' : '#78b050'; poly(c, [P(x + 0.15, y0, z + 1.5), P(x + s - 0.15, y0, z + 1.5), P(x + s - 0.15, y0 + 0.2, z + 1.5), P(x + 0.15, y0 + 0.2, z + 1.5)], col);
+        if (ARTV.lod > 1) { c.fillStyle = 'rgba(255,255,220,.18)'; for (let k = 0; k < 9; k++) { const q = P(x + 0.3 + k * 0.29, y0 + 0.1, z + 2.5); c.fillRect(q[0] - 1, q[1] - 1, 2, 1.4); } } }
+      cyl(c, x + 1.5, y + 1.5, 0.12, z, 12, '#9a9088'); box(c, x + 2.35, y + 2.35, 0.5, 0.5, z, 8, '#b08a62', { door: 0.5 });
+    },
+    a(c, x, y, s, z, t, b, g) { const a = (g && g.on ? t * 0.12 : 0.3) + (b ? b.id : 0), p = P(x + 1.5, y + 1.5, z + 11), L = 1.35, e = P(x + 1.5 + Math.cos(a) * L, y + 1.5 + Math.sin(a) * L, z + 8);
+      c.strokeStyle = '#d8d2c6'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(e[0], e[1]); c.stroke(); for (let k = 1; k <= 3; k++) { const q = [p[0] + (e[0] - p[0]) * k / 3, p[1] + (e[1] - p[1]) * k / 3]; c.strokeStyle = '#6b625b'; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0], q[1]); c.lineTo(q[0], q[1] + 7); c.stroke(); if (g && g.on && ARTV.lod > 0.7) { c.fillStyle = 'rgba(170,215,255,.35)'; c.beginPath(); c.ellipse(q[0], q[1] + 8, 4, 1.6, 0, 0, 7); c.fill(); } } } }
+});
 
 // ===== art2.js : domes, construction sites, damage states, vehicles, rockets, people, and the sprite cache =====
 const MOD_COL = { quarters: '#d8c4a8', apartments: '#cbb79c', suites: '#e6d6bd', nursery: '#f0c8c0', canteen: '#e8a560', lounge: '#b48cff', gym: '#7fb4ff', arboretum: '#6fbf5a', market: '#e8c25a', arcade: '#ff7ad9', clinic: '#ff8a8a', medcenter: '#ff9a9a', school: '#ffd27a', security: '#7fa0c0', spa: '#7fd0d0', hydro: '#7fdc6a', vfarm: '#6fcc5a', labmod: '#c0a8ff', workshop: '#c8a070' };
@@ -4258,6 +4567,36 @@ function sceneCanvas(kind, w, h) {
   ARTV.night = n0; ARTV.emit = em0; ARTV.lod = L0;
   return cv;
 }
+// ---------- the globe of Kessa for the Reshaping panel: frost caps shrink, seas and green spread, clouds thicken ----------
+const GLOBE = { key: '', cv: null };
+function planetCanvas(G, w, h) {
+  const T = G.terra || { veil: 0, warm: 0, water: 0, life: 0, st: {} }, key = [w, h, Math.round(T.veil / 3), Math.round(T.warm / 3), Math.round(T.water / 3), Math.round(T.life / 3), G.seed].join('|');
+  const cv = document.createElement('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px'; cv.className = 'globe';
+  const c = cv.getContext('2d');
+  if (GLOBE.key === key && GLOBE.cv) { c.drawImage(GLOBE.cv, 0, 0); return cv; }
+  const W = cv.width, H = cv.height, R = Math.min(W, H) * 0.42, cx = W * 0.5, cy = H * 0.52, nz = makeNoise(KC.RNG.fromSeed(G.seed + '/globe'));
+  const img = c.createImageData(W, H), d = img.data, sea = clamp((T.water - 10) / 90, 0, 0.55), cap = 1 - clamp(T.warm / 70, 0, 0.8) * 0.75, green = clamp(T.life / 70, 0, 0.9), cloud = clamp((T.veil - 15) / 60, 0, 0.7) * clamp(T.water / 30, 0.2, 1);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const i = (py * W + px) * 4, dx = (px - cx) / R, dy = (py - cy) / R, r2 = dx * dx + dy * dy;
+    if (r2 > 1) { const st = ((px * 73856093) ^ (py * 19349663)) >>> 0; if (st % 997 === 0) { d[i] = d[i + 1] = d[i + 2] = 200 + st % 55; d[i + 3] = 255; } continue; }
+    const dz = Math.sqrt(1 - r2), lon = Math.atan2(dx, dz) + 0.6, lat = Math.asin(-dy), u = lon * 1.4, v = lat * 2.2;
+    let e = nz.fbm(u + 3, v + 7, 5) * 0.5 + 0.5, col;
+    const polar = Math.abs(lat) / (Math.PI / 2);
+    if (e < 0.32 + sea * 0.5) col = e < 0.26 + sea * 0.5 ? [28, 72, 110] : [52, 112, 140];
+    else if (polar > cap * 0.95 + nz.fbm(u * 2, v * 2, 2) * 0.08) col = [232, 238, 244];
+    else { col = [176 + e * 40, 118 + e * 30, 82 + e * 18]; const gv = nz.fbm(u * 1.7 + 11, v * 1.7 + 5, 4) * 0.5 + 0.5 + (0.5 - Math.abs(lat)) * 0.2; if (gv < green * 0.9 + 0.1 && green > 0) { const k = clamp((green * 0.9 + 0.1 - gv) * 4, 0, 1); col = [col[0] * (1 - k) + 88 * k, col[1] * (1 - k) + 132 * k, col[2] * (1 - k) + 66 * k]; } }
+    if (cloud > 0) { const cl = nz.fbm(u * 2.4 + 40, v * 3 + 9, 4) * 0.5 + 0.5; if (cl > 1 - cloud) { const k = clamp((cl - (1 - cloud)) * 3, 0, 0.85); col = [col[0] * (1 - k) + 245 * k, col[1] * (1 - k) + 245 * k, col[2] * (1 - k) + 248 * k]; } }
+    const lit = clamp(0.25 + 0.95 * (dz * 0.75 - dx * 0.45 - dy * 0.25), 0.12, 1.15);
+    d[i] = clamp(col[0] * lit, 0, 255); d[i + 1] = clamp(col[1] * lit, 0, 255); d[i + 2] = clamp(col[2] * lit, 0, 255); d[i + 3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+  // the Veil: a rim of air whose colour moves from thin amber to blue
+  const blue = clamp((T.veil - 20) / 45, 0, 1), a = 0.15 + clamp(T.veil / 60, 0, 1) * 0.55, rim = c.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.12);
+  rim.addColorStop(0, 'rgba(0,0,0,0)'); rim.addColorStop(0.45, 'rgba(' + Math.round(lerp(230, 120, blue)) + ',' + Math.round(lerp(170, 190, blue)) + ',' + Math.round(lerp(110, 255, blue)) + ',' + a.toFixed(2) + ')'); rim.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = rim; c.beginPath(); c.arc(cx, cy, R * 1.12, 0, 7); c.fill();
+  GLOBE.key = key; GLOBE.cv = document.createElement('canvas'); GLOBE.cv.width = W; GLOBE.cv.height = H; GLOBE.cv.getContext('2d').drawImage(cv, 0, 0);
+  return cv;
+}
 
 // ===== icons.js : one drawn icon set (24-unit stroke icons) for resources, tabs, categories, specialists, hazards and controls =====
 const ICONS = {
@@ -4388,7 +4727,7 @@ const R = {
     this.dirty = true;
   },
   setGame(G) {
-    this.G = G; this.bz.clear(); this.anims = []; this.fogKey = ''; this.grit = null;
+    this.G = G; this.bz.clear(); this.anims = []; this.fogKey = ''; this.grit = null; this.lakes = null;
     this.buildTerrain();
     const L = G.buildings.find(b => b.t === 'lander');
     this.centerOn(L.x + 1.5, L.y + 1.5); this.cam.z = 0.8;
@@ -4402,6 +4741,8 @@ const R = {
   },
   cornerZ(cx, cy) { const T = this.G._T, n = MAP_N; let s = 0, k = 0; for (let y = cy - 1; y <= cy; y++) for (let x = cx - 1; x <= cx; x++) if (x >= 0 && y >= 0 && x < n && y < n) { s += T.h[y * n + x]; k++; } return s / k * HZ; },
   buildingZ(b) { let z = this.bz.get(b.id); if (z === undefined) { if (b.mod) return 0; let s = 0, m = -1; for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) { const v = this.zAt(x, y); s += v; m = Math.max(m, v); } z = s / (b.s * b.s) * 0.5 + m * 0.5; this.bz.set(b.id, z); } return z; },
+  // what the baked terrain shows of Reshaping Kessa; a change rebuilds it (a dozen times in a whole game)
+  terraKey() { const T = this.G && this.G.terra; if (!T) return '0'; return Math.round(clamp((T.warm - 15) / 40, 0, 1) * 4) + '|' + (T.life >= 8 ? Math.min(8, Math.floor(T.life / 9)) : -1) + '|' + Math.round(KC.lakeFrac(this.G) * 20); },
   buildTerrain() {
     const G = this.G, T = G._T, n = MAP_N;
     this.oX = n * TW / 2; this.oY = HZ + 12;
@@ -4420,6 +4761,10 @@ const R = {
       gH[gy * gn + gx] = (cz[iy][ix] * (1 - u) + cz[iy][ix + 1] * u) * (1 - v) + (cz[iy + 1][ix] * (1 - u) + cz[iy + 1][ix + 1] * u) * v;
     }
     const tex = makeNoise(KC.RNG.fromSeed(G.seed + '/shade'));
+    // Reshaping Kessa: frost melts back to wet ground, lichen, moss and shrubs spread over the plains
+    const TS = G.terra || { warm: 0, life: 0, water: 0 }, melt = clamp((TS.warm - 15) / 40, 0, 1), cover = clamp(TS.life / 80, 0, 0.72), vegT = TS.life >= 50 ? 2 : TS.life >= 28 ? 1 : TS.life >= 8 ? 0 : -1;
+    this.tkey = this.terraKey();
+    const VEG = [[176, 160, 70], [92, 128, 60], [62, 104, 52]], WET = [116, 88, 70];
     const sm = (e0, e1, v) => { const q = clamp((v - e0) / (e1 - e0), 0, 1); return q * q * (3 - 2 * q); };
     const wt = new Float32Array(6);
     for (let gy = 0; gy < gn; gy++) for (let gx = 0; gx < gn; gx++) {
@@ -4441,7 +4786,10 @@ const R = {
       for (const cr of T.craters || []) { const dx = x - cr.x, dy = y - cr.y, dd = Math.hypot(dx, dy), d = dd / cr.r; if (d > 1.5 || dd < 1e-3) continue; const ux = (dx - dy * 0.35) / dd;
         if (d < 1) crs += ux * 0.24 * sm(0.25, 1, d) - 0.05 * (1 - d); else crs += Math.exp(-Math.pow((d - 1.06) / 0.16, 2)) * (0.1 - ux * 0.08); }
       const lit = clamp(1.04 + crs - 0.015 * (0.9 * dzdx + 1.0 * dzdy) + clamp(-lap * 0.09, -0.16, 0.13) + (gH[i] / HZ - 0.5) * 0.18 + tex.fbm(x * 0.7, y * 0.7, 4) * 0.09 + tv, 0.4, 1.55);
-      gR[i] = r * lit; gG[i] = g * lit; gB[i] = b * lit * (0.98 + wt[3] * 0.06);
+      if (melt > 0 && wt[3] > 0) { const m = wt[3] * melt * 0.85; r = r * (1 - m) + WET[0] * m; g = g * (1 - m) + WET[1] * m; b = b * (1 - m) + WET[2] * m; }
+      if (vegT >= 0) { const v = tex.fbm(x * 0.32 + 51, y * 0.32 + 17, 4) * 0.5 + 0.5 - gH[i] / HZ * 0.25 + (1 - wt[5]) * 0.08, edge = sm(1.02 - cover * 1.15, 1.1 - cover * 1.15, v) * (1 - wt[5] * 0.7);
+        if (edge > 0) { const vc = VEG[vegT], vl = VEG[Math.max(0, vegT - 1)], q = sm(0.3, 0.9, edge); const cr = vl[0] + (vc[0] - vl[0]) * q, cg = vl[1] + (vc[1] - vl[1]) * q, cb = vl[2] + (vc[2] - vl[2]) * q, a = edge * 0.82; r = r * (1 - a) + cr * a; g = g * (1 - a) + cg * a; b = b * (1 - a) + cb * a; } }
+      gR[i] = r * lit; gG[i] = g * lit; gB[i] = b * lit * (0.98 + wt[3] * 0.06 * (1 - melt));
     }
     const img = c.getImageData(0, 0, W, H), px32 = new Uint32Array(img.data.buffer);
     const ds = 1 / 14;
@@ -4546,14 +4894,21 @@ const R = {
       c.stroke();
       if (cr.r > 6) { c.strokeStyle = 'rgba(255,236,210,.05)'; c.lineWidth = 5; for (let k = 0; k < 14; k++) { const a = rnd.next() * 6.283, d0 = cr.r * 1.15, d1 = cr.r * (1.8 + rnd.next() * 1.4), q0 = ZP(cr.x + Math.cos(a) * d0, cr.y + Math.sin(a) * d0), q1 = ZP(cr.x + Math.cos(a) * d1, cr.y + Math.sin(a) * d1); c.beginPath(); c.moveTo(q0[0], q0[1]); c.lineTo(q1[0], q1[1]); c.stroke(); } }
     }
-    // frost: crisp bright patches with blue edges, and glints
-    for (let k = 0; k < 2200; k++) {
+    // shrubs once Verdure is high: small rounded bushes with shadows on vegetated ground
+    if (vegT === 2) for (let k = 0; k < 2600 * cover; k++) {
+      const x = rnd.next() * n, y = rnd.next() * n, tt = tAt(x, y); if (tt === 5 || tex.fbm(x * 0.32 + 51, y * 0.32 + 17, 4) * 0.5 + 0.5 < 1.06 - cover * 1.15) continue;
+      const q = ZP(x, y), r0 = 1.6 + rnd.next() * 2.4; c.fillStyle = 'rgba(20,30,10,.3)'; c.beginPath(); c.ellipse(q[0] + 1.5, q[1] + 0.5, r0 * 1.2, r0 * 0.5, 0, 0, 7); c.fill();
+      c.fillStyle = rnd.next() < 0.5 ? '#4e7a3a' : '#3f6a32'; c.beginPath(); c.arc(q[0], q[1] - r0 * 0.6, r0, 0, 7); c.fill(); c.fillStyle = 'rgba(200,240,150,.28)'; c.beginPath(); c.arc(q[0] - r0 * 0.3, q[1] - r0, r0 * 0.45, 0, 7); c.fill();
+    }
+    // frost: crisp bright patches with blue edges, and glints (fewer as the world warms)
+    for (let k = 0; k < 2200 * (1 - melt * 0.9); k++) {
       const x = rnd.next() * n, y = rnd.next() * n; if (tAt(x, y) !== 3) continue;
       const q = ZP(x, y), rx = 3 + rnd.next() * 8, ry = 1.5 + rnd.next() * 3;
       c.fillStyle = 'rgba(120,160,190,.18)'; c.beginPath(); c.ellipse(q[0] + 1, q[1] + 0.8, rx, ry, 0, 0, 7); c.fill();
       c.fillStyle = 'rgba(238,247,255,' + (0.2 + rnd.next() * 0.3).toFixed(2) + ')'; c.beginPath(); c.ellipse(q[0], q[1], rx, ry, 0, 0, 7); c.fill();
       if (rnd.next() < 0.3) { c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(q[0] + (rnd.next() - 0.5) * rx, q[1] + (rnd.next() - 0.5) * ry, 1, 1); }
     }
+    if (G.terra && G.terra.st.lakes) { this.lakes = null; this.lakeGeo(); for (const L of this.lakes.list) this.paintLake(c, L); }
     this.terrain = cv; this.dirty = true;
   },
   // ---------- camera ----------
@@ -4582,6 +4937,8 @@ const R = {
     const hourF = (KC.hourOf(G.tick) + frac) % 24;
     const sun = hourF >= 5.5 && hourF <= 19.5 ? Math.max(0, Math.sin((hourF - 5.5) / 14 * Math.PI)) : 0;
     // sky / void
+    this.sunNow = sun;
+    if (G.terra && this.terraKey() !== this.tkey) this.buildTerrain();
     const sky = c.createLinearGradient(0, 0, 0, this.h);
     sky.addColorStop(0, sun > 0.05 ? '#3b2a22' : '#0d0c14'); sky.addColorStop(1, sun > 0.05 ? '#1a120e' : '#07060a');
     c.fillStyle = sky; c.fillRect(0, 0, this.w, this.h);
@@ -4596,6 +4953,7 @@ const R = {
     const vis = (wx, wy) => wx > w0x && wx < w1x && wy > w0y && wy < w1y;
     // close up, fine grit on the visible tiles keeps the ground crisp where the terrain bitmap is magnified
     if (z > 1.1 && !this.noGrain) this.drawGrit(c, vis, z);
+    if (this.G.terra && this.G.terra.st.lakes) this.drawLakes(c, t, z);
     this.drawDeposits(c, vis, t);
     this.drawLines(c, t, vis);
     if (this.overlay === 'power' || this.overlay === 'life') this.drawNets(c);
@@ -4804,7 +5162,13 @@ const R = {
   // colonists walk between home and work around shift changes
   drawWalkers(c, t, frac, vis, sun) {
     const G = this.G; if (!G.colonists.length || this.cam.z < 0.45) return;
-    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22];
+    const hr = KC.hourOf(G.tick) + frac, starts = [6, 14, 22], openSky = KC.terraStage(G, 'openair');
+    // under the Open Sky, off-shift colonists stroll around the outside of their domes in daylight, no suits
+    if (openSky && sun > 0.15) for (const d of G.buildings) {
+      if (!d.built || !BUILDINGS[d.t] || !BUILDINGS[d.t].dome || !(d._pop > 0)) continue;
+      const cx = d.x + d.s / 2, cy = d.y + d.s / 2; if (!vis(isoX(cx, cy), isoY(cx, cy, 0))) continue;
+      for (let k = 0; k < Math.min(6, Math.ceil(d._pop / 6)); k++) { const a = t * 0.05 * (k % 2 ? 1 : -1) + k * 1.9 + d.id, r = d.s * 0.62, x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; figure(c, isoX(x, y), isoY(x, y, this.zSmooth(x, y)), SUIT[(k + d.id) % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 6 + k)) * 0.8, false); }
+    }
     let n = 0;
     for (const col of G.colonists) {
       if (!col.job || !col.home || n > 40) continue;
@@ -4820,7 +5184,7 @@ const R = {
       const px = isoX(x, y), py = isoY(x, y, this.zSmooth(x, y));
       if (!vis(px, py)) continue;
       n++;
-      figure(c, px, py, SUIT[col.id % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 8 + col.id)) * 0.8, true);
+      figure(c, px, py, SUIT[col.id % SUIT.length], this.cam.z > 1.3, Math.abs(Math.sin(t * 8 + col.id)) * 0.8, !openSky);
       if (sun < 0.2) { glow(c, px - 1, py - 8, 7, '255,240,200', 0.7); }
     }
   },
@@ -4829,7 +5193,11 @@ const R = {
     this.anims = this.anims.filter(a => t - a.t0 < (a.dur || 1.6));
     for (const a of this.anims) {
       const k = Math.max(0, t - a.t0), zz = this.zSmooth(a.x + 0.5, a.y + 0.5), px = isoX(a.x + 0.5, a.y + 0.5), py = isoY(a.x + 0.5, a.y + 0.5, zz);
-      if (a.k === 'meteor') {
+      if (a.k === 'comet') {
+        // an ice comet: a long blue-white streak, then a white flash and a rolling ring of steam
+        if (k < 1.1) { const f = k / 1.1, sx = px - 380 * (1 - f), sy = py - 640 * (1 - f); const g = c.createLinearGradient(sx - 120, sy - 200, sx, sy); g.addColorStop(0, 'rgba(160,220,255,0)'); g.addColorStop(1, 'rgba(240,250,255,.95)'); c.strokeStyle = g; c.lineWidth = 9; c.lineCap = 'round'; c.beginPath(); c.moveTo(sx - 120, sy - 200); c.lineTo(sx, sy); c.stroke(); c.lineCap = 'butt'; glow(c, sx, sy, 26, '200,235,255', 0.9); }
+        else { const f = (k - 1.1) / 2.4; glow(c, px, py - 10, 60 + f * 40, '255,250,240', 0.9 * (1 - f)); c.strokeStyle = 'rgba(235,245,250,' + (0.7 * (1 - f)).toFixed(2) + ')'; c.lineWidth = 6 * (1 - f) + 1; c.beginPath(); c.ellipse(px, py, 20 + f * 140, 10 + f * 70, 0, 0, 7); c.stroke(); for (let j = 0; j < 8; j++) { const ang = j * 0.785, rr = 20 + f * 90; c.fillStyle = 'rgba(230,236,240,' + (0.45 * (1 - f)).toFixed(2) + ')'; c.beginPath(); c.arc(px + Math.cos(ang) * rr, py + Math.sin(ang) * rr * 0.5 - f * 30, 10 + f * 22, 0, 7); c.fill(); } }
+      } else if (a.k === 'meteor') {
         if (k < 0.6) { const f = k / 0.6, sx = px + 260 * (1 - f), sy = py - 520 * (1 - f); const g = c.createLinearGradient(sx + 40, sy - 80, sx, sy); g.addColorStop(0, 'rgba(255,160,60,0)'); g.addColorStop(1, 'rgba(255,240,200,.95)'); c.strokeStyle = g; c.lineWidth = 4; c.beginPath(); c.moveTo(sx + 50, sy - 100); c.lineTo(sx, sy); c.stroke(); c.fillStyle = '#fff6d8'; c.beginPath(); c.arc(sx, sy, 4, 0, 7); c.fill(); }
         else { const f = (k - 0.6) / 1.0; c.fillStyle = 'rgba(255,200,120,' + (0.8 * (1 - f)) + ')'; c.beginPath(); c.ellipse(px, py, 10 + f * 50, 5 + f * 25, 0, 0, 7); c.fill(); c.fillStyle = 'rgba(120,95,75,' + (0.6 * (1 - f)) + ')'; for (let j = 0; j < 6; j++) { const ang = j * 1.05; c.beginPath(); c.arc(px + Math.cos(ang) * f * 40, py - Math.abs(Math.sin(ang)) * f * 30, 6 * (1 - f) + 2, 0, 7); c.fill(); } }
       } else if (a.k === 'intercept') {
@@ -4937,8 +5305,43 @@ const R = {
     const r = d.heat || d.brush || d.lance || d.mast || (d.dome ? d.dome.reach + s / 2 : 0);
     if (r) { const cx = g.x + s / 2, cy = g.y + s / 2, rr = r + 0.5; poly(c, [P(cx - rr, cy - rr, z), P(cx + rr, cy - rr, z), P(cx + rr, cy + rr, z), P(cx - rr, cy + rr, z)], null, 'rgba(255,220,120,.6)', 1.2); }
   },
+  // crater lakes: a flat surface at the shoreline height, deep-to-shallow colour, a foam edge and moving glints
+  lakeGeo() {
+    const G = this.G, f = KC.lakeFrac(G), T = G._T; if (this.lakes && this.lakes.f === f) return this.lakes;
+    this.lakes = { f, list: [] }; if (!f) return this.lakes;
+    for (const cr of T.craters) { if (cr.r < 3) continue; const R = cr.r * f, pts = [], N = 40; let zs = 0;
+      for (let k = 0; k < N; k++) { const a = k / N * 6.283, rr = R * (1 + 0.07 * Math.sin(a * 3 + cr.x) + 0.04 * Math.sin(a * 7 + cr.y)), x = cr.x + Math.cos(a) * rr, y = cr.y + Math.sin(a) * rr; pts.push([x, y]); zs += this.zSmooth(x, y); }
+      const zw = zs / N; this.lakes.list.push({ cr, R, zw, pts: pts.map(([x, y]) => [isoX(x, y), isoY(x, y, zw)]), c: [isoX(cr.x, cr.y), isoY(cr.x, cr.y, zw)] }); }
+    return this.lakes;
+  },
+  // crater lakes are baked into the terrain: a flat surface at the shoreline height, deep-to-shallow colour, a foam edge
+  paintLake(c, L) {
+    const [cx, cy] = L.c, rx = L.R * TW * 0.72, g = c.createRadialGradient(cx, cy, 2, cx, cy, rx); g.addColorStop(0, '#1d4f6e'); g.addColorStop(0.75, '#2f7a96'); g.addColorStop(1, '#5fa8b8');
+    c.beginPath(); L.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+    c.strokeStyle = 'rgba(70,52,40,.35)'; c.lineWidth = 4; c.stroke(); c.fillStyle = g; c.fill(); c.strokeStyle = 'rgba(225,240,235,.55)'; c.lineWidth = 1.4; c.stroke();
+    c.strokeStyle = 'rgba(220,240,255,.18)'; c.lineWidth = 1; for (let k = 0; k < 6; k++) { const wy = cy - L.R * TH * 0.45 + k * L.R * TH * 0.18, w = 8 + (k % 3) * 9; c.beginPath(); c.moveTo(cx - w, wy); c.lineTo(cx + w, wy); c.stroke(); }
+  },
+  // per frame only a few moving glints on the water, by day and up close
+  drawLakes(c, t, z) {
+    if (z < 0.6 || this.sunNow < 0.1) return; const LK = this.lakeGeo(); c.strokeStyle = 'rgba(235,248,255,.4)'; c.lineWidth = 1; c.beginPath();
+    for (const L of LK.list) { const [cx, cy] = L.c; for (let k = 0; k < 4; k++) { const ph = (t * 0.05 + k / 4) % 1, wy = cy - L.R * TH * 0.4 + ph * L.R * TH * 0.8, w = (6 + (k % 2) * 6) * Math.sin(ph * Math.PI), x0 = cx + Math.sin(t * 0.7 + k) * L.R * 6; c.moveTo(x0 - w, wy); c.lineTo(x0 + w, wy); } }
+    c.stroke();
+  },
   drawWeather(c, t, env) {
-    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G;
+    const dust = env.dust, n = dust ? 260 : 40, w = this.w, h = this.h, G = this.G, TS = G.terra;
+    // Reshaping Kessa: the sky over the horizon turns from dusty amber to blue as the Veil thickens, and rain or snow falls
+    if (TS && TS.veil > 8) {
+      const k = clamp((TS.veil - 8) / 52, 0, 1), blue = clamp((TS.veil - 25) / 40, 0, 1) * clamp(TS.water / 40, 0.3, 1), day = Math.min(1, env.sun * 3), hh = h * 0.3;
+      const r = lerp(210, 120, blue), gg = lerp(150, 175, blue), b = lerp(100, 230, blue), hz = c.createLinearGradient(0, 0, 0, hh);
+      hz.addColorStop(0, 'rgba(' + (r | 0) + ',' + (gg | 0) + ',' + (b | 0) + ',' + (0.42 * k * (0.35 + 0.65 * day)).toFixed(3) + ')'); hz.addColorStop(1, 'rgba(' + (r | 0) + ',' + (gg | 0) + ',' + (b | 0) + ',0)');
+      c.fillStyle = hz; c.fillRect(0, 0, w, hh);
+    }
+    const sol = KC.solOf(G.tick), hr = KC.hourOf(G.tick), wet = TS && TS.st.rain && !dust && ((sol * 2654435761) >>> 0) % 10 < 3 && hr >= 5 && hr <= 16;
+    if (wet) {
+      const snow = TS.warm < 40; c.fillStyle = 'rgba(40,50,70,.12)'; c.fillRect(0, 0, w, h);
+      if (snow) { c.fillStyle = 'rgba(245,250,255,.85)'; for (let k = 0; k < 120; k++) { const x = ((k * 97.3 + Math.sin(t * 0.6 + k) * 20 + t * 14) % (w + 20)) - 10, y = ((k * 53.7 + t * (30 + k % 5 * 6)) % (h + 20)) - 10; c.fillRect(x, y, 2, 2); } }
+      else { c.strokeStyle = 'rgba(200,220,240,.35)'; c.lineWidth = 1; c.beginPath(); for (let k = 0; k < 140; k++) { const x = ((k * 97.3 + t * 60) % (w + 40)) - 20, y = ((k * 53.7 + t * (420 + k % 7 * 40)) % (h + 40)) - 20; c.moveTo(x, y); c.lineTo(x - 4, y + 14); } c.stroke(); }
+    }
     // auroras on some clear nights, when charged dust lights the thin upper air
     if (env.sun <= 0.001 && !dust && KC.solOf(G.tick) % 3 === 1) {
       c.globalCompositeOperation = 'lighter';
@@ -5118,6 +5521,8 @@ const UI = {
     const G = this.G, list = G._fx || []; G._fx = [];
     for (const e of list) {
       if (e.k === 'log') { const l = e.e; if (l.k === 'bad' || l.k === 'warn' || l.k === 'good') HUD.toast(l.m, l.k, l); }
+      else if (e.k === 'comet') { R.addAnim({ k: 'comet', x: e.x, y: e.y, dur: 3.5 }); Sound.play('meteor'); }
+      else if (e.k === 'terra') { R.lakes = null; }
       else if (e.k === 'meteor') { R.addAnim({ k: 'meteor', x: e.x, y: e.y, dur: 1.7 }); Sound.play('meteor'); }
       else if (e.k === 'intercept') { const l = G.buildings.filter(b => b.t === 'lance').sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0]; if (l) { const z = R.buildingZ(l); R.addAnim({ k: 'intercept', x: e.x, y: e.y, lx: isoX(l.x + 0.5, l.y + 0.5), ly: isoY(l.x + 0.5, l.y + 0.5, z + 14), dur: 1 }); } }
       else if (e.k === 'built') { const b = KC.bById(G, e.id); if (b && !b.mod) R.addAnim({ k: 'built', x: b.x + b.s / 2 - 0.5, y: b.y + b.s / 2 - 0.5, dur: 1.2 }); Sound.play('built'); }
@@ -5751,6 +6156,33 @@ Object.assign(Panels, {
       return out;
     } });
   },
+  // the Colony Assembly: government, seats, mood, laws in force, and laws to propose with a forecast of the vote
+  assemblyBody() {
+    const G = UI.G, A = G.assembly, out = [sec('Colony Assembly')];
+    if (!A.gov) {
+      out.push(h('p', { class: 'small' }, 'Choose how the 15 seats are shared. The choice is final; with no choice the Assembly becomes a Commonwealth after 5 sols.'));
+      for (const [k, gv] of Object.entries(KC.GOVS)) out.push(h('div', { class: 'card', style: 'margin-top:6px' }, h('h5', null, gv.name), h('p', { class: 'small' }, gv.desc), h('button', { class: 'pri', 'data-gov': k, onclick: () => { KC.chooseGov(G, k); Sound.play('good'); Sheet.render(true); } }, 'Adopt')));
+      return out;
+    }
+    const st = KC.seats(G), bk = KC.backing(G), bar = h('div', { class: 'seatbar' });
+    for (const k in FACTIONS) bar.appendChild(h('i', { style: 'flex:' + st[k] + ';background:' + FACTIONS[k].color, title: FACTIONS[k].name }, String(st[k])));
+    out.push(h('div', { class: 'card' }, h('div', { class: 'row small' }, h('b', { class: 'grow' }, KC.GOVS[A.gov].name), h('span', { class: bk >= KC.ASM.backing ? 'goodc' : 'badc' }, 'mood ' + bk)), bar,
+      h('p', { class: 'sub' }, 'A declaration of Independence needs a mood of ' + KC.ASM.backing + ' or more. ' + (G.tick < A.next ? 'Next sitting in ' + Math.ceil((A.next - G.tick) / 24) + ' sols.' : 'The Assembly is sitting: propose a law.'))));
+    const inForce = Object.keys(A.laws);
+    out.push(h('h5', { style: 'margin:10px 0 4px' }, 'In force (' + inForce.length + ' of ' + KC.ASM.maxLaws + ')'));
+    if (!inForce.length) out.push(h('p', { class: 'small mut' }, 'No laws yet.'));
+    for (const l of inForce) { const c = KC.lawCheck(G, l, true); out.push(h('div', { class: 'row card', style: 'margin-top:6px' }, h('div', { class: 'grow' }, h('b', { class: 'small' }, KC.LAWS[l].name), h('div', { class: 'sub' }, KC.LAWS[l].text)), h('button', { 'data-repeal': l, disabled: !c.ok, onclick: () => { const r = KC.propose(G, l, true); HUD.toast(r.err || (r.pass ? 'Repealed.' : 'The repeal failed.'), r.pass ? 'good' : 'warn'); Sheet.render(true); } }, 'Repeal'))); }
+    for (const [f, fname] of Object.entries(KC.LAW_FIELDS)) {
+      out.push(h('h5', { style: 'margin:10px 0 4px' }, fname));
+      for (const [l, L] of Object.entries(KC.LAWS)) {
+        if (L.f !== f || A.laws[l]) continue;
+        const c = KC.lawCheck(G, l), v = KC.countVote(G, l), chips = Object.keys(FACTIONS).filter(k => L.st[k]).map(k => h('span', { class: 'chip', style: 'border-color:' + FACTIONS[k].color + ';color:' + FACTIONS[k].color }, (L.st[k] > 0 ? '+ ' : '− ') + FACTIONS[k].name.replace('The ', '')));
+        out.push(h('div', { class: 'card law', style: 'margin-top:6px' }, h('div', { class: 'row' }, h('b', { class: 'grow small' }, L.name), h('span', { class: 'sub ' + (v.pass ? 'goodc' : 'badc') }, v.yes + '/15 yes')), h('div', { class: 'sub' }, L.text), h('div', { class: 'row wrap', style: 'gap:4px;margin:4px 0' }, ...chips),
+          h('div', { class: 'row' }, h('span', { class: 'grow sub' }, c.ok ? (v.pass ? 'Likely to pass.' : 'Likely to fail.') : c.why), h('button', { class: 'pri', 'data-law': l, disabled: !c.ok, onclick: () => { const r = KC.propose(G, l); if (r.err) HUD.toast(r.err, 'warn'); else { Sound.play(r.pass ? 'good' : 'error'); HUD.toast(r.pass ? L.name + ' passed (' + r.vote.yes + '/15).' : L.name + ' was voted down (' + r.vote.yes + '/15).', r.pass ? 'good' : 'warn'); } Sheet.render(true); } }, 'Propose'))));
+      }
+    }
+    return out;
+  },
   councilBody() {
     const G = UI.G, C = G.council, out = [];
     if (!C) return [emptyState('people', 'No council yet', 'It forms at 25 colonists.'), h('p', { class: 'mut' }, 'At 25 colonists, people form a Colony Council: three factions that speak for their members, make demands with deadlines, and reward or punish the colony for how it answers. You have ' + G.colonists.length + '.')];
@@ -5766,6 +6198,8 @@ Object.assign(Panels, {
           h('button', { class: 'danger', 'data-refuse': k, onclick: () => Modal.confirm('Refuse ' + F.name + '?', 'Support falls by 8 now instead of 14 at the deadline.', () => { KC.refuseDemand(G, k); Sheet.render(); }, 'Refuse') }, 'Refuse'))) : h('p', { class: 'small mut' }, 'No demand right now.')));
     }
     out.push(kv('Demands met / failed', C.won + ' / ' + C.lost));
+    if (G.assembly) out.push(...Panels.assemblyBody());
+    else out.push(h('p', { class: 'small mut', style: 'margin-top:10px' }, 'At ' + KC.ASM.pop + ' colonists the council becomes the Colony Assembly: 15 seats, a form of government, and laws.'));
     return out;
   },
   peopleAct(a) {
@@ -5927,9 +6361,40 @@ Object.assign(Panels, {
       return list;
     } });
   },
+  // Reshaping Kessa: the globe, four gauges, the stages, what feeds each gauge, and comet strikes
+  reshapeBody() {
+    const G = UI.G, T = KC.terraOf(G), R0 = KC.terraRates(G), out = [];
+    const pct = Math.round(KC.terraProgress(G) * 100), done = KC.TERRA_STAGES.filter(S => T.st[S.k]).length;
+    out.push(h('div', { class: 'card globe-card' }, planetCanvas(G, 300, 170), h('h5', null, 'Reshaping Kessa · ' + pct + '%'), h('p', { class: 'small mut' }, done + ' of ' + KC.TERRA_STAGES.length + ' stages reached. Raise the four gauges with Haze Forges, Lichen Spreaders, the Seed Ark, the Lodestone Ring and comet strikes. The map changes as they climb.')));
+    const gauges = h('div', { class: 'card', style: 'margin-top:8px' });
+    for (const [k, D] of Object.entries(KC.TERRA)) {
+      const v = T[k], rt = R0.r[k];
+      gauges.appendChild(h('div', { class: 'gauge' }, h('div', { class: 'row small' }, h('span', { class: 'dot', style: 'background:' + D.color }), h('b', { class: 'grow' }, D.name), h('span', null, v.toFixed(1) + '%'), h('span', { class: 'sub', style: 'min-width:64px;text-align:right' }, (rt >= 0 ? '+' : '') + rt.toFixed(2) + '/sol')), h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.min(100, v) + '%;background:' + D.color })), h('div', { class: 'sub' }, D.desc)));
+    }
+    out.push(gauges);
+    out.push(sec('Stages'));
+    const list = h('div', { class: 'list' });
+    for (const S of KC.TERRA_STAGES) {
+      const need = Object.entries(S.need).map(([k, v]) => KC.TERRA[k].name + ' ' + Math.floor(T[k]) + '/' + v).join(' · ');
+      list.appendChild(h('div', { class: 'it' + (T.st[S.k] ? '' : ' mutd') }, h('div', { class: 'stg' + (T.st[S.k] ? ' on' : '') }, T.st[S.k] ? '✓' : ''), h('div', { class: 'grow' }, h('div', { class: 'small' }, h('b', null, S.name), T.st[S.k] ? ' · sol ' + T.st[S.k] : ''), h('div', { class: 'sub' }, T.st[S.k] ? S.text : need))));
+    }
+    out.push(list);
+    out.push(sec('Sources, per sol'));
+    if (!R0.by.length) out.push(emptyState('hazeforge', 'Nothing is reshaping Kessa yet', 'Research Haze Forging (Engineering) and Pioneer Lichens (Biotech), then build them. The Orbital Mirror adds Warmth too.'));
+    else for (const s2 of R0.by) out.push(kv((BUILDINGS[s2.t] ? BUILDINGS[s2.t].name + ' ×' + s2.n : s2.name), Object.entries(s2.add).map(([k, v]) => KC.TERRA[k].name + ' +' + v.toFixed(2)).join(', ')));
+    const lossT = Object.entries(R0.loss).filter(([, v]) => v > 0.001).map(([k, v]) => KC.TERRA[k].name + ' −' + v.toFixed(2)).join(', ');
+    if (lossT) out.push(kv('Losses', lossT, 'warnc'));
+    const ck = KC.cometCheck(G), cm = T.comets[0];
+    out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('meteor', 'res-water', 'Ice comet strike'), h('p', { class: 'small' }, 'A tug nudges a small ice comet onto Kessa, far from the colony: Water +' + KC.COMET.give.water + ', Veil +' + KC.COMET.give.veil + ', Warmth +' + KC.COMET.give.warm + '. Costs ' + KC.cometPrice(G) + ' funding and ' + KC.COMET.fuel + ' fuel; impact after ' + KC.COMET.sols + ' sols.'),
+      cm ? h('p', { class: 'small warnc' }, 'A comet is on its way: impact in ' + Math.max(0, Math.ceil((cm.at - G.tick) / 24)) + ' sols.') : null,
+      h('div', { class: 'row' }, h('span', { class: 'grow small mut' }, ck.ok ? 'Ready.' : ck.why), h('button', { class: 'pri', 'data-comet': '1', disabled: !ck.ok, onclick: () => { const r = KC.orderComet(G); if (r.err) { HUD.toast(r.err, 'warn'); return; } Sound.play('rocket'); HUD.toast('Comet ordered. Impact in ' + KC.COMET.sols + ' sols.', 'good'); Sheet.render(true); } }, 'Order a comet'))));
+    return out;
+  },
   goals() {
     const G = UI.G;
-    Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, body: () => {
+    this._gt = this._gt || 'goals';
+    Sheet.show({ tab: 'goals', title: 'Goals', icon: 'goals', iconCls: 'res-funds', tall: true, live: true, tabs: [['goals', 'Goals'], ['reshape', 'Reshaping']], tabK: this._gt, body: k => {
+      this._gt = k; if (k === 'reshape') return Panels.reshapeBody();
       const out = [];
       out.push(h('div', { class: 'card' }, h5t('star', 'res-funds', 'Independence'), h('p', null, 'Become a self-governing world: meet all four at once.'), ...KC.independence(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.floor(c.have) + ' / ' + c.need)), barEl(c.have / c.need, c.ok ? '' : 'warn')))));
       if (G.ms.independence) out.push(h('div', { class: 'card', style: 'margin-top:8px' }, h5t('star', 'res-oxygen', 'Free Kessa'), h('p', null, 'Kessa is independent. Keep building: these goals each add 250 to your score.'), ...KC.freeGoals(G).map(c => h('div', null, h('div', { class: 'row small' }, h('span', { class: 'grow' }, (c.ok ? '✓ ' : '○ ') + c.name), h('span', null, Math.min(c.have, c.need) + ' / ' + c.need)), barEl(Math.min(1, c.have / c.need), c.ok ? '' : 'warn')))));
