@@ -43,11 +43,25 @@
 //   deleteColony(colonyId)
 //   storageMode()                  -> 'idb' | 'local' | 'none'  (async; 'local' raises the alert 'limited')
 //   onStorageAlert(fn)             fn('limited' | 'quota' | 'missing'); STORAGE_ALERTS has the player text
+// Stage Z1 step E8 (EMBERCROWN-FORTRESS.md 5.1, 5.5): EC3 blobs (worlds with depth) and the pristine store.
+//   writePristine(colonyId, p)      -> { id, size }   the store `pristine` (IndexedDB v2; ec2.p.<id> in the
+//                                                       localStorage fallback): written, read back, CRC-checked
+//   readPristineBytes(colonyId)     -> bytes | null
+//   ensurePristineStored(s)         -> boolean        before a deep colony's first EC3 save (once per page)
+//   pristineResolver(colonyId)      -> async ({ header, embedded, seed }) -> pristine   for colonysave.loadBlob:
+//                                       the store, then the blob's own embedded copy, then the dawn blob's,
+//                                       then (native worlds) regeneration with all 13 CRCs matching; a record
+//                                       that is missing or damaged is rewritten from the copy that worked;
+//                                       when none works: MISSING_TEXT, and nothing is overwritten
+//   exportBlob embeds the pristine record into an EC3 slot that lacks it; importBlob stores an EC3 file's
+//   embedded record (and refuses an EC3 file without one when no matching record is stored); deleteColony
+//   deletes the record; quickSave embeds it while the store has not confirmed it.
 // Real-time stamps (savedAt, lastPlayed) are fine here: saving never changes sim state (11.4).
 
 import { openDb, idbAvailable, idbGet, idbKeys, idbPutMany, idbDelete } from './idb.js';
-import { readHeader, blobToText, textToBlob, encodeBlobSync, decodeBlob, unframePayload, crc32, COMP, HEADER_BYTES } from './codec.js';
-import { snapshot } from './colonysave.js';
+import { readAnyHeader as readHeader, headerBytesOf, blobToText, textToBlob, encodeBlobSync, crc32, COMP, toBase64, fromBase64, blobKind, decodeAny, unframePayload3, framePayload3, encodeBlob, FLAG_PRISTINE, LAYERS3 } from './codec.js';
+import { snapshot, peekEntities, isDeep } from './colonysave.js';
+import { encodePristine, decodePristine, pristineMatches, pristineOf, regeneratePristine, readPristineHeader, MISSING_TEXT } from './pristine.js';
 import { STATE_VERSION, normDifficulty } from '../core/schema.js';
 import { dayOf, yearOf, dayOfSeason, dateText } from '../core/time.js';
 import { normalizeSettings, checkSettingsPatch } from './settings.js';
@@ -57,6 +71,7 @@ export const KEY_INDEX = 'ec2.index';
 export const KEY_SETTINGS = 'ec2.settings';
 export const KEY_QUICK = 'ec2.quick';
 export const fallbackKey = (id, which) => `ec2.c.${id}.${which}`;
+export const pristineKey = (id) => `ec2.p.${id}`;
 export const STORAGE_ALERTS = Object.freeze({
   limited: 'Storage limited: export to keep your hold',
   quota: 'Storage nearly full: back up or delete a colony',
@@ -70,7 +85,7 @@ let idbState = null;   // null untested, true usable, false unusable (open faile
 export function setBackends({ localStorage: ls, clock, resetIdb } = {}) {
   if (ls !== undefined) local = ls;
   if (clock) now = clock;
-  if (resetIdb || ls !== undefined) idbState = null;
+  if (resetIdb || ls !== undefined) { idbState = null; storedPristine.clear(); }
 }
 const ls = () => { if (local) return local; try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch (_) { return null; } };
 
@@ -213,7 +228,7 @@ async function putSlot(colonyId, which, bytes, header, meta) {
   if (await useIdb()) {
     try { await idbPutMany([['slots', `${colonyId}:${which}`, rec], ['meta', colonyId, meta]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
     const back = await idbGet('slots', `${colonyId}:${which}`);
-    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(HEADER_BYTES)) !== header.crc) throw new Error('The save could not be verified.');
+    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(headerBytesOf(bytes))) !== header.crc) throw new Error('The save could not be verified.');
   } else {
     const l = ls(); if (!l) throw new Error('This browser has no storage for saves.');
     await storageMode();
@@ -251,7 +266,7 @@ export function writeDawn(colonyId, bytes) {
     if (prev) { meta = { ...prev, id: colonyId, dawnTick: header.tick, dawnDay: dayOf(header.tick), dawnSavedAt: rec.savedAt }; delete meta.missing; puts.push(['meta', colonyId, meta]); }
     try { await idbPutMany(puts); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
     const back = await idbGet('slots', `${colonyId}:dawn`);
-    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(HEADER_BYTES)) !== header.crc) throw new Error('The dawn backup could not be verified.');
+    if (!back || !back.bytes || back.bytes.length !== bytes.length || crc32(back.bytes.subarray(headerBytesOf(bytes))) !== header.crc) throw new Error('The dawn backup could not be verified.');
     if (meta) upsertCard(meta);
     return { which: 'dawn', tick: header.tick, size: bytes.length };
   });
@@ -266,7 +281,9 @@ export async function readDawn(colonyId) {
 export function quickSave(s) {
   const l = ls(); if (!l) return false;
   try {
-    const { header, payload } = snapshot(s);
+    // a deep colony whose world record the store has not confirmed yet carries it (founding, then a swipe-kill)
+    const embed = isDeep(s) && !pristineStored(s.id, pristineOf(s));
+    const { header, payload } = snapshot(s, { embed });
     const text = blobToText(encodeBlobSync(header, payload, COMP.RLE));
     l.setItem(KEY_QUICK, JSON.stringify({ colonyId: s.id, tick: s.tick, savedAt: now(), text }));
     return true;
@@ -303,19 +320,20 @@ export async function exportBlob(colonyId, which) {
   const slot = which === 'dawn' ? await readDawn(colonyId) : await readSlot(colonyId, which);
   if (!slot) throw new Error('No save found for this colony.');
   const card = cardById(colonyId) || { name: 'hold' };
-  return { bytes: slot.bytes, text: blobToText(slot.bytes), filename: `${safeName(card.name)}-y${yearOf(slot.tick) + 1}d${dayOfSeason(slot.tick) + 1}.ecsave` };
+  const bytes = await withPristine(colonyId, slot.bytes);
+  return { bytes, text: blobToText(bytes), filename: `${safeName(card.name)}-y${yearOf(slot.tick) + 1}d${dayOfSeason(slot.tick) + 1}.ecsave` };
 }
 
 /** Validate a blob (or its text form) and read its card fields without building a state. */
 export async function peekBlob(input) {
   const bytes = typeof input === 'string' ? textToBlob(input) : input;
-  const { header, payload } = await decodeBlob(bytes);
+  readHeader(bytes);   // magic, version and CRC, with their player-readable reasons
+  let header, ent, embedded;
+  try { ({ header, ent, embedded } = await peekEntities(bytes)); } catch (e) { throw new Error('This save is damaged (its contents could not be read).'); }
   if (header.stateVersion > STATE_VERSION) throw new Error('This colony was saved by a newer version of the game.');
-  let ent;
-  try { ent = JSON.parse(unframePayload(payload).entities); } catch (_) { throw new Error('This save is damaged (its contents could not be read).'); }
   const m = ent.meta || {}, c = ent.colony || {};
   const fallen = c.fallen === true;
-  return { bytes, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0,
+  return { bytes, header, embedded, d: header.d || 1, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0,
     stateVersion: header.stateVersion, difficulty: normDifficulty(c.difficulty, c.iron), tier: c.tier | 0,
     fallen, fallenAt: fallen && Number.isInteger(c.fallenAt) ? c.fallenAt : null };
 }
@@ -328,6 +346,13 @@ export async function importBlob(input, card = {}) {
   let id = card.id || p.id || 'imp' + crc32(p.bytes).toString(36);
   if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) id = 'imp' + crc32(p.bytes).toString(36);
   if (taken(id)) { const base = id.slice(0, 32); let k = 2; while (taken(`${base}-${k}`)) k++; id = `${base}-${k}`; }
+  if (p.header.format === 3) {
+    // an EC3 file carries its world record (5.1): it is stored first, checked against the file's header
+    let pr = null;
+    if (p.embedded) { try { pr = await decodePristine(p.embedded); } catch (_) { pr = null; } }
+    if (!pr || !pristineMatches(pr, p.header)) throw new Error('This save has no usable world record. Export it again from the game to include it.');
+    await writePristine(id, pr);
+  }
   await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, difficulty: p.difficulty, fallen: p.fallen, fallenAt: p.fallenAt, ...card, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
   return id;
 }
@@ -360,10 +385,11 @@ export function restoreCopy(colonyId, bytes, card = {}) {
 }
 
 export async function deleteColony(colonyId) {
-  if (await useIdb()) { for (const w of ['a', 'b', 'dawn']) await idbDelete('slots', `${colonyId}:${w}`); await idbDelete('meta', colonyId); }
+  if (await useIdb()) { for (const w of ['a', 'b', 'dawn']) await idbDelete('slots', `${colonyId}:${w}`); await idbDelete('meta', colonyId); await idbDelete('pristine', colonyId); }
+  storedPristine.delete(colonyId);
   const l = ls();
   if (l) {
-    l.removeItem(fallbackKey(colonyId, 'a')); l.removeItem(fallbackKey(colonyId, 'b'));
+    l.removeItem(fallbackKey(colonyId, 'a')); l.removeItem(fallbackKey(colonyId, 'b')); l.removeItem(pristineKey(colonyId));
     const q = peekQuick(); if (q && q.colonyId === colonyId) l.removeItem(KEY_QUICK);
   }
   writeIndex(readIndex().filter((c) => c.id !== colonyId));
@@ -451,3 +477,88 @@ export async function persistState() {
   } catch (_) { return (persistAnswer = 'unknown'); }
 }
 export const lastPersistState = () => persistAnswer;
+
+// ---- The pristine store (EMBERCROWN-FORTRESS.md 5.1, 5.5; Stage Z1 step E8) --------------------------------
+const storedPristine = new Map();   // colonyId -> pristineId the store holds, confirmed this page (read back)
+const pristineStored = (colonyId, p) => !!p && storedPristine.get(colonyId) === p.id;
+
+/** Write a colony's pristine record, read it back and check every CRC. Throws when it cannot be verified. */
+export async function writePristine(colonyId, p) {
+  const bytes = await encodePristine(p);
+  if (await useIdb()) {
+    try { await idbPutMany([['pristine', colonyId, { bytes, id: p.id, savedAt: now() }]]); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
+  } else {
+    const l = ls(); if (!l) throw new Error('This browser has no storage for saves.');
+    try { l.setItem(pristineKey(colonyId), toBase64(bytes)); } catch (e) { if (isQuota(e)) alert('quota'); throw e; }
+  }
+  const back = await readPristineBytes(colonyId);
+  let ok = false;
+  try { ok = !!back && (await decodePristine(back)).id === p.id; } catch (_) { ok = false; }
+  if (!ok) throw new Error("The hold's world record could not be verified.");
+  storedPristine.set(colonyId, p.id);
+  return { id: p.id, size: bytes.length };
+}
+/** The stored record bytes of a colony, or null. */
+export async function readPristineBytes(colonyId) {
+  if (await useIdb()) {
+    try { const v = await idbGet('pristine', colonyId); return v && v.bytes ? (v.bytes instanceof Uint8Array ? v.bytes : new Uint8Array(v.bytes)) : null; } catch (_) { return null; }
+  }
+  const l = ls(); const t = l && l.getItem(pristineKey(colonyId));
+  if (!t) return null;
+  try { return fromBase64(t); } catch (_) { return null; }
+}
+/** Before a deep colony's EC3 save: its pristine world is in the store (written once, then remembered). */
+export async function ensurePristineStored(s) {
+  if (!isDeep(s)) return false;
+  const p = pristineOf(s);
+  if (!p) throw new Error('This hold has no world record to save against.');
+  if (pristineStored(s.id, p)) return true;
+  const have = await readPristineBytes(s.id);
+  if (have) { try { if (readPristineHeader(have).id === p.id && (await decodePristine(have)).id === p.id) { storedPristine.set(s.id, p.id); return true; } } catch (_) { /* rewrite below */ } }
+  await writePristine(s.id, p);
+  return true;
+}
+
+/** The embedded record of an EC3 blob (null when it has none). */
+async function embeddedOf(bytes) {
+  if (blobKind(bytes) !== 'EC3') return null;
+  const { header, payload } = await decodeAny(bytes);
+  if (!(header.flags & FLAG_PRISTINE)) return null;
+  return unframePayload3(payload, true).pristine;
+}
+/** The fallback order of 5.1, for colonysave.loadBlob(bytes, { pristine: pristineResolver(id) }). */
+export function pristineResolver(colonyId) {
+  return async ({ header, embedded, seed }) => {
+    let storeState = 'missing';
+    const stored = await readPristineBytes(colonyId);
+    if (stored) {
+      try {
+        const p = await decodePristine(stored);
+        if (pristineMatches(p, header)) { storedPristine.set(colonyId, p.id); return p; }
+        storeState = 'other';   // a valid record of another world state: never overwritten from an older copy
+      } catch (_) { storeState = 'damaged'; }
+    }
+    const tryBytes = async (b) => { if (!b) return null; try { const p = await decodePristine(b); return pristineMatches(p, header) ? p : null; } catch (_) { return null; } };
+    let p = await tryBytes(embedded);
+    if (!p) { const dawn = await readDawn(colonyId).catch(() => null); if (dawn) p = await tryBytes(await embeddedOf(dawn.bytes).catch(() => null)); }
+    if (!p) p = regeneratePristine(header, seed);
+    if (!p) throw new Error(MISSING_TEXT);
+    if (storeState !== 'other') { try { await writePristine(colonyId, p); } catch (_) { /* the colony still loads; the next save retries */ } }
+    return p;
+  };
+}
+
+/** An EC3 blob with its pristine record embedded (exports, 5.1): unchanged when it has one or is EC2. */
+async function withPristine(colonyId, bytes) {
+  if (blobKind(bytes) !== 'EC3') return bytes;
+  const { header, payload } = await decodeAny(bytes);
+  if (header.flags & FLAG_PRISTINE) return bytes;
+  const rec = await readPristineBytes(colonyId);
+  let ok = false;
+  try { ok = !!rec && pristineMatches(await decodePristine(rec), header); } catch (_) { ok = false; }
+  if (!ok) { const dawn = await readDawn(colonyId).catch(() => null); if (dawn && dawn.tick === header.tick) return dawn.bytes; throw new Error(MISSING_TEXT); }
+  const sec = unframePayload3(payload, false);
+  const ordered = LAYERS3.map((l) => ({ id: l.id, enc: sec.layers[l.name].enc, bytes: sec.layers[l.name].bytes }));
+  const body = framePayload3(rec, ordered, sec.entities, sec.runtimeBytes);
+  return encodeBlob({ ...header, flags: header.flags | FLAG_PRISTINE }, body, header.comp);
+}

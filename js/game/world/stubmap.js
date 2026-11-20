@@ -6,8 +6,13 @@
 //            cavern; a river with three fords; a lake; marsh; three walled rooms with doors
 //   'maze'   solid rock with a perfect maze of 1-tile tunnels (the worst case for A*; the 1b
 //            tunnel-maze bench decides HPA-lite, 12.3)
+//   'flat3d'  (D >= 2; Stage Z1 E2) every level open rough floor with seeded rock pillars and walls and a
+//            few open-air holes; levels joined by seeded stair columns spanning 2-3 levels (STAIR_U at the
+//            bottom, STAIR_UD between, STAIR_D on top) and ramps (RAMP leaning on rock, RAMP_TOP above)
+//   'tower3d' (D >= 2) solid rock with one room per level; each level joins the next only at one corner,
+//            alternating sides, by a stair pair or (every third level) a ramp: the long-detour worst case
 
-import { W, H, N, TER, ROOF, idx } from '../core/grid.js';
+import { W, H, N, D, PLANE, TER, ROOF, idx } from '../core/grid.js';
 import { rint, rnd } from '../core/rand.js';
 import { newBuilding } from '../core/schema.js';
 import { depthRebuild } from './pass.js';
@@ -41,6 +46,8 @@ export function buildStubMap(s, kind = 'bench', seed = 1) {
   L.terrain.fill(TER.GRASS); L.roof.fill(0); L.mat.fill(0); L.ore.fill(0);
   if (kind === 'flat') return s;
   if (kind === 'maze') return maze(s, R);
+  if (kind === 'flat3d') return flat3d(s, R);
+  if (kind === 'tower3d') return tower3d(s, R);
 
   // massif on the east
   const face = new Int32Array(H);
@@ -140,5 +147,66 @@ function maze(s, R) {
   }
   // roofs: the maze is all under rock; depth counts from the open surface (none here: cap)
   for (let i = 0; i < N; i++) { L.roof[i] = ROOF.MOUNTAIN; L.mat[i] = MAT.GRANITE; }
+  return s;
+}
+
+// ---- 3D test maps (Stage Z1 E2) -------------------------------------------------------------------------
+const isVert = (t) => t >= TER.STAIR_U && t <= TER.RAMP_TOP;
+function need3d(kind) { if (D < 2) throw new Error(`stubmap: ${kind} needs a map with D >= 2 (createColony { d })`); }
+
+function flat3d(s, R) {
+  need3d('flat3d');
+  const L = s.L, r = (a, b) => rint(R, 'main', a, b);
+  L.terrain.fill(TER.ROUGH);
+  for (let i = 0; i < N; i++) L.mat[i] = MAT.GRANITE;
+  // pillars and short walls of rock, and a few open-air holes, per level
+  for (let z = 0; z < D; z++) {
+    const walls = Math.floor(PLANE / 40);
+    for (let k = 0; k < walls; k++) {
+      const x = r(1, W - 2), y = r(1, H - 2), len = r(1, 6), horiz = r(0, 1) === 1;
+      for (let t = 0; t < len; t++) {
+        const xx = horiz ? x + t : x, yy = horiz ? y : y + t;
+        if (xx < W && yy < H) L.terrain[idx(xx, yy, z)] = TER.ROCK;
+      }
+    }
+    if (z > 0) for (let k = 0; k < Math.floor(PLANE / 400); k++) L.terrain[idx(r(1, W - 2), r(1, H - 2), z)] = TER.AIR;
+  }
+  // stair columns spanning 2-3 levels
+  const cols = Math.max(4, Math.floor(PLANE / 256));
+  for (let z0 = 0; z0 < D - 1; z0++) {
+    for (let k = 0; k < cols; k++) {
+      const span = Math.min(D - z0, r(2, 3)), x = r(1, W - 2), y = r(1, H - 2);
+      let free = true;
+      for (let z = z0; z < z0 + span; z++) if (isVert(L.terrain[idx(x, y, z)])) free = false;
+      if (!free) continue;
+      for (let z = z0; z < z0 + span; z++) L.terrain[idx(x, y, z)] = z === z0 ? TER.STAIR_U : z === z0 + span - 1 ? TER.STAIR_D : TER.STAIR_UD;
+    }
+    // ramps: RAMP at z0 leaning on a rock voxel to its west, RAMP_TOP above
+    for (let k = 0; k < (cols >> 1); k++) {
+      const x = r(2, W - 2), y = r(1, H - 2), a = idx(x, y, z0), b = a + PLANE;
+      if (isVert(L.terrain[a]) || isVert(L.terrain[b]) || isVert(L.terrain[a - 1])) continue;
+      L.terrain[a - 1] = TER.ROCK; L.terrain[a] = TER.RAMP; L.terrain[b] = TER.RAMP_TOP;
+    }
+  }
+  return s;
+}
+
+function tower3d(s, R) {
+  need3d('tower3d');
+  const L = s.L, r = (a, b) => rint(R, 'main', a, b);
+  L.terrain.fill(TER.ROCK);
+  for (let i = 0; i < N; i++) L.mat[i] = MAT.GRANITE;
+  const x0 = 2, y0 = 2, x1 = Math.min(W - 3, 21), y1 = Math.min(H - 3, 21);
+  for (let z = 0; z < D; z++) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) L.terrain[idx(x, y, z)] = TER.ROUGH;
+    // a seeded inner wall with one gap, so each level needs a detour
+    const wx = r(x0 + 4, x1 - 4), gap = r(y0, y1);
+    for (let y = y0; y <= y1; y++) if (y !== gap) L.terrain[idx(wx, y, z)] = TER.ROCK;
+  }
+  for (let z = 0; z < D - 1; z++) {
+    const east = z % 2 === 0, x = east ? x1 : x0, y = east ? y1 : y0, a = idx(x, y, z), b = a + PLANE;
+    if (z % 3 === 2) { L.terrain[a] = TER.RAMP; L.terrain[b] = TER.RAMP_TOP; }   // leans on the rock outside the room
+    else { L.terrain[a] = L.terrain[a] === TER.STAIR_D ? TER.STAIR_UD : TER.STAIR_U; L.terrain[b] = TER.STAIR_D; }
+  }
   return s;
 }

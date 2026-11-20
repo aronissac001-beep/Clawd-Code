@@ -23,16 +23,22 @@
 //
 // Flow fields live elsewhere: H owns them in js/game/threat/flow.js.
 // Index types (Stage Z1 E1): every tile is a u32 voxel index (grid.js idx with the mover's z); paths are
-// Uint32Array. The search itself is still planar (one level); 3D A* is E2.
+// Uint32Array.
+// 3D (Stage Z1 E2, EMBERCROWN-FORTRESS.md 2.3): plain 3D A*. Planar moves stay 8-way on one level; a
+// vertical move goes from an up voxel to the down voxel directly above it (or back; vertical.js upOK /
+// downOK) and costs PATH.VERT x walk / 10 (200 on normal ground). The heuristic is octile + VERT x |dz|
+// (admissible and consistent). The heap grows on demand (no 8N Float64 heap at D = 20). At D > 1 the
+// region pre-check is skipped until E3 gives the regions their vertical links: every search runs.
+// A D = 1 map searches, costs and tie-breaks exactly as Stage 2.9.
 
-import { W, H, N, PLANE, TILE, idx, DX8, DY8 } from '../core/grid.js';
+import { W, H, N, D, PLANE, TILE, idx, DX8, DY8, TER_UP, TER_DOWN } from '../core/grid.js';
 import { newPath } from '../core/schema.js';
 import { stepCost, passW, sideOf, SIDE } from '../world/pass.js';
 import { compOf } from '../world/regions.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 
 /** Tuning (moves to balance.js PATH, owner G). */
-export const PATH = Object.freeze({ BUDGET: 8000 });
+export const PATH = Object.freeze({ BUDGET: 8000, VERT: 200 });
 /** Goal modes: stand ON the tile, on a 4-neighbour of it (mine, build), or within 1 tile (8-way). */
 export const GOAL = Object.freeze({ TILE: 0, ADJ4: 1, ADJ8: 2 });
 /** Per-search expansion cap: half the tiles (8,192 at 128 x 128). */
@@ -42,27 +48,37 @@ export const KINDS = Object.freeze({ c: 'col', a: 'anim', f: 'foes' });
 
 // ---- Buffers (lazy, per map size) ------------------------------------------------------------------
 let bufN = 0, g = null, came = null, open = null, closed = null, hk = null, hv = null, gen = 0;
+const HEAP0 = 4096;
 function buffers() {
   if (bufN === N) return;
   bufN = N;
   g = new Int32Array(N); came = new Int32Array(N);
   open = new Uint32Array(N); closed = new Uint32Array(N);
-  hk = new Float64Array(8 * N + 16); hv = new Int32Array(8 * N + 16); // <= 1 + 8 pushes per closed tile
+  hk = new Float64Array(HEAP0); hv = new Int32Array(HEAP0); // grown by doubling (the order is size-independent)
   gen = 0;
 }
+function growHeap() {
+  const a = new Float64Array(hk.length * 2); a.set(hk); hk = a;
+  const b = new Int32Array(hv.length * 2); b.set(hv); hv = b;
+}
 
-const KEY_SHIFT = 1048576; // 2^20 > the largest heuristic (100 x 256 + 40 x 256)
+const KEY_SHIFT = 1048576; // 2^20 > the largest heuristic (100 x 256 + 40 x 256 + 200 x 32)
 const oct100 = (dx, dy) => (dx > dy ? 100 * dx + 40 * dy : 100 * dy + 40 * dx);
+const zOf = (i) => (i / PLANE) | 0;
+const xOf = (i) => i % W;
+const yOf = (i) => ((i % PLANE) / W) | 0;
 
 function goalTest(i, goal, mode) {
   if (i === goal) return true;
   if (mode === GOAL.TILE) return false;
-  const dx = Math.abs((i % W) - (goal % W)), dy = Math.abs(((i / W) | 0) - ((goal / W) | 0));
+  if (D > 1 && zOf(i) !== zOf(goal)) return false;
+  const dx = Math.abs(xOf(i) - xOf(goal)), dy = Math.abs(yOf(i) - yOf(goal));
   return mode === GOAL.ADJ4 ? dx + dy === 1 : dx <= 1 && dy <= 1;
 }
 
 /** Region pre-check: can any goal tile be reached from `from` (per the end-of-tick labels)? */
 export function goalReachable(s, from, goal, mode = GOAL.TILE, side = 0) {
+  if (D > 1) return true;          // planar labels cannot see stairs yet (E3 adds the vertical links)
   side = sideOf(side);
   const walk = s.rt.walkCost;
   const starts = [];
@@ -95,12 +111,13 @@ export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap =
   if (!opts.noRegionCheck && !goalReachable(s, from, goal, mode, side)) return { status: 'unreachable', tiles: null, expanded: 0, cost: 0 };
   buffers();
   if (++gen >= 0xffffffff) { open.fill(0); closed.fill(0); gen = 1; }
-  const walk = s.rt.walkCost;
-  const gx = goal % W, gy = (goal / W) | 0;
+  const walk = s.rt.walkCost, ter = s.L.terrain, VERT20 = PATH.VERT / 10, deep = D > 1;
+  const gx = xOf(goal), gy = yOf(goal), gz = zOf(goal);
   const slack = mode === GOAL.TILE ? 0 : mode === GOAL.ADJ4 ? 100 : 140;
-  const hOf = (x, y) => { const v = oct100(Math.abs(x - gx), Math.abs(y - gy)) - slack; return v > 0 ? v : 0; };
+  const hOf = (x, y, z) => { const v = oct100(Math.abs(x - gx), Math.abs(y - gy)) + (z === gz ? 0 : PATH.VERT * Math.abs(z - gz)) - slack; return v > 0 ? v : 0; };
   let n = 0;
   const push = (k, v) => {
+    if (n >= hk.length) growHeap();
     let p = n++;
     while (p > 0) {
       const q = (p - 1) >> 1;
@@ -127,7 +144,7 @@ export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap =
   g[from] = 0; came[from] = -1; open[from] = gen;
   // heap key: f * 2^20 + h (exact integers in a double): equal f prefers the node nearer the goal,
   // which keeps open-ground searches narrow; then the lower tile index (deterministic order)
-  push(hOf(from % W, (from / W) | 0) * KEY_SHIFT, from);
+  push(hOf(xOf(from), yOf(from), zOf(from)) * KEY_SHIFT, from);
   let expanded = 0;
   while (n > 0) {
     const cur = pop();
@@ -136,24 +153,41 @@ export function findPath(s, from, goal, mode = GOAL.TILE, side = SIDE.COL, cap =
     if (goalTest(cur, goal, mode) && (passW(walk[cur], side))) return done(cur, from, expanded, g[cur]);
     if (expanded >= cap) return { status: 'trunc', tiles: null, expanded, cost: 0 };
     expanded++;
-    const cx = cur % W, cy = (cur / W) | 0, gc = g[cur];
+    const cz = zOf(cur), base = cz * PLANE, cx = cur % W, cy = ((cur - base) / W) | 0, gc = g[cur];
     for (let d = 0; d < 8; d++) {
       const nx = cx + DX8[d], ny = cy + DY8[d];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const ni = ny * W + nx;
+      const ni = base + ny * W + nx;
       if (closed[ni] === gen) continue;
       const c = stepCost(walk[ni], side);
       if (c === 0) continue;
       let step;
       if (d < 4) step = c * 10;
       else {
-        if (!passW(walk[cy * W + nx], side) || !passW(walk[ny * W + cx], side)) continue; // no corner cutting
+        if (!passW(walk[base + cy * W + nx], side) || !passW(walk[base + ny * W + cx], side)) continue; // no corner cutting
         step = c * 14;
       }
       const ng = gc + step;
       if (open[ni] !== gen || ng < g[ni]) {
         open[ni] = gen; g[ni] = ng; came[ni] = cur;
-        const h = hOf(nx, ny);
+        const h = hOf(nx, ny, cz);
+        push((ng + h) * KEY_SHIFT + h, ni);
+      }
+    }
+    if (!deep) continue;
+    // vertical: up then down (fixed order), an up voxel to the down voxel directly above it
+    const tc = ter[cur];
+    for (let v = 0; v < 2; v++) {
+      let ni;
+      if (v === 0) { if (cz >= D - 1 || TER_UP[tc] !== 1 || TER_DOWN[ter[cur + PLANE]] !== 1) continue; ni = cur + PLANE; }
+      else { if (cz === 0 || TER_DOWN[tc] !== 1 || TER_UP[ter[cur - PLANE]] !== 1) continue; ni = cur - PLANE; }
+      if (closed[ni] === gen) continue;
+      const c = stepCost(walk[ni], side);
+      if (c === 0) continue;
+      const ng = gc + c * VERT20;
+      if (open[ni] !== gen || ng < g[ni]) {
+        open[ni] = gen; g[ni] = ng; came[ni] = cur;
+        const h = hOf(cx, cy, v === 0 ? cz + 1 : cz - 1);
         push((ng + h) * KEY_SHIFT + h, ni);
       }
     }
@@ -270,8 +304,13 @@ export function installPathing() {
 // the path is dropped (ent.path = null): E's goto toil then asks again, and the region graph rejects a
 // goal that is no longer reachable. Arriving at the end drops the path too (status 'none' = there).
 // Movers run in s.col order (then s.anim), so the result is deterministic and independent of speed.
+// Stairs and ramps (Stage Z1 E2): a path tile on another level is a vertical step, taken in place. The mover
+// climbs from where it is to the climb point of its tile (16 units north of the centre going up, 15 south
+// going down) at 4x effort, so the step costs 2 tiles of walking (PATH.VERT); there it changes z and stands
+// at the tile centre. No extra saved state: the climb's progress is the mover's own x, y.
 // The roguelite's steering locomotion (movement.js) stays for H's combat movers (Stage 1b).
-export const MOVE = Object.freeze({ base: 5 });   // units per tick at speed 100 on cost-10 ground (3.1 tiles/s at 1x)
+export const MOVE = Object.freeze({ base: 5 });
+const CLIMB_UP = 16, CLIMB_DOWN = 15;              // x 40 effort = 2 tiles x 320 (PATH.VERT); inside the tile   // units per tick at speed 100 on cost-10 ground (3.1 tiles/s at 1x)
 let speedHook = null;
 /** F's hook: fn(s, ent) -> speed x100 (100 = normal; traits, wounds, carried mass). */
 export function setMoveSpeed(fn) { speedHook = fn || null; }
@@ -289,15 +328,18 @@ export function followPath(s, e, side = SIDE.COL) {
     const t = p.tiles[p.i];
     const c = stepCost(walk[t], side);
     if (c === 0) { e.path = null; e.x = x; e.y = y; return false; }
-    const gx = (t % W) * TILE + (TILE >> 1), gy = ((t / W) | 0) * TILE + (TILE >> 1);
+    const tz = (t / PLANE) | 0, vert = tz !== (e.z | 0);
+    const cxw = (t % W) * TILE + (TILE >> 1), cyw = (((t % PLANE) / W) | 0) * TILE + (TILE >> 1);
+    const gx = cxw, gy = vert ? cyw + (tz > (e.z | 0) ? -CLIMB_UP : CLIMB_DOWN) : cyw;
     const dx = gx - x, dy = gy - y, diag = dx !== 0 && dy !== 0;
-    // effort of one unit = cost x 10 (straight) or x 14 (diagonal); 100 on normal ground
-    const k = c * (diag ? 14 : 10);
+    // effort of one unit = cost x 10 (straight) or x 14 (diagonal); 100 on normal ground; a climb is 4x
+    const k = vert ? c * 40 : c * (diag ? 14 : 10);
     const per = Math.floor(left / k);
     const need = Math.max(Math.abs(dx), Math.abs(dy));
     if (per >= need) {
       x = gx; y = gy; p.i++;
       left -= need * k;
+      if (vert) { e.z = tz; x = cxw; y = cyw; }
     } else {
       const u = per > 0 ? per : 1;
       x += Math.sign(dx) * Math.min(Math.abs(dx), u);
@@ -338,22 +380,23 @@ export const solidForEnemy = (s, i) => blockedFor(s, i, SIDE.HOS);
  * exactly through a corner needs both side tiles clear (no corner cutting). rad > 0 also tests two
  * parallel rays rad units to either side (body clearance).
  */
-export function losClear(s, x0, y0, x1, y1, side = 0, rad = 0) {
+export function losClear(s, x0, y0, x1, y1, side = 0, rad = 0, z = 0) {
   side = sideOf(side);
-  const a = tileAt(x0, y0), b = tileAt(x1, y1);
-  if (!ray(s, x0, y0, x1, y1, side, -1, -1)) return false;
+  const base = z * PLANE;
+  const a = tileAt(x0, y0, z), b = tileAt(x1, y1, z);
+  if (!ray(s, x0, y0, x1, y1, side, -1, -1, base)) return false;
   if (rad > 0) {
     const dx = x1 - x0, dy = y1 - y0, d = Math.sqrt(dx * dx + dy * dy);
     if (d > 1e-6) {
       const ox = (-dy / d) * rad, oy = (dx / d) * rad;
-      if (!ray(s, x0 + ox, y0 + oy, x1 + ox, y1 + oy, side, a, b)) return false;
-      if (!ray(s, x0 - ox, y0 - oy, x1 - ox, y1 - oy, side, a, b)) return false;
+      if (!ray(s, x0 + ox, y0 + oy, x1 + ox, y1 + oy, side, a, b, base)) return false;
+      if (!ray(s, x0 - ox, y0 - oy, x1 - ox, y1 - oy, side, a, b, base)) return false;
     }
   }
   return true;
 }
-const tileAt = (wx, wy) => idx(Math.max(0, Math.min(W - 1, Math.floor(wx / TILE))), Math.max(0, Math.min(H - 1, Math.floor(wy / TILE))));
-function ray(s, x0, y0, x1, y1, side, skipA, skipB) {
+const tileAt = (wx, wy, z = 0) => idx(Math.max(0, Math.min(W - 1, Math.floor(wx / TILE))), Math.max(0, Math.min(H - 1, Math.floor(wy / TILE))), z);
+function ray(s, x0, y0, x1, y1, side, skipA, skipB, base = 0) {
   let tx = Math.floor(x0 / TILE), ty = Math.floor(y0 / TILE);
   const ex = Math.floor(x1 / TILE), ey = Math.floor(y1 / TILE);
   const dx = x1 - x0, dy = y1 - y0;
@@ -364,7 +407,7 @@ function ray(s, x0, y0, x1, y1, side, skipA, skipB) {
   let tmy = sy > 0 ? ((ty + 1) * TILE - y0) / ady : sy < 0 ? (y0 - ty * TILE) / ady : Infinity;
   const bad = (x, y) => {
     if (x < 0 || y < 0 || x >= W || y >= H) return true;
-    const i = y * W + x;
+    const i = base + y * W + x;
     return i !== skipA && i !== skipB && !passW(s.rt.walkCost[i], side);
   };
   for (let guard = 0; guard < 4 * (W + H) && (tx !== ex || ty !== ey); guard++) {
@@ -380,12 +423,13 @@ function ray(s, x0, y0, x1, y1, side, skipA, skipB) {
 /** String-pull a tile path: keep a waypoint only where the straight line would clip (rad units of clearance). */
 export function smoothPath(s, start, tiles, side = 0, rad = 5) {
   if (tiles.length < 3) return Array.from(tiles);
-  const cx = (i) => (i % W) * TILE + TILE / 2, cy = (i) => ((i / W) | 0) * TILE + TILE / 2;
+  const cx = (i) => (i % W) * TILE + TILE / 2, cy = (i) => (((i % PLANE) / W) | 0) * TILE + TILE / 2, cz = (i) => (i / PLANE) | 0;
   const out = [];
   let anchor = start;
   for (let k = 0; k < tiles.length - 1; k++) {
     const nxt = tiles[k + 1];
-    if (!losClear(s, cx(anchor), cy(anchor), cx(nxt), cy(nxt), side, rad)) { out.push(tiles[k]); anchor = tiles[k]; }
+    // a level change is always a waypoint (both ends of a stair step are kept)
+    if (cz(anchor) !== cz(nxt) || cz(tiles[k]) !== cz(nxt) || !losClear(s, cx(anchor), cy(anchor), cx(nxt), cy(nxt), side, rad, cz(nxt))) { out.push(tiles[k]); anchor = tiles[k]; }
   }
   out.push(tiles[tiles.length - 1]);
   return out;

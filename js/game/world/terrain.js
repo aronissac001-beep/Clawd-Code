@@ -25,9 +25,9 @@
 // in 'mechanisms'). It is idempotent and has to run again after a bus reset (tests). Nothing happens
 // at import.
 
-import { W, H, N, TER, TER_MINEABLE, TER_OPAQUE, ROOF, getBit, setBit, DX8, DY8 } from '../core/grid.js';
+import { W, H, N, D, PLANE, TER, TER_MINEABLE, TER_OPAQUE, TER_FLOOR, ROOF, TILE, getBit, setBit, DX8, DY8 } from '../core/grid.js';
 import { emit } from '../core/events.js';
-import { registerRebuild } from '../core/rtcontract.js';
+import { registerRebuild, RT_KEYS } from '../core/rtcontract.js';
 import { registerEndOfTick } from '../core/bus.js';
 import {
   WALK_DOOR, SUPPORT_RADIUS, sideOf, passW, walkOf, isOpaque, isSupport, isDepthSource, footprint,
@@ -50,10 +50,15 @@ import { installMechanisms, bindMechTerrain } from './mechanisms.js';
 import { installBlight, bindBlightTerrain } from './blight.js';
 import { waystoneVeto } from './claims.js';
 import { BUS } from '../core/bus.js';
+import {
+  refreshColumn, coverRebuild, skyZRebuild, canStair, canRamp, canChannel, channelResult, fallTarget, itemFalls,
+  fallDamage, fallItemHp, isVerticalTer,
+} from './vertical.js';
 
 export { WALK_DOOR, SIDE, setStructureInfo, DOOR_WALK10, SUPPORT_RADIUS, SUPPORT_CAP } from './pass.js';
 export { regionOf, regionDist, reachable, compOf } from './regions.js';
 export { setWorldStage, worldStage2, worldRec } from './worldrec.js';
+export { linksOf, coverAt, skyZAt, upOK, downOK, canStair, canRamp, canChannel, stairKindAt, fallTarget } from './vertical.js';
 export {
   FUEL, fuelEnabled, usesFuel, fuelTicks, fuelCap, fuelDays, isBurning, acceptsFuel, needsRefuel, fuelWanted, addFuel,
   refuelTargets, hearthFuelDays,
@@ -109,22 +114,33 @@ const refreshDepth = (s) => { s.rt.depth = depthRebuild(s); };
  * designation through its own index.
  * @returns {null | { mat: number, ore: number, rubble: boolean, depth: number }} null when not mineable
  */
-export function mineTile(s, i, colId = null) {
+export function mineTile(s, i, colId = null) { return mineAs(s, i, TER.ROUGH, colId); }
+/** C5 v3 name of mineTile: mine voxel i to rough floor (the ceiling is whatever is above). */
+export const mineVoxel = (s, i, colId = null) => mineTile(s, i, colId);
+/**
+ * Mine rock or rubble at i into terrain `ter` (rough floor, or a stair or ramp voxel for the Stairs and Ramp
+ * designations). At D = 1 this is exactly Stage 2's mineTile (roofed by depth). At D > 1 no THIN or MOUNTAIN
+ * roof is written (2.4: real rock above is the ceiling) and the 8 planar neighbours on the same level become
+ * known.
+ */
+function mineAs(s, i, ter, colId) {
   const L = s.L, rt = s.rt, t = L.terrain[i];
   if (!TER_MINEABLE[t]) return null;
   const rubble = t === TER.RUBBLE;
   const mat = L.mat[i], ore = rubble ? 0 : L.ore[i], depth = rt.depth[i];
-  L.terrain[i] = TER.ROUGH;
+  L.terrain[i] = ter;
   if (ore) L.ore[i] = 0;
-  const roof = depth >= 5 ? ROOF.MOUNTAIN : ROOF.THIN;
-  const roofBefore = L.roof[i];
-  if (roofBefore !== ROOF.MOUNTAIN || roof === ROOF.MOUNTAIN) L.roof[i] = roof; // an overhead roof is never thinned
+  if (D === 1) {
+    const roof = depth >= 5 ? ROOF.MOUNTAIN : ROOF.THIN;
+    const roofBefore = L.roof[i];
+    if (roofBefore !== ROOF.MOUNTAIN || roof === ROOF.MOUNTAIN) L.roof[i] = roof; // an overhead roof is never thinned
+  }
   setBit(L.known, i, 1);
-  const x = i % W, y = (i / W) | 0;
+  const base = i - (i % PLANE), x = i % W, y = ((i % PLANE) / W) | 0;
   for (let d = 0; d < 8; d++) {
     const nx = x + DX8[d], ny = y + DY8[d];
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-    const j = ny * W + nx;
+    const j = base + ny * W + nx;
     if (getBit(L.known, j)) continue;
     setBit(L.known, j, 1);
     if (L.terrain[j] === TER.ROCK && L.ore[j]) emit(s, 'oreFound', { i: j, ore: L.ore[j] });
@@ -132,10 +148,12 @@ export function mineTile(s, i, colId = null) {
   }
   refreshWalk(s, i);
   refreshSupport(s, i);
+  refreshColumn(s, i);
   markClaimsDirty(s);
   // depth is unchanged: the mined tile keeps a rock roof, so it is not a depth source
   invalidate(s, i, INV.REGIONS | INV.ROOMS | INV.TEMPERATURE | INV.LIGHT | INV.RENDER);
-  if (writeHooks.length) { hook(s, i, 'terrain', t, TER.ROUGH); if (ore) hook(s, i, 'ore', ore, 0); }
+  if (D > 1 && i + PLANE < N) markRender(i + PLANE);          // the level above shows the opening (6.3)
+  if (writeHooks.length) { hook(s, i, 'terrain', t, ter); if (ore) hook(s, i, 'ore', ore, 0); }
   emit(s, 'mined', { i, mat, ore, colId });
   for (let k = 0; k < minedHooks.length; k++) minedHooks[k](s, i, colId, ore);
   if (worldStage2()) discoverAround(s, i);
@@ -150,11 +168,11 @@ export function mineTile(s, i, colId = null) {
  * each kind is met (s.colony.world.disc keeps the kinds found).
  */
 function discoverAround(s, i) {
-  const x = i % W, y = (i / W) | 0;
+  const base = i - (i % PLANE), x = i % W, y = ((i % PLANE) / W) | 0;
   for (let d = 0; d < 8; d++) {
     const nx = x + DX8[d], ny = y + DY8[d];
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-    const j = ny * W + nx, t = s.L.terrain[j], roofed = s.L.roof[j] === ROOF.MOUNTAIN;
+    const j = base + ny * W + nx, t = s.L.terrain[j], roofed = s.L.roof[j] === ROOF.MOUNTAIN;
     let kind = null;
     if (t === TER.MOSS && roofed) kind = 'cavern';
     else if (t === TER.SHALLOW && roofed) kind = 'spring';
@@ -179,10 +197,13 @@ export function setTerrain(s, i, ter, mat = s.L.mat[i]) {
   if (wasSupport !== isSupport(s, i)) refreshSupport(s, i);
   if (wasSource !== isDepthSource(s, i)) refreshDepth(s);
   if (wasOpaque !== TER_OPAQUE[ter]) bits |= INV.LIGHT | INV.ROOMS | INV.TEMPERATURE;
+  if (refreshColumn(s, i)) bits |= INV.LIGHT | INV.TEMPERATURE;
   markClaimsDirty(s);
   invalidate(s, i, bits);
+  if (D > 1 && i + PLANE < N) markRender(i + PLANE);
   if (writeHooks.length) hook(s, i, 'terrain', before, ter);
   if (lost) checkCollapse(s, i);
+  if (ter === TER.AIR && before !== TER.AIR) fallFrom(s, i);
   return true;
 }
 
@@ -202,6 +223,7 @@ export function setRoof(s, i, roof) {
   if (before === roof) return false;
   const wasSource = isDepthSource(s, i);
   s.L.roof[i] = roof;
+  refreshColumn(s, i);
   if (wasSource !== isDepthSource(s, i)) refreshDepth(s);
   markClaimsDirty(s);
   invalidate(s, i, INV.LIGHT | INV.ROOMS | INV.TEMPERATURE | INV.RENDER);
@@ -263,6 +285,99 @@ export function setOcc(s, b, on = true) {
 /** Re-derive the tiles of a building after its state changed in place (st, def, lock). */
 export const refreshBuilding = (s, b) => setOcc(s, b, true);
 
+// ---- Vertical writes (2.3; C5 v3, Stage Z1 E2) --------------------------------------------------------
+/**
+ * Carve a stair voxel (TER.STAIR_U, STAIR_D or STAIR_UD) at i: rock is mined into it (as mineTile, `mined`
+ * emitted, the return carries the yield), an open floor is turned into it (its plant is cleared).
+ * @returns {null | { mat, ore, rubble, depth } | { mat: 0, ore: 0, rubble: false, depth: 0, floor: true }}
+ */
+export function digStair(s, i, kind, colId = null) {
+  if (kind !== TER.STAIR_U && kind !== TER.STAIR_D && kind !== TER.STAIR_UD) throw new Error(`digStair: bad kind ${kind}`);
+  if (!canStair(s, i)) return null;
+  if (TER_MINEABLE[s.L.terrain[i]]) return mineAs(s, i, kind, colId);
+  if (s.L.plant[i]) setPlant(s, i, 0, 0);
+  setTerrain(s, i, kind);
+  return { mat: 0, ore: 0, rubble: false, depth: 0, floor: true };
+}
+/** Dig a ramp at i (canRamp): RAMP at z (mined when rock), RAMP_TOP at z + 1. Returns as digStair, or null. */
+export function digRamp(s, i, colId = null) {
+  if (!canRamp(s, i)) return null;
+  const a = i + PLANE;
+  let r;
+  if (TER_MINEABLE[s.L.terrain[i]]) r = mineAs(s, i, TER.RAMP, colId);
+  else { if (s.L.plant[i]) setPlant(s, i, 0, 0); setTerrain(s, i, TER.RAMP); r = { mat: 0, ore: 0, rubble: false, depth: 0, floor: true }; }
+  if (s.L.plant[a]) setPlant(s, a, 0, 0);
+  if (s.L.floor[a]) setFloor(s, a, 0);
+  setTerrain(s, a, TER.RAMP_TOP);
+  fallFrom(s, a);                   // items left on the old floor slide down onto the ramp
+  return r;
+}
+/**
+ * Channel the open floor at i (2.3): it becomes AIR, or RAMP_TOP over a RAMP when level z-1 is rock (the rock
+ * is mined into the ramp: `mined` is emitted for it and its yield is returned as `below`). Its plant and
+ * constructed floor go. Movers and items in the voxel fall to the first floor below.
+ * @returns {null | { here: number, below: null | { mat, ore, rubble, depth } }}
+ */
+export function channel(s, i, colId = null) {
+  if (!canChannel(s, i)) return null;
+  const r = channelResult(s, i);
+  let below = null;
+  if (r.below !== null) below = mineAs(s, i - PLANE, r.below, colId);
+  if (s.L.plant[i]) setPlant(s, i, 0, 0);
+  if (s.L.floor[i]) setFloor(s, i, 0);
+  const was = s.L.terrain[i];
+  setTerrain(s, i, r.here);
+  if (r.here === TER.RAMP_TOP && was !== TER.RAMP_TOP) fallFrom(s, i);   // AIR falls inside setTerrain
+  return { here: r.here, below };
+}
+/** A built floor over open air (Construction; span rules are F20/E4). The voxel becomes rough floor with `floor`. */
+export function buildFloor(s, i, floor = 0, mat = s.L.mat[i]) {
+  if (s.L.terrain[i] !== TER.AIR) return false;
+  setTerrain(s, i, TER.ROUGH, mat);
+  if (floor) setFloor(s, i, floor);
+  return true;
+}
+
+// ---- Falling (2.3) ----------------------------------------------------------------------------------
+const fallHooks = [];
+/**
+ * Fall hook: fn(s, f) after something fell, f = { kind: 'col'|'anim'|'foes'|'item', ent, from, to, levels, dmg, hp }.
+ * Movers are already moved (z, path dropped); F applies `dmg` (blunt, one wound). Items are NOT moved here:
+ * E's item API moves the stack to `to` and takes `hp` percent points (E5). Returns an unsubscribe.
+ */
+export function onFall(fn) { fallHooks.push(fn); return () => { const k = fallHooks.indexOf(fn); if (k >= 0) fallHooks.splice(k, 1); }; }
+const moverVoxel = (e) => (e.z | 0) * PLANE + Math.min(H - 1, Math.max(0, Math.floor(e.y / TILE))) * W + Math.min(W - 1, Math.max(0, Math.floor(e.x / TILE)));
+/** Everything in voxel i that has nothing to stand on falls (movers: AIR; items: AIR or RAMP_TOP). Deterministic order: col, anim, foes, items by id. */
+export function fallFrom(s, i) {
+  const t = s.L.terrain[i];
+  if (!itemFalls(t)) return 0;
+  const to = t === TER.AIR ? fallTarget(s, i) : fallTarget(s, i - PLANE);
+  const levels = ((i - to) / PLANE) | 0;
+  if (levels <= 0) return 0;
+  let n = 0;
+  for (const kind of ['col', 'anim', 'foes']) {
+    const list = s[kind];
+    if (!list) continue;
+    for (const e of list) {
+      if (!e || moverVoxel(e) !== i) continue;
+      e.z = (to / PLANE) | 0;
+      e.path = null;
+      n++;
+      const f = { kind, ent: e, from: i, to, levels, dmg: fallDamage(levels), hp: 0 };
+      for (let k = 0; k < fallHooks.length; k++) fallHooks[k](s, f);
+    }
+  }
+  if (s.items && fallHooks.length) {
+    for (const it of s.items) {
+      if (!it || (it.z | 0) * PLANE + it.y * W + it.x !== i) continue;
+      n++;
+      const f = { kind: 'item', ent: it, from: i, to, levels, dmg: 0, hp: fallItemHp(levels) };
+      for (let k = 0; k < fallHooks.length; k++) fallHooks[k](s, f);
+    }
+  }
+  return n;
+}
+
 // ---- Read API -------------------------------------------------------------------------------------
 /** Light level 0-3 (the single light source for sim and render, 3.3). */
 export const lightAt = (s, i) => s.rt.light[i];
@@ -274,6 +389,9 @@ export const depthAt = (s, i) => s.rt.depth[i];
 export const supportAt = (s, i) => s.rt.support[i];
 export const roofAt = (s, i) => s.L.roof[i];
 export const isKnown = (s, i) => getBit(s.L.known, i) === 1;
+/** C5 v3: a colonist can stand in voxel i (has a floor and a non-zero walk cost). */
+export const walkable = (s, i) => TER_FLOOR[s.L.terrain[i]] === 1 && passW(s.rt.walkCost[i], 0);
+export { isVerticalTer };
 /** True when a roofed tile has a support within SUPPORT_RADIUS (3.4); unroofed tiles are always fine. */
 export const supported = (s, i) => s.L.roof[i] === ROOF.OPEN || s.rt.support[i] <= SUPPORT_RADIUS;
 
@@ -328,6 +446,9 @@ export function installWorld(opts = {}) {
   registerRebuild('region', regionRebuild);
   registerRebuild('regionH', regionHRebuild);
   registerRebuild('regionGraph', regionGraphRebuild);
+  // cover and skyZ (2.4, INC): registered once A's rtcontract lists them (request E2 -> A)
+  if (RT_KEYS.cover) registerRebuild('cover', coverRebuild);
+  if (RT_KEYS.skyZ) registerRebuild('skyZ', skyZRebuild);
   registerEndOfTick('regions', (s, d) => { regionsPass(s, d); });
 }
 
