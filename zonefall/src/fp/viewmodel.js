@@ -242,6 +242,13 @@ const ITEM = {
     parts: { mag: { col: ['#56603a', '#434b2e', '#e3c35a', '#c49a45'] }, cover: { col: ['#5a6440'] } },
     magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
   },
+  minigun: {
+    grip: GUN_GRIP(0.35, -0.06, -0.028), sup: { a: [1, 0, 0], f: [0, 0.3, 1], p: [0.26, 0.205, 0.004] },
+    sights: [[-0.05, 0.25, 0], [0.86, 0.235, 0]], relief: 0.3, rec: [0.012, 0.02, 0.025, 0.004], auto: 1, reload: 'box', flashS: 2.2,
+    hip: [0.21, -0.24, -0.45, 0.04, 0.12, -0.06],
+    parts: { mag: { col: ['#4a4f40', '#3b4033', '#e3c35a'] }, spin: { col: ['#8a9099'] } },
+    magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.05, -0.02, -0.06], spinAxis: [0, 0.06, 0],
+  },
   // second wave (weapons_extra.js)
   waterpipe: {
     grip: GUN_GRIP(0.35, -0.04, -0.028), sup: { a: [1, 0, 0], f: [0, 0.35, 1], p: [0.3, 0.045, 0.004] },
@@ -1030,6 +1037,7 @@ export class ViewModel {
     let poseL = c.poseL, poseR = c.poseR;
     if (thr > 0.05 && thr < 0.62) poseR = 'open';   // fingers spread after the release
     for (let i = 0; i < PL.length; i++) { PL[i].m.identity(); PL[i].hidden = false; }
+    if (parts.spin && I.spinAxis) { const a = I.spinAxis; parts.spin.m.makeTranslation(a[0], a[1], a[2]).multiply(MX[2].makeRotationX(st.spin || 0)).multiply(MX[3].makeTranslation(-a[0], -a[1], -a[2])); } // the minigun's barrels
     let lmo = null;                  // left-hand mount (item space) used during reloads
     if (reload < 0 && this.lastReload >= 0) this.arrowGone = false;
     this.lastReload = reload;
