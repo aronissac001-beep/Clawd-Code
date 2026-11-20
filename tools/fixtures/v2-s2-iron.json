@@ -91,10 +91,10 @@
  },
  "ms": 13430,
  "rebaselined": {
-  "commit": "1bb088f",
+  "commit": "440e1a8",
   "dirty": false,
   "date": "2026-11-20",
-  "note": "S9.8: Stage 2.9b (bot policy, threat floor caps, Hollow morale, deed sources, people-field cadence)",
+  "note": "S9.8: Stage 2.9b (bot policy, threat floor caps, Hollow morale, deed sources)",
   "hour": {
    "tick": 121214,
    "hash": "fefd1f1b2c7d395d",
