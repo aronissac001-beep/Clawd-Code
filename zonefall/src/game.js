@@ -27,6 +27,7 @@ import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
 import { Home, isLit } from './homestead.js';
+import { Recycler } from './recycler.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
 import { updateAI, alertTo, hearNoise } from './ai.js';
@@ -41,7 +42,7 @@ import { spawnHeli, updateHeli, Events } from './events.js';
 import { clamp, dist, rand, randi, pick, chance, fmtTime } from './util.js';
 
 G.objectKit = { duck_track: makeDuckTrack, blackjack_table: makeBlackjackTable, casino_sign: makeCasinoSign }; // ready-made props for monuments (K.object)
-const WORLD_V = 2; // bump when the island generator changes (old bases would land in the wrong places)
+const WORLD_V = 3; // bump when the island generator changes (old bases would land in the wrong places)
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 
@@ -79,9 +80,10 @@ export const Game = {
   continueRun() {
     Fishing.reset();
     const s = Save.load(); if (!s) return this.newRun();
-    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'This update rebuilt the island (rivers, valleys, caves, power lines), so your old base could not come along.'), 600); return; }
+    if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'The island is bigger now, about 1.9 km across, with more monuments, rivers, roads and railway halts. Your old base could not come along, so you start fresh on a new beach.'), 600); return; }
     G.run = s.run; G.run.perks = []; delete G.run.raidTonight; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
+    Recycler.restore(G.run.rcy);
     Bots.init(s.bots);
     const inv = PlayerInv.from(s.player.inv);
     G.player = makePlayer(s.player.x, s.player.z, inv);
@@ -126,7 +128,7 @@ export const Game = {
     G.vehicles = null; try { G.vehicles = new Vehicles(G.scene); } catch (e) { console.error('vehicles failed', e); }
     G.train = null; if (G.W.railway && G.W.railway.hs) { try { G.train = new Railway(G.W, G.scene); } catch (e) { console.error('railway failed', e); G.train = null; } }
     G.infra = Infra; try { Infra.build(G.W, G.scene); } catch (e) { console.error('infrastructure failed', e); }
-    G.mapCanvas = buildMapCanvas(G.W, 512);
+    G.mapCanvas = buildMapCanvas(G.W, 640);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
     G.airdrop = null; G.worldUsed = false;
   },
@@ -140,6 +142,7 @@ export const Game = {
     if (!G.run || G.mode !== 'play' || !G.player) return;
     if (G.netGuest || G.run.coop) return; // a co-op guest's run lives on the host's island; their solo save stays untouched (even after the host leaves)
     const p = G.player; G.run.clock = G.clock; G.run.day = G.day; G.run.t = G.t;
+    G.run.rcy = Recycler.serialize(); // what's in the monument recyclers (placed ones save with the base)
     const pd = p.dead ? null : { x: p.x, z: p.z, hp: p.hp, food: p.food, water: p.water, rad: p.rad, sel: p.sel, inv: p.inv.toJSON() };
     const drops = G.drops.filter(d => d.kind === 'bag' && !d.inv.empty()).slice(0, 6).map(d => ({ x: d.x, z: d.z, kind: d.kind, inv: d.inv.toJSON() }));
     const data = { v: VERSION, run: G.run, base: Build.serialize(), player: pd || (G.lastPlayerSave || null), drops, bots: Bots.serialize() };
@@ -359,9 +362,10 @@ export const Game = {
       if (d2 < 30 * 30 && a.speedNow > 0.6 && a.kind !== 'vehicle') { a.stepAcc = (a.stepAcc || 0) + a.speedNow * dt; if (a.stepAcc > (a.kind === 'animal' ? 1.1 : 1.6)) { a.stepAcc = 0; Sfx.stepAt(a.x, a.z, 'grass'); } }
     }
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
-    if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); }
+    if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); Recycler.tick(dt); } // recyclers run on the host, near or far
     Live.update(dt);
     Home.frame(dt); // power indicators + cables, crops, cooking pots, the wiring bar
+    Recycler.frame(dt); // recycler lamps, flywheels, hum
     this.updateAirdrop(dt);
     // anomalies hurt + give artifacts
     for (const an of G.anomalies) {
@@ -472,8 +476,8 @@ export const Game = {
       const s = p.inv && p.inv.belt.slots[p.sel];
       const adsK = adsFovK(s, R.baseFov); R.minFov = s && s.att && s.att.sight ? 4 : 0; // iron sights, the hunting scope, or a sight attachment's real zoom
       R.fovK += ((1 - p.ads * (1 - adsK) + (p.sprinting ? 0.07 : 0)) - R.fovK) * Math.min(1, dt * (p.ads > 0 ? 12 : 6)); R.applyFov();
-      if (veh) { roll += veh.roll * (veh.boat ? -0.55 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
-      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * 0.6 : 0), roll, dt);
+      if (veh) { roll += veh.roll * (veh.boat ? -0.55 : veh.kind === 'heli' ? 0.3 : 0.55); if (veh.kind === 'buggy' && Math.abs(veh.speed) > 2) roll += (Math.random() - 0.5) * 0.004 * Math.min(1, Math.abs(veh.speed) / 15); }
+      R.setFP(p.x, p.y + eye, p.z, p.yaw, p.pitch + (veh ? veh.pitch * (veh.kind === 'heli' ? 0.3 : 0.6) : 0), roll, dt);
       R.camera.updateMatrixWorld();
       // ---- actors (our own body is never drawn in first person)
       const cx = p.x, cz = p.z;

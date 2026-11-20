@@ -16,8 +16,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Floating damage numbers, with crits that shout.
   - Loot beams in rarity colours over dropped weapons and rare loot.
   - Eye-level rain and snow, and readable blue nights.
-- **One open island** (1.5 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
-  - **Rivers:** four of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges.
+- **One open island** (about 1.9 km across), generated from a seed: beaches, grassland, forests, a snowy north, an arid south, mountains, lakes and a ring road.
+  - **Rivers:** five of them run from springs in the hills down to the sea, each in its own valley. The valleys get deeper where the land is higher. Roads and the railway cross them on bridges, straight across; over a deep valley the bridge spans the valley instead of sitting on a tall embankment.
   - **Dry ravines:** cut into the hill country.
   - **Power lines:** strung across the island on steel pylons, from the Reactor Sector out to the coast and between the big sites.
 - **Ziplines:**
@@ -47,12 +47,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Phones on different networks (for example mobile data and someone else's Wi-Fi) connect through a free relay server.
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
-  - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
+  - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over. They drive over bridges, decks and monument floors.
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
-  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
-    - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
-    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low. Decks and roofs are solid to it: you can't fly into one edge-on or climb up through it.
+  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small Rust-style choppers: an open cockpit tub with a slanted windscreen and a low dashboard you see over, the engine behind the seat, a long two-blade rotor, a tail boom with fin and tail rotor, skids, and a passenger seat on each side.
+    - The engine spools up when you climb in. The nose swings round to where you look. The stick asks for a speed, forward or sideways, and she leans into it (full speed, about 80 km/h, in a couple of seconds); ▲/Space climbs and ▼/C descends.
+    - Let go and she coasts to a steady hover, holding her height. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low. Decks and roofs are solid to it: you can't fly into one edge-on or climb up through it.
     - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
+  - Vehicles are a find rather than a car park: a handful of each, spread out across the island.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
   - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
@@ -68,7 +69,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Under water the view turns blue, the sea goes murky a few metres out, you see the surface rippling overhead, and sound goes muffled. An air bar shows how long you can hold your breath; when it runs out you start to drown.
   - You can't use weapons while you swim, and nothing on land can follow you out. Falling into deep water (off a cliff, a bridge or a zipline) doesn't hurt.
 - **The map** (M, or the map button):
-  - A clean, muted island with a lettered grid (A–H, 1–8), roads, the railway and power lines.
+  - A clean, muted island with a lettered grid (A–J, 1–10), roads, the railway and power lines.
   - Places use different shapes and colours by type, so they're easy to tell apart: safe zones, radiation sites, military sites, outlaw forts, caves and ordinary loot spots. The legend shows each one.
   - Zoom in (to 2× or 4×) with the + and − buttons or by tapping, and drag to pan; ◎ centres on you. Smaller sites only get their names once you zoom in, so the big picture stays readable.
   - Chips switch layers on and off: names, parked vehicles, the train and cargo ship, and events (airdrops, locked crates, the oil rig's crate while it's being hacked, transport helicopters, the armoured patrol and its wreck, the attack helicopter). Your choice is remembered.
@@ -91,7 +92,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Both bob on the swell, lean into turns, run aground in the shallows, and can be wrecked and sunk (they respawn later).
   - Get out onto a shore, a jetty or the docked cargo ship.
 - **The railway:**
-  - A track loops through the interior with four halts. Each halt has a platform, a shelter and loot.
+  - A track loops through the interior with five halts. Each halt has a platform, a shelter and loot.
   - A little freight train runs the loop on a timetable. It sounds its horn, dwells at each halt and then pulls away.
   - Climb aboard a flatcar (E), walk about, shoot from it, and step off at a platform or jump off anywhere.
   - The flatcars carry cargo crates that restock as the train runs.
@@ -162,12 +163,21 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
   - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
   - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
-  - Seeds come from food crates, crates and barrels, from picking wild hemp and berries, and from the General Goods vendor at Haven Market. You can also pick hemp seeds out of cloth.
+  - Seeds only turn up in the good crates: military and elite crates, supply drops, and the locked crates on the cargo ship and the oil rig. Barrels, plain crates, food crates and toolboxes don't have them. You also get seeds from picking wild hemp and berries and from the General Goods vendor at Haven Market, and you can pick hemp seeds out of cloth.
 - **Cooking and food buffs:**
   - The campfire roasts corn and bakes potatoes.
   - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
   - **Pumpkin soup** heals 0.8 HP a second for 2½ minutes. **Berry tea** blocks 40% of radiation for 4 minutes. **Meat stew** halves hunger and thirst for 6 minutes. **Woodcutter's hash** gives 35% more wood, and **miner's pie** 35% more stone and ore, for 5 minutes.
   - Active buffs show as chips on the HUD with the time left.
+- **Grenades** (the beancan and the frag grenade):
+  - Hold FIRE to aim. A dotted line shows where it will fly, bounce and roll, and a ring on the ground shows its blast where it will be when the fuse runs out. The ring turns red when you'd be inside it.
+  - Let go to throw. It's a long overhand throw, or a short underhand toss while the aim (eye) button is on. On a computer, hold right click or V for the short toss.
+  - Grenades bounce off walls, doors, crates and trees, bounce and roll on the ground, roll down hills, and roll off ledges. They land on upper floors, roofs and the tops of crates, and a ceiling knocks them back down. Grass and sand stop them quickly; roads and floors let them roll further.
+  - The frag kills close up: inside about 1.3 m it does 109 damage, about 70 at 2 m, 40 at 3 m and 20 at 4 m, fading out at 5 m. Its shrapnel reaches up to 10 m. The beancan is smaller (about 69 up close, out to 3.4 m) and still sometimes fizzles.
+  - Walls, closed doors, cover and floors between storeys block the blast, so hiding behind a wall works.
+  - The blast has a white flash, a fireball, a smoke column, dust rolling out over the ground, flying debris, a shockwave ring and a scorch mark. Close by, the camera shakes hard and your ears ring for a moment.
+  - Enemies, animals and AI survivors see a grenade land near them, shout and run from it. NPCs that throw grenades at you lob them so they roll in.
+  - In co-op everyone sees and hears each other's grenades fly, and the host's NPCs run from a friend's grenade too.
 - **New guns:**
   - Ratchet Crossbow
   - Nailgun (crafted nails)
@@ -214,6 +224,22 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
+- **Recyclers work like Rust's:**
+  - Every recycler is a machine with 6 input slots, 6 output slots and an On/Off switch. You find them at gas stations, supermarkets, Haven Market and on the oil rig, and you can build your own at a Workbench T2.
+  - Put things in the input and switch it on. It breaks one item down every 5 seconds, one stack at a time, and puts what comes out in the output. It stops by itself when the input is empty or the output is full.
+  - It keeps running when you walk away, and anyone can take things out.
+  - While it runs, a green lamp lights up, the flywheels on its sides spin, it hums, and each item comes out with a crunch and a puff of smoke. The window has a progress bar.
+  - Gear (guns, tools, armour, helmets, bags and attachments) gives back about half of what it cost to craft, but never wood or stone. Half a part means a 50% chance of getting it. Components and valuables turn into scrap and resources. An item's details show what it recycles into.
+  - **+ Components** puts every component and valuable from your backpack in at once.
+  - Your own recycler keeps its contents and its switch when you save, and so do the ones at monuments.
+  - In co-op the host's game runs the recyclers. Friends see the same contents and can load one, switch it on and empty it.
+- **Workbench tech tree:** the **Tech tree** tab next to Craft shows a tree of blueprints for each workbench tier.
+  - At a workbench of tier N you can spend scrap to learn any blueprint of tier N or lower, without owning the item.
+  - Each tier has a few branches (sidearms, rifles, sights, explosives and so on). In a branch, a blueprint needs the one above it.
+  - T1 blueprints cost 80 to 125 scrap, T2 200 to 300 and T3 420 to 600. Cheaper items cost less.
+  - Learned blueprints are green, ones you can unlock now glow yellow, and locked ones show what they need. Tap one to see what it crafts from, then tap **Unlock**.
+  - Scrap in your Tool Cupboard and boxes counts when you're inside your claim.
+  - The Research Table still works and is cheaper (75, 175 or 350 scrap), but it uses up the item.
 - **Human-like enemies:**
   - They react a beat after spotting you, and their aim settles the longer they track you.
   - They shoot worse on the move, and getting hit spoils their aim.
@@ -223,8 +249,15 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs and face you when they talk.
   - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
   - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
-  - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every three days, and none before day 5.
+  - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every four days, and none before day 5. Even when it's ready, a raider only goes on some nights.
   - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
+  - **They don't over-farm.** Once a survivor holds enough wood and stone for what its base still needs (at least about 1500 of each, more for a bigger base), it stops chopping and mining them and goes after ore, loot and monuments instead.
+  - **They craft guns and explosives.** They make the best gun their workbench and blueprints allow, the new guns included, plus ammo for it, medkits and a small kit of beancans, grenades and a satchel. They go after what a recipe lacks on purpose, such as sulfur, charcoal, HQM or gun parts. In a fight they now and then throw a grenade at someone behind cover.
+  - **Blow up their base and they come for you.** An explosive you or a friend throw, stick or fire at a survivor's base turns it hostile. A friendly one is furious. If it's within about 400 m it runs home and fights you, and it holds a grudge for two days. Survivors come in crews of two that help each other, so its crew-mate comes too.
+  - **Monument runs:** once a survivor has a decent gun, ammo and meds, it now and then raids a monument that suits its gear. It fights the garrison, loots the crates, best first, and leaves. It pulls out when it's badly hurt or out of ammo.
+  - **Events:** now and then they go for an airdrop, the locked-crate drop (they hack it and hold it), the cargo ship (up the gangway and through its crates), the oil rig, or the armoured patrol's wreck. Never more than two go for the same event.
+  - **They bank their loot.** With a full pack or a good haul they go home first. Loot goes into their boxes and upkeep into the cupboard, and they restock their kit from the boxes.
+  - Near you all of this plays out for real. Far away it takes travel time, then a roll of their gear against the danger. You'll see some of it in the chat and the kill feed.
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - **Locked-crate drop:** now and then from day 3, a twin-rotor transport helicopter flies a locked crate to one of the guarded monuments and lowers it on a line (a red smoke marks it, and it shows on the map). Hacking it takes two minutes, while the site's garrison comes for you and the transport flies in a squad of heavy scientists to take it back.
@@ -273,6 +306,10 @@ Plain static files with no build step. It uses ES modules and [Three.js r170](ht
 - **Comic look:** two pieces make it:
   - A toon patch on the shared Lambert shader chunk (`src/gfx/materials.js`).
   - A post pass (`src/gfx/ink.js`) that inks silhouettes and creases. It finds them from the Laplacian of 1/z in the depth buffer, then grades colour and tone-maps.
+- **Island generator** (`src/world/gen.js`): pure data, deterministic per seed, about 1 s on a desktop for the 1.92 km island.
+  - Counts scale with the island: things spread over the land (sites, lakes, ravines, scattered caches) by its area, things along the coast or a loop (lighthouses, harbors, halts, rivers, spawn beaches, trunk power lines) by its width. `countOf(def)` gives a monument type's count; unique sites stay unique.
+  - Roads and the railway get height profiles first (grade-limited, pinned where they meet a pad, a junction or a level crossing), then their beds are carved in. A last cut-and-fill pass slopes the ground away from every road and rail bed, monument pad and halt platform at no more than 35-40 degrees, so there are no cliff walls beside them, and builds the embankments up to each bridge.
+  - Adding a monument: give it an entry in `MONUMENTS` (`src/data.js`) and a layout in one of the `*_LAYOUTS` maps (`src/world/monuments*.js`). Without `late` it is placed with the older sites (biggest first) and gets a spur road; with `late: true` it is placed after the railway, on its own random stream, away from roads. There is room for one more large unique inland site (a size-72 test site placed on 30 of 30 seeds without displacing any other). Bump `WORLD_V` in `src/game.js` when the generator's output changes.
 - **Rendering cost:** static monuments merge into one mesh per texture, with material colours folded into vertex colours. Vegetation is instanced in 64–128 m blocks. Crates, nodes and drops live in a distance-culled grid (`src/gfx/cullgrid.js`). The far plane follows the fog.
 - **Audio and offline:** the audio is synthesized with WebAudio and is positional, panned by where you look.
   - **Music** is synthesized live and follows what you're doing. It has a main theme on the menu, warm guitar and marimba when you explore by day, a music box at night, a tense pulse near the big monuments, a lounge groove in safe zones, and drums, bass and brass in a fight (heavier during raids). Moods crossfade, and the exploring music takes breaks. Its volume is under **Settings → Music**.
@@ -314,7 +351,10 @@ src/train.js           railway: track, halts, the train (moving decks you can ri
 src/ai.js              NPC + wildlife brains, steering (whiskers, wall following, stuck re-planning)
 src/nav.js             local height-aware A* paths (stairs, ladders, doors) for NPCs and survivors
 src/swim.js            swimming: floating, diving, breath, drowning, under-water view and sound
-src/combat.js          weapons, 3D projectiles, headshots, explosions, turrets
+src/combat.js          weapons, 3D projectiles, headshots, explosions (core, falloff, cover, shrapnel), turrets
+src/throwing.js        grenade physics (bounce, roll, land on floors), the throw, the aiming arc, co-op ghost throws
+src/recycler.js        recyclers: 6 in / 6 out, on/off, one item every 5 s, lamp and hum, co-op deltas, saving
+src/techtree.js        the workbench tech tree: blueprints for scrap, per tier
 src/build.js           building: storeys, stairs, ladders, triangles, Tool Cupboard upkeep + decay, raider flow field
 src/doors.js           hinged doors and gates
 src/world/gen.js       island generation

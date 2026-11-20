@@ -14,7 +14,7 @@ import { addDoor } from '../doors.js';
 import { Build } from '../build.js';
 import { spawnActor, removeActor } from '../actors.js';
 import { VegLayer, vegRadius, TREE_KINDS, vegOneGeo } from '../gfx/veg.js';
-import { B } from './gen.js';
+import { B, AREA_K } from './gen.js';
 import { rand, randi, pick, weighted, dist, chance, clamp } from '../util.js';
 
 let Models = null, LAYOUTS = {};
@@ -78,8 +78,9 @@ export const Live = {
     }
     // scattered small caches + crates in the wild
     const R = Math.random;
-    for (let i = 0; i < 70; i++) {
-      const v = pick(W.veg.filter(q => q.kind === 'pine' || q.kind === 'oak')); if (!v) break;
+    const trees = W.veg.filter(q => q.kind === 'pine' || q.kind === 'oak');
+    for (let i = 0; i < Math.round(70 * AREA_K); i++) {
+      const v = pick(trees); if (!v) break;
       const x = v.x + 1.2, z = v.z + 0.6; if (G.phys.overlaps(x, z, 0.4)) continue;
       this.addContainer({ type: R() < 0.35 ? 'cache' : 'crate', x, z, ry: R() * 6 });
     }

@@ -4,7 +4,7 @@
 import { registerFishingData } from './fishing.js';
 import { registerWeaponsData } from './weapons_extra.js';
 import { registerHomesteadData } from './data_homestead.js';
-export const VERSION = '5.0.1';
+export const VERSION = '5.1.0';
 
 export const RAR_COL = { common: '#7d827a', uncommon: '#5f9a4f', rare: '#3f7ec8', epic: '#9a52c9', legendary: '#e0a030' };
 
@@ -151,10 +151,11 @@ export const MELEE = {
   salv_pick: { dmg: 32, rate: 1.5, reach: 1.5, wood: 0.7, ore: 1.8, struct: 6 },
 };
 
-// throwables / explosives
+// throwables / explosives (combat.js explode: full damage and a bit more inside `core` m, then it falls off to the
+// edge of `r`; walls and cover block it; `frags` shrapnel pieces of `fragDmg` reach out to `fragR` m)
 export const THROWN = {
-  beancan: { fuse: 3.2, r: 3.0, dmg: 45, struct: 40, dud: 0.25, sfx: 'small' },
-  grenade: { fuse: 2.6, r: 4.2, dmg: 85, struct: 60 },
+  beancan: { fuse: 3.2, r: 3.4, dmg: 60, core: 0.8, struct: 40, dud: 0.25, sfx: 'small', frags: 6, fragDmg: 5, fragR: 5 },
+  grenade: { fuse: 3.0, r: 5.0, dmg: 95, core: 1.3, struct: 60, frags: 24, fragDmg: 9, fragR: 10 },
   satchel: { fuse: 5.0, r: 3.0, dmg: 70, struct: 210, dud: 0.15, sticky: true },
   c4: { fuse: 8.0, r: 3.6, dmg: 150, struct: 900, sticky: true, beep: true },
   supply_signal: { fuse: 4.0, smoke: true, signal: true },
@@ -291,7 +292,7 @@ export const DEPLOY = {
   workbench2: { name: 'Workbench T2', cost: { metal: 500, hqm: 20, scrap: 300 }, hp: 800, wb: 1, unique: true, wbTier: 2 },
   workbench3: { name: 'Workbench T3', cost: { metal: 1000, hqm: 60, scrap: 800 }, hp: 1200, wb: 2, unique: true, wbTier: 3 },
   research: { name: 'Research Table', cost: { metal: 150, scrap: 60 }, hp: 400, wb: 0, unique: true, desc: 'Turn an item into a blueprint for scrap.' },
-  recycler: { name: 'Recycler', cost: { metal: 300, scrap: 200, gears: 4 }, hp: 600, wb: 2, unique: true },
+  recycler: { name: 'Recycler', cost: { metal: 300, scrap: 200, gears: 4 }, hp: 600, wb: 2, unique: true, slots: 12, desc: 'Your own recycler: 6 input and 6 output slots and an on/off switch. It breaks one item down every 5 s, even while you are away.' },
   bed: { name: 'Bed', cost: { cloth: 60, metal: 40, wood: 40 }, hp: 200, wb: 1, max: 2, spawn: 60, desc: 'Respawn point (1 min cooldown).' },
   water_barrel: { name: 'Water Barrel', cost: { wood: 80, metal: 20 }, hp: 200, wb: 0, desc: 'Fills with water every dawn. Drink from it.' },
   planter: { name: 'Planter Box', cost: { wood: 100, cloth: 10 }, hp: 200, wb: 0, prod: { cloth: 15, berries: 3 }, desc: 'Grows hemp and berries: harvest every dawn.' },
@@ -465,7 +466,8 @@ export const TIPS = [
   'Upgrade from twig to wood, stone and metal. Survivors with explosives raid weak bases now and then.',
   'Doors open when you walk into them and close behind you. Anyone else has to break them.',
   'Roads are lined with barrels: smash them for scrap and components.',
-  'Recycle components at a Gas Station or Haven Market to get scrap and metal.',
+  'Recyclers at gas stations, supermarkets and Haven Market break components and gear into scrap and metal: load the input, switch it on, come back later.',
+  'Workbenches have a tech tree: spend scrap to learn blueprints without finding the item.',
   'Keycards and fuses open the vaults inside the big monuments.',
   'Cook raw meat on a campfire. Drink from lakes or water bottles.',
   'Radiation drains health. Anti-Rad pills, gas masks and hazmat suits help.',
@@ -488,3 +490,27 @@ registerWeaponsData({ ITEMS, WEAPONS, RECIPES, RECIPE, LOOT, ENEMIES, BP_BY_TIER
 export { ATTACH, ATTACH_IDS, ATT_SLOTS, ATT_SLOT_NAME, attAllowed, attFx, gunMag, gunReload, rollNpcAtt } from './weapons_extra.js';
 // electricity, farming and cooking: generators, solar, batteries, wiring, lights, planters, seeds, crops, cooking pot, food buffs
 registerHomesteadData({ ITEMS, RECIPES, RECIPE, LOOT, DEPLOY, DEPLOY_ORDER, OVENS, SHOPS, RECYCLE, TIPS });
+
+// ---------------------------------------------------------------------------
+// RECYCLING (Rust-style, recycler.js): gear (guns, tools, armour, helmets, bags, attachments) gives back about
+// half of what it costs to craft, never wood or stone. Components and valuables keep their yields above.
+// Whole numbers go in RECYCLE (survivors use it too); a part of a component becomes a chance in RECYCLE_P
+// (half a pipe = a 50% chance of a pipe).
+// ---------------------------------------------------------------------------
+export const RECYCLE_P = {};
+(function balanceRecycle() {
+  const GEAR = new Set(['gun', 'melee', 'armor', 'helmet', 'bag', 'att']);
+  for (const r of RECIPES) {
+    const def = ITEMS[r.out]; if (!def || !GEAR.has(def.cat)) continue;
+    const whole = {}, part = {};
+    for (const k in r.cost) {
+      if (k === 'wood' || k === 'stone' || !ITEMS[k]) continue;
+      const v = r.cost[k] * 0.5 / (r.n || 1);
+      if (ITEMS[k].cat === 'res') { const w = Math.round(v); if (w > 0) whole[k] = w; continue; } // resources: rounded
+      const w = Math.floor(v + 1e-9); if (w > 0) whole[k] = w; if (v - w > 0.01) part[k] = Math.round((v - w) * 100) / 100;
+    }
+    if (!Object.keys(whole).length && !Object.keys(part).length) continue;
+    RECYCLE[r.out] = whole; if (Object.keys(part).length) RECYCLE_P[r.out] = part;
+  }
+  Object.assign(RECYCLE, { intel: { scrap: 30 }, gpu: { scrap: 60, circuit: 2 } }); // valuables are scrap too (selling pays more)
+})();

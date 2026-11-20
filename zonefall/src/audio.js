@@ -22,7 +22,7 @@ export const Sfx = {
       this.master = c.createGain(); this.master.gain.value = 0.6 * this.volume;
       const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
       this.muffle = c.createBiquadFilter(); this.muffle.type = 'lowpass'; this.muffle.frequency.value = 20000; this.muffle.Q.value = 0.5;
-      this.master.connect(this.muffle); this.muffle.connect(comp); comp.connect(c.destination);
+      this.master.connect(this.muffle); this.muffle.connect(comp); comp.connect(c.destination); this.comp = comp;
       this.sfx = c.createGain(); this.sfx.connect(this.master);
       this.amb = c.createGain(); this.amb.gain.value = 0.9; this.amb.connect(this.master);
       this.musicOut = c.createGain(); this.musicOut.gain.value = 2.4; this.musicOut.connect(this.master);
@@ -93,14 +93,38 @@ export const Sfx = {
     if (near > 0.6) this.noise(0.03, 3400, 3, 0.1 * v, 'bandpass', 0.06);                              // the action cycling
     if (far > 0.25 || echo > 0.5) { this._pan = pan * -0.6; this._panT = panT; this.noise(0.5 + tail, 700, 0.6, echo * 0.28 * Math.max(v, 0.2) * (0.5 + far), 'lowpass', 0.12 + far * 0.35, 0.5, true, this.brownBuf); }
   },
-  explode(x, z, big = 1) {
-    const v = this.vol(x, z, 220); if (v <= 0) return; const near = v;
-    this.noise(0.1, 4500, 0.5, 1.0 * v, 'lowpass', 0, 0, true);
-    this.noise(1.6 * big, 1000, 0.5, 1.15 * v, 'lowpass', 0, 0.07, true);
-    this.noise(2.4 * big, 180, 0.7, 0.9 * v, 'lowpass', 0.05, 0.6, false, this.brownBuf, 0.02);           // rolling rumble
-    this.tone(46, 1.0, 0.85 * v * (0.3 + near * 0.7), 'sine', 0, 0.42);
-    for (let i = 0; i < 7; i++) this.noise(0.05, rand(1800, 4200), 2, rand(0.06, 0.16) * v, 'bandpass', rand(0.15, 1.1)); // debris pattering down
+  /** a blast: a sharp crack, the boom, a sub-bass thump up close, a rolling rumble off the land, debris pattering down
+   *  (frags: shrapnel pinging off things). Far away it arrives a moment later (sound is slower than light). */
+  explode(x, z, big = 1, kind) {
+    const v = this.vol(x, z, 260); if (v <= 0) return; const near = v, t0 = Math.min(0.45, (this._dist || 0) / 343);
+    this.noise(0.035, 6500, 0.5, 0.9 * v * (0.3 + near * 0.7), 'highpass', t0);                       // crack
+    this.noise(0.1, 4500, 0.5, 1.0 * v, 'lowpass', t0, 0, true);
+    this.noise(1.6 * big, 1000, 0.5, 1.15 * v, 'lowpass', t0, 0.07, true);
+    this.noise(2.4 * big, 180, 0.7, 0.9 * v, 'lowpass', t0 + 0.05, 0.6, false, this.brownBuf, 0.02);    // rolling rumble
+    this.tone(46, 1.0, 0.85 * v * (0.3 + near * 0.7), 'sine', t0, 0.42);
+    if (near > 0.5) this.tone(31, 1.4, 0.7 * (near - 0.4), 'sine', t0, 0.55);                          // the thump in your chest
+    if (kind === 'frag') for (let i = 0; i < 7; i++) this.tone(rand(2600, 5400), 0.035, rand(0.025, 0.06) * v, 'triangle', t0 + rand(0.02, 0.3)); // shrapnel pinging off things
+    for (let i = 0; i < 7; i++) this.noise(0.05, rand(1800, 4200), 2, rand(0.06, 0.16) * v, 'bandpass', t0 + rand(0.15, 1.1)); // debris pattering down
   },
+  /** ringing ears after a blast close by (k 0..1): everything goes dull for a moment and a high whine fades out */
+  deafen(k) {
+    const c = this.ctx; if (!c || !this.muffle || !this.enabled || k <= 0.05) return;
+    const now = c.currentTime, f = this.muffle.frequency, back = this._muf ? 650 : 20000;
+    f.cancelScheduledValues(now); f.setValueAtTime(Math.max(200, f.value), now); f.linearRampToValueAtTime(380 + (1 - k) * 2400, now + 0.04);
+    f.setTargetAtTime(back, now + 0.5 + k * 1.6, 0.45 + k * 1.1);
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = rand(3300, 3900);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.045 * k, now + 0.06); g.gain.exponentialRampToValueAtTime(0.0004, now + 1.6 + k * 2.6);
+    o.connect(g); g.connect(this.comp || c.destination); o.start(now); o.stop(now + 4.5); // straight to the output: it's in your head, not the world
+  },
+  /** pulling the pin, a grenade bouncing (metal on hard things, a dull thud on grass), a dud's hiss, a throw going past */
+  pin() { this.tone(2600, 0.04, 0.07, 'square'); this.noise(0.05, 4200, 3, 0.09, 'bandpass', 0.03); this.tone(1700, 0.05, 0.04, 'triangle', 0.06); },
+  nadeHit(x, z, k = 0.5, hard = true, can = false) {
+    const v = this.vol(x, z, 35) * (0.3 + k * 0.7); if (v < 0.02) return;
+    if (hard) { this.tone(can ? rand(700, 900) : rand(1100, 1500), 0.07, 0.11 * v, 'triangle', 0, 0.8); this.noise(0.04, 3200, 3, 0.18 * v, 'bandpass'); }
+    else { this.noise(0.07, 500, 1.2, 0.3 * v, 'lowpass'); this.tone(110, 0.06, 0.08 * v, 'sine', 0, 0.7); }
+  },
+  fizz(x, z) { const v = this.vol(x, z, 30); this.noise(1.4, 5200, 0.8, 0.12 * v, 'highpass', 0, 0.6, false, null, 0.05); this.noise(0.2, 900, 1, 0.08 * v, 'lowpass'); },
+  nadeWhoosh(x, z) { const v = this.vol(x, z, 30); this.noise(0.18, 1800, 1, 0.12 * v, 'bandpass', 0, 0.4, false, null, 0.04); },
   hit(x, z) { const v = this.vol(x, z); this.noise(0.05, 2200, 1.6, 0.3 * v, 'bandpass'); this.noise(0.08, 500, 1, 0.25 * v, 'lowpass'); },
   hitmark(crit) { this.tone(crit ? 1650 : 1180, 0.035, 0.06, 'square'); this.noise(0.03, 5000, 2, 0.06, 'bandpass'); if (crit) this.tone(2400, 0.06, 0.04, 'triangle', 0.03); },
   thud(x, z) { const v = this.vol(x, z); this.noise(0.12, 450, 1, 0.42 * v, 'lowpass'); this.tone(85, 0.1, 0.18 * v, 'sine', 0, 0.6); },
@@ -170,6 +194,36 @@ export const Sfx = {
   win() { [523, 659, 784, 1046].forEach((f, i) => { this.tone(f, 0.3, 0.13, 'triangle', i * 0.1); this.tone(f * 2, 0.2, 0.03, 'sine', i * 0.1); }); },
   lose() { [400, 300, 200, 120].forEach((f, i) => this.tone(f, 0.4, 0.18, 'sawtooth', i * 0.18)); },
   craft() { this.noise(0.08, 1500, 2, 0.2, 'bandpass'); this.tone(600, 0.08, 0.1, 'triangle', 0.08); this.noise(0.05, 2800, 3, 0.08, 'bandpass', 0.16); },
+  // ---------------------------------------------------------------- recyclers (recycler.js)
+  /** the hum of the nearest running recycler: one shared voice, k = how loud (0..1), panned toward (x, z) */
+  rcHum(k, x, z) {
+    const c = this.ctx; if (!c || !this.sfx) return;
+    if (!this._hum) {
+      if (k <= 0.001) return;
+      const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 52;
+      const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.value = 104.5;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.Q.value = 2;
+      const nz = c.createBufferSource(); nz.buffer = this.noiseBuf; nz.loop = true;
+      const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = 3; const ng = c.createGain(); ng.gain.value = 0.06;
+      const am = c.createGain(); am.gain.value = 1; const lfo = c.createOscillator(); lfo.frequency.value = 5.5; const lg = c.createGain(); lg.gain.value = 0.25;
+      const g = c.createGain(); g.gain.value = 0.0001; const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+      o1.connect(f); o2.connect(f); nz.connect(nf); nf.connect(ng); ng.connect(f); f.connect(am); lfo.connect(lg); lg.connect(am.gain); am.connect(g);
+      if (pan) { g.connect(pan); pan.connect(this.sfx); } else g.connect(this.sfx);
+      o1.start(); o2.start(); lfo.start(); nz.start();
+      this._hum = { g, pan };
+    }
+    const H = this._hum, v = this.enabled ? k * k * 0.16 : 0;
+    H.g.gain.setTargetAtTime(Math.max(0.0001, v), c.currentTime, 0.25);
+    if (H.pan && k > 0) { this.vol(x, z); H.pan.pan.setTargetAtTime(this._pan || 0, c.currentTime, 0.1); }
+  },
+  /** the motor spinning up / running down, and an item being crunched */
+  rcStart(x, z) { const v = this.vol(x, z, 40); this.tone(55, 0.7, 0.16 * v, 'sawtooth', 0, 2.4); this.noise(0.12, 600, 1, 0.3 * v, 'lowpass'); this.noise(0.05, 2400, 3, 0.12 * v, 'bandpass', 0.05); },
+  rcStop(x, z) { const v = this.vol(x, z, 40); this.tone(130, 0.8, 0.12 * v, 'sawtooth', 0, 0.35); this.noise(0.1, 500, 1, 0.22 * v, 'lowpass', 0.55); },
+  rcGrind(x, z) {
+    const v = this.vol(x, z, 45); if (v <= 0) return;
+    this.noise(0.35, 2200, 2.5, 0.22 * v, 'bandpass', 0, 0.6); this.noise(0.2, 500, 1, 0.35 * v, 'lowpass'); this.tone(90, 0.14, 0.16 * v, 'square', 0, 0.6);
+    for (let i = 0; i < 4; i++) this.tone(rand(1400, 3200), 0.05, rand(0.03, 0.07) * v, 'triangle', 0.05 + i * rand(0.04, 0.09));
+  },
   // ---------------------------------------------------------------- the ambience bed
   startAmbient(kind) { this.ambKind = kind; }, // kept for old callers: the bed follows the world by itself
   stopAmbient() { this.ambKind = null; },

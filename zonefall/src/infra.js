@@ -23,7 +23,11 @@ function buildBridges(W, scene) {
   bridgeFloors = [];
   const root = new THREE.Group(); root.name = 'bridges';
   const conc = M.surf('concrete'), dark = M.surf('concrete_dark'), steel = M.surf('metal_dark'), plank = M.surf('plank_dark'), rail = M.mat('#c8402e'), yellow = M.surf('yellow_paint');
-  for (const b of W.bridges) {
+  const spans = withApproaches(W);
+  for (const b of spans) { const dx = b.x1 - b.x0, dz = b.z1 - b.z0, len = Math.hypot(dx, dz); if (len >= 2) bridgeFloors.push({ x0: b.x0, z0: b.z0, ux: dx / len, uz: dz / len, len, w: b.w + 0.4, y0: b.y0 + 0.1, y1: b.y1 + 0.1, src: b }); }
+  // a railing post standing on another span's deck (a railway crossing a road bridge, an approach joining its bridge) would wall it off
+  const onOtherDeck = (b, x, z, y) => bridgeFloors.some(f => { if (f.src === b) return false; const rx = x - f.x0, rz = z - f.z0, t = rx * f.ux + rz * f.uz; if (t < -0.3 || t > f.len + 0.3 || Math.abs(-rx * f.uz + rz * f.ux) > f.w / 2 + 0.2) return false; return Math.abs(lerp(f.y0, f.y1, clamp(t / f.len, 0, 1)) - y) < 1.6; });
+  for (const b of spans) {
     const dx = b.x1 - b.x0, dz = b.z1 - b.z0, len = Math.hypot(dx, dz); if (len < 2) continue;
     const ux = dx / len, uz = dz / len, yaw = Math.atan2(dz, dx), pitch = Math.atan2(b.y1 - b.y0, len);
     const g = new THREE.Group(); g.position.set((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 0.1, (b.z0 + b.z1) / 2); g.rotation.set(0, -yaw, pitch, 'YXZ');
@@ -41,15 +45,36 @@ function buildBridges(W, scene) {
     const ybase = WATER_Y - 2.4, mid = (b.y0 + b.y1) / 2 + 0.1;
     for (const f of len > 12 ? [-0.25, 0.25] : [0]) for (const s of [-1, 1]) { const h = mid - 0.7 - ybase; const p = M.add(g, M.box(0.9, h, 0.9), dark, f * L, -0.7 - h / 2, s * (w / 2 - 0.8)); void p; }
     root.add(g);
-    bridgeFloors.push({ x0: b.x0, z0: b.z0, ux, uz, len, w: w + 0.4, y0: b.y0 + 0.1, y1: b.y1 + 0.1 });
     // railings: a row of small posts (the physics grid only has axis-aligned boxes and circles)
     for (let s = 0; s <= len; s += 1.0) for (const side of [-1, 1]) {
       const x = b.x0 + ux * s - uz * side * (w / 2 + 0.15), z = b.z0 + uz * s + ux * side * (w / 2 + 0.15), y = lerp(b.y0, b.y1, s / len) + 0.1;
+      if (onOtherDeck(b, x, z, y)) continue;
       const c = G.phys.addCircle(x, z, 0.32, { h: 1.2, y0: y, kind: 'fence', opaque: false }); c.ylo = y - 0.2; c.yhi = y + 1.3;
     }
   }
   const baked = M.bake(root); baked.name = 'bridges'; scene.add(baked);
   return baked;
+}
+/**
+ * Where a river valley has eaten a notch into the road just before a bridge, the deck would start in mid-air and
+ * people walk or drive into the gap under it. Carry each end on, flat, as a short approach span until the ground
+ * across the whole roadway comes up to deck height.
+ */
+function withApproaches(W) {
+  const out = [];
+  for (const b of W.bridges) {
+    out.push(b);
+    const dx = b.x1 - b.x0, dz = b.z1 - b.z0, len = Math.hypot(dx, dz); if (len < 2) continue;
+    const ux = dx / len, uz = dz / len, hw = b.w * 0.42;
+    const ground = (x, z) => Math.max(W.height(x, z), W.height(x - uz * hw, z + ux * hw), W.height(x + uz * hw, z - ux * hw));
+    for (const [ex, ez, ey, dir] of [[b.x0, b.z0, b.y0, -1], [b.x1, b.z1, b.y1, 1]]) {
+      let n = 0; for (let s = 0.5; s <= 20; s += 0.5) { if (ground(ex + ux * s * dir, ez + uz * s * dir) >= ey - 0.3) break; n = s; }
+      if (n < 0.75) continue;
+      const L = n + 1; // and a metre onto solid ground
+      out.push({ x0: ex, z0: ez, x1: ex + ux * L * dir, z1: ez + uz * L * dir, y0: ey, y1: ey, w: b.w, rail: b.rail, approach: true });
+    }
+  }
+  return out;
 }
 /** height of a bridge deck at (x,z) for someone at height y, or null */
 function bridgeFloor(x, z, y) {
