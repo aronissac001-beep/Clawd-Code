@@ -12,7 +12,7 @@ import { THREE, M } from '../gfx/materials.js';
 const THEME = {
   gas: 'urban', mart: 'urban', apartments: 'urban',
   village: 'rural', camp: 'rural', lighthouse: 'rural', radio: 'rural', fishvillage: 'coast', observatory: 'rural', haven: 'market', fort: 'rural',
-  quarry: 'quarry', dish: 'industrial', harbor: 'coast', trainyard: 'industrial', water: 'industrial', airfield: 'industrial', reactor: 'industrial', garrison: 'military',
+  quarry: 'quarry', dish: 'industrial', harbor: 'coast', trainyard: 'industrial', water: 'industrial', airfield: 'industrial', reactor: 'industrial', garrison: 'military', bunker: 'military',
 };
 const EDGE = {
   urban: ['tires', 'pallets', 'car', 'dumpster', 'barrier', 'drums', 'streetsign', 'cable_spool'],

@@ -55,7 +55,7 @@ export function addDoor(spec) {
   G.doors.push(d);
   return d;
 }
-export function cardColor(c) { return c === 'green' ? '#3cb050' : c === 'blue' ? '#3c78d0' : c === 'red' ? '#d03c3c' : '#8a9099'; }
+export function cardColor(c) { return c === 'green' ? '#3cb050' : c === 'blue' ? '#3c78d0' : c === 'red' ? '#d03c3c' : c === 'nuke' ? '#e0a030' : '#8a9099'; }
 
 export function removeDoor(d) {
   if (d.dead) return; d.dead = true; for (const c of d.cols || [d.col]) G.phys.remove(c); G.scene.remove(d.mesh.root);
@@ -117,7 +117,8 @@ export function updateDoors(dt) {
       for (const a of G.actors) if (!a.dead && (a.x - d.x) ** 2 + (a.z - d.z) ** 2 < 1.9 * 1.9) { near = true; break; }
       if (near) d.closeT = 0; else if ((d.closeT += dt) > 2.5) { closeDoor(d); d.closeT = 0; }
     }
-    // vault doors re-lock after a while
+    // vault doors re-lock after a while (the Nuclear Bunker's puzzle door stays open until the bunker resets: bunker.js)
+    if (d.puzzle) continue;
     if (d.card && !d.locked && (d.unlockT -= dt) <= 0 && d.a <= 0.01 && !d.open) { d.locked = true; }
     if (d.card && !d.locked && d.unlockT < -1 && d.open) { d.unlockT = 0; closeDoor(d); }
   }

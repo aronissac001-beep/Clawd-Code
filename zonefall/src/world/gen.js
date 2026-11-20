@@ -102,6 +102,7 @@ export function generateWorld(seed) {
         const x = R.range(60, WORLD - 60), z = R.range(60, WORLD - 60), e = elev(x, z), rl = tries / 3000;
         if (def.coast) { if (e < 0.03 - rl * 0.02 || e > 0.1 + rl * 0.05) continue; }
         else if (type === 'haven') { if (e < 0.35 - rl * 0.2 || e > 0.75) continue; }
+        else if (type === 'bunker') { if (e < 0.42 - rl * 0.3) continue; } // the Nuclear Bunker: inland, toward the middle
         else if (def.tier >= 3) { if (e < 0.28 - rl * 0.1) continue; }
         else if (e < 0.14 - rl * 0.06) continue;
         const r = def.size;
@@ -152,6 +153,15 @@ export function generateWorld(seed) {
         if (Math.hypot(x - px, z - pz) < 10 && dist(px, pz, q[0][0], q[0][1]) > 40 && (!hit || Math.hypot(x - px, z - pz) < hit[2])) hit = [px, pz, Math.hypot(x - px, z - pz)];
       }
       if (hit) { pts.length = i; pts.push([hit[0], hit[1]]); break; }
+    }
+    // the Nuclear Bunker turns its gate (local +Z, x = 0, 54 m out) to face its road, and the road ends at the gate
+    // instead of running on through the compound and the hill over the bunker
+    if (m.type === 'bunker' && pts.length > 2) {
+      const far = pts.find(p => dist(p[0], p[1], m.x, m.z) > 62) || pts[pts.length - 1];
+      const a = Math.atan2(far[1] - m.z, far[0] - m.x); m.rot = ((Math.round((a - Math.PI / 2) / (Math.PI / 2)) % 4) + 4) % 4;
+      const gx = m.x - Math.sin(m.rot * Math.PI / 2) * 54, gz = m.z + Math.cos(m.rot * Math.PI / 2) * 54;
+      const rest = pts.filter(p => dist(p[0], p[1], m.x, m.z) > 62);
+      if (rest.length) { pts.length = 0; pts.push([gx, gz], ...rest); }
     }
     m.roadFrom = pts[0]; W.roads.push(pts);
   }
@@ -627,7 +637,7 @@ export function generateWorld(seed) {
   // pylons every ~40 m, kept out of water, roads, rails and monument pads
   {
     const RP = rng((seed ^ 0x2545f491) >>> 0);
-    const hubs = W.monuments.filter(m => ['reactor', 'water', 'trainyard', 'harbor', 'airfield', 'dish', 'garrison', 'observatory', 'quarry', 'gas', 'mart', 'village', 'haven', 'lighthouse', 'radio', 'fishvillage'].includes(m.type));
+    const hubs = W.monuments.filter(m => ['reactor', 'bunker', 'water', 'trainyard', 'harbor', 'airfield', 'dish', 'garrison', 'observatory', 'quarry', 'gas', 'mart', 'village', 'haven', 'lighthouse', 'radio', 'fishvillage'].includes(m.type));
     const start = hubs.find(m => m.type === 'reactor') || hubs[0];
     if (start && hubs.length > 1) {
       const inT = [start], left = hubs.filter(m => m !== start), edges = [];
