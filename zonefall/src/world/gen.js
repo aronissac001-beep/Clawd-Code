@@ -636,7 +636,7 @@ export function generateWorld(seed) {
         if (x < 20 || z < 20 || x > WORLD - 20 || z > WORLD - 20) return false; if (H(x, z) < 0.5) return false;
         for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) { const k = idx(x + ox, z + oz); if (W.road[k] || W.rail[k] || W.flat[k] || W.river[k]) return false; }
         if (Math.abs(H(x + 1.5, z) - H(x - 1.5, z)) > 1.8 || Math.abs(H(x, z + 1.5) - H(x, z - 1.5)) > 1.8) return false; // not on a steep bank
-        return !W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 3) && !onBridge(x, z, 3);
+        return !W.monuments.some(m => dist(m.x, m.z, x, z) < m.size + 8) && !onBridge(x, z, 3); // sites often spill a little past their pad
       };
       for (const [a, b] of edges) {
         const d = dist(a.x, a.z, b.x, b.z), ux = (b.x - a.x) / d, uz = (b.z - a.z) / d, px = -uz, pz = ux;
