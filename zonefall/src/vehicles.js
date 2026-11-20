@@ -58,7 +58,11 @@ const KINDS = {
     vTrot: 5.2, vGallop: 13, vBack: 1.3, acc: 3.4, dec: 6.5, stamT: 16, wade: 0.2, deep: 0.8, hop: 0.7, fall: 7.5, fallK: 14, reach: 2.7, hpLabel: 'HEALTH', exitLabel: 'Get off the horse' },
 };
 const COLORS = ['#ff8a1e', '#2bb3a8', '#d8432f', '#ffc928', '#5a8fd8'];
-const BOAT_WANT = { motorboat: 12, rowboat: 10 }; // ~10-14 / 8-12 around the island
+const BOAT_BASE = { motorboat: 9, rowboat: 8 }; // round a 1500 m island; more coast, more boats
+const RARITY = 0.75;                            // vehicles are a find, not a car park: about 3 in 4 of the old numbers
+/** how many of something to place for this island size: area-scaled for land vehicles, coast-scaled for boats */
+const want = (base, coast) => { const k = (G.W ? G.W.size : 1500) / 1500; return Math.max(1, Math.round(base * (coast ? k : k * k))); };
+const BOAT_WANT = { get motorboat() { return want(BOAT_BASE.motorboat, true); }, get rowboat() { return want(BOAT_BASE.rowboat, true); } };
 const HELI_TOP = 2.3; // minicopter: skids to rotor tips (decks overhead and edge-on stop it)
 // hull sample points (fractions of half-length, half-beam) for depth and grounding checks
 const HULL_PTS = [[0.92, 0], [0.5, 0], [0, 0], [-0.5, 0], [-0.9, 0], [0.15, 0.85], [0.15, -0.85], [-0.45, 0.85], [-0.45, -0.85]];
@@ -97,7 +101,7 @@ export class Vehicles {
     try { horses = this.spawnHorses(free); } catch (e) { console.error('horse spawns failed', e); }
     // buggies: on the shoulders of the roads, spread out
     const roads = W.roads.filter(p => p.length > 6);
-    for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'buggy').length < 9; tries++) {
+    for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'buggy').length < want(9 * RARITY); tries++) {
       const p = roads[Math.floor(Math.random() * roads.length)]; if (!p) break;
       const i = 1 + Math.floor(Math.random() * (p.length - 2)); const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0) || 1;
       const nx = -(z1 - z0) / L, nz = (x1 - x0) / L, side = chance(0.5) ? 1 : -1;
@@ -106,7 +110,7 @@ export class Vehicles {
       spots.push({ kind: 'buggy', x, z, yaw: Math.atan2(z1 - z0, x1 - x0) + (chance(0.5) ? 0 : Math.PI) + rand(-0.3, 0.3) });
     }
     // motorcycles with sidecars: a few more on the road shoulders
-    for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'moto').length < 5; tries++) {
+    for (let tries = 0; tries < 400 && spots.filter(s => s.kind === 'moto').length < want(5 * RARITY); tries++) {
       const p = roads[Math.floor(Math.random() * roads.length)]; if (!p) break;
       const i = 1 + Math.floor(Math.random() * (p.length - 2)); const [x0, z0] = p[i], [x1, z1] = p[i + 1]; const L = Math.hypot(x1 - x0, z1 - z0) || 1;
       const nx = -(z1 - z0) / L, nz = (x1 - x0) / L, side = chance(0.5) ? 1 : -1;
@@ -118,7 +122,7 @@ export class Vehicles {
     const heliAt = (x, z) => { for (let k = 0; k < 40; k++) { const a = rand(0, 6.28), r = k * 1.5; const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (free(px, pz, 3.6) && G.W.height(px, pz) > 0.8 && !horses.some(s => dist(s.x, s.z, px, pz) < 7)) { spots.push({ kind: 'heli', x: px, z: pz, yaw: rand(0, 6.28) }); return true; } } return false; };
     const af = G.monuments.find(m => m.type === 'airfield'); if (af) heliAt(af.x + af.size * 0.75, af.z);
     const hv = G.monuments.find(m => m.type === 'haven'); if (hv) heliAt(hv.x + hv.size + 10, hv.z + 6);
-    for (let tries = 0; tries < 200 && spots.filter(s => s.kind === 'heli').length < 4; tries++) {
+    for (let tries = 0; tries < 200 && spots.filter(s => s.kind === 'heli').length < want(3 * RARITY); tries++) {
       const x = rand(150, W.size - 150), z = rand(150, W.size - 150);
       if (W.biomeAt(x, z) !== 2 || spots.some(s => dist(s.x, s.z, x, z) < 200)) continue; heliAt(x, z);
     }
