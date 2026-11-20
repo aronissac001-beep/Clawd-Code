@@ -448,6 +448,24 @@ body.driving #b-fire,body.driving #b-fire2,body.driving #b-ads,body.driving #b-r
 #vhud .fb{display:inline-block;width:64px;height:11px;border:2px solid var(--ink);background:#3a3046;border-radius:2px;overflow:hidden}#vhud .fb i{display:block;height:100%;background:linear-gradient(#ffe45a 0 40%,#ffb21e 40%)}#vhud .fb.hp i{background:linear-gradient(#9cf07a 0 40%,#56c43a 40%)}
 #vhud .fl{font-size:10px;color:var(--dim)}
 body.touch.driving #prompt{display:none!important}
+/* ---------------- recycler (recycler.js): switch, progress, 6 in / 6 out ---------------- */
+.rc-box{background:linear-gradient(rgba(90,120,70,.18),rgba(90,120,70,.05));border:2px solid #6f8a52;border-radius:6px;padding:4px 6px 6px;box-shadow:2px 2px 0 var(--ink)}
+.rc-box.on{border-color:#86e64a;box-shadow:0 0 10px rgba(134,230,74,.3),2px 2px 0 var(--ink)}
+.rc-head{display:flex;align-items:center;gap:7px}.rc-head>span{flex:1;min-width:0;display:flex;flex-direction:column}
+.rc-head b{font-size:13px;font-style:italic;font-weight:900;letter-spacing:.5px}.rc-head small{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-lamp{flex:none;width:14px;height:14px;border-radius:50%;background:#5a2219;border:2px solid var(--ink);box-shadow:inset 0 -2px 0 rgba(0,0,0,.35)}
+.rc-box.on .rc-lamp{background:#62ff70;box-shadow:0 0 8px #62ff70,inset 0 -2px 0 rgba(0,0,0,.2);animation:rcblink .5s ease-in-out infinite alternate}
+@keyframes rcblink{from{filter:brightness(.8)}to{filter:brightness(1.25)}}
+.rc-sw{flex:none;padding:5px 11px;font-size:12px;min-height:34px}.rc-sw.on{background:#3a5a2a;border-color:#86e64a;color:#dfffd0}
+.rc-prog{position:relative;height:16px;margin:5px 0 1px;background:#1b1622;border:2px solid var(--ink);border-radius:4px;overflow:hidden}
+.rc-prog i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(#b8ff7a 0 45%,#5fc83a 45%)}
+.rc-prog span{position:absolute;inset:0;font-size:10px;font-weight:900;line-height:12px;text-align:center;color:#fff;text-shadow:-1px -1px 0 var(--ink),1px 1px 0 var(--ink),1px -1px 0 var(--ink),-1px 1px 0 var(--ink)}
+.rc-box .grid.rc6{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+.rc-box .lbl{margin:4px 0 3px}.rc-box .rc-out .slot.empty{background:#1c2218}
+.rc-arrow{text-align:center;font-size:11px;line-height:1;color:#86e64a;margin:2px 0 -2px}
+.rc-tip{margin:5px 0 0;font-size:10.5px;line-height:1.3}
+.detail p.dt-rc{color:#b8e8a0}
+@media (max-height:430px){ .rc-box{padding:3px 5px 5px}.rc-box .slot{min-height:38px}.rc-head b{font-size:12px}.rc-sw{min-height:30px;padding:4px 9px} }
 /* ---------------- workbench tech tree (techtree.js) ---------------- */
 .sheet.tech{width:min(97vw,900px)}
 .tt{display:flex;flex-direction:column;gap:6px}

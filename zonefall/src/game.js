@@ -27,6 +27,7 @@ import { Net } from './net.js';
 import { Profile } from './profile.js';
 import { Build } from './build.js';
 import { Home, isLit } from './homestead.js';
+import { Recycler } from './recycler.js';
 import { updateDoors } from './doors.js';
 import { spawnActor, removeActor, syncRig } from './actors.js';
 import { updateAI, alertTo, hearNoise } from './ai.js';
@@ -82,6 +83,7 @@ export const Game = {
     if ((s.run && s.run.worldV) !== WORLD_V) { this.newRun(); setTimeout(() => G.ui && G.ui.banner('A new, bigger island', 'This update rebuilt the island (rivers, valleys, caves, power lines), so your old base could not come along.'), 600); return; }
     G.run = s.run; G.run.perks = []; delete G.run.raidTonight; if (!(G.W && G.W.seed === s.run.seed && !G.worldUsed)) this.setupWorld(s.run.seed); G.worldUsed = true; G.mode = 'play';
     Build.restore(s.base);
+    Recycler.restore(G.run.rcy);
     Bots.init(s.bots);
     const inv = PlayerInv.from(s.player.inv);
     G.player = makePlayer(s.player.x, s.player.z, inv);
@@ -140,6 +142,7 @@ export const Game = {
     if (!G.run || G.mode !== 'play' || !G.player) return;
     if (G.netGuest || G.run.coop) return; // a co-op guest's run lives on the host's island; their solo save stays untouched (even after the host leaves)
     const p = G.player; G.run.clock = G.clock; G.run.day = G.day; G.run.t = G.t;
+    G.run.rcy = Recycler.serialize(); // what's in the monument recyclers (placed ones save with the base)
     const pd = p.dead ? null : { x: p.x, z: p.z, hp: p.hp, food: p.food, water: p.water, rad: p.rad, sel: p.sel, inv: p.inv.toJSON() };
     const drops = G.drops.filter(d => d.kind === 'bag' && !d.inv.empty()).slice(0, 6).map(d => ({ x: d.x, z: d.z, kind: d.kind, inv: d.inv.toJSON() }));
     const data = { v: VERSION, run: G.run, base: Build.serialize(), player: pd || (G.lastPlayerSave || null), drops, bots: Bots.serialize() };
@@ -359,9 +362,10 @@ export const Game = {
       if (d2 < 30 * 30 && a.speedNow > 0.6 && a.kind !== 'vehicle') { a.stepAcc = (a.stepAcc || 0) + a.speedNow * dt; if (a.stepAcc > (a.kind === 'animal' ? 1.1 : 1.6)) { a.stepAcc = 0; Sfx.stepAt(a.x, a.z, 'grass'); } }
     }
     updateProjectiles(dt); updateThrowns(dt); updateDoors(dt);
-    if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); }
+    if (!G.netGuest) { Build.tick(dt); updateTurrets(dt); this.updateTraps(dt); Recycler.tick(dt); } // recyclers run on the host, near or far
     Live.update(dt);
     Home.frame(dt); // power indicators + cables, crops, cooking pots, the wiring bar
+    Recycler.frame(dt); // recycler lamps, flywheels, hum
     this.updateAirdrop(dt);
     // anomalies hurt + give artifacts
     for (const an of G.anomalies) {

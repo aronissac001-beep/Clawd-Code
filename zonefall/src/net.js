@@ -24,7 +24,7 @@ import { Live } from './world/live.js';
 import { Inv, PlayerInv } from './inventory.js';
 import { Cargo } from './cargo.js';
 G.netWorld = NW;
-const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg', 'gsave']); // guest -> host requests (the host re-broadcasts the results itself)
+const NO_RELAY = new Set(['wset', 'ahit', 'copen', 'cbreak', 'boom', 'asig', 'hack', 'venter', 'vdmg', 'gsave', 'rcop']); // guest -> host requests (the host re-broadcasts the results itself)
 import { clamp, lerp, rand } from './util.js';
 
 const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -287,6 +287,8 @@ export const Net = {
       case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
       case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
       case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) { Live.lootOf(c); if (!c.openedAt) c.openedAt = G.t; } NW.diffT = 0; } break;
+      case 'rcop': if (this.role === 'host' && G.recycler) G.recycler.hostOp(m, m.id); break; // a guest put things in / took things out of a recycler
+      case 'rcst': if (this.role === 'guest' && G.recycler) G.recycler.fromHost(m); break;
       case 'cbreak': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) Live.breakContainer(c, pl ? pl.actor : null, { auto: !!m.al }); } break;
       case 'loot': if (this.role === 'guest' && Array.isArray(m.items) && G.player && !G.player.dead) { const inv = Inv.from(m.items.slice(0, 24), 24); const left = Live.autoLoot(inv, +m.x || G.player.x, +m.y || G.player.y + 1, +m.z || G.player.z); if (!left.empty()) Live.dropInv(G.player.x, G.player.z, left, 'item', 600, G.player.y + 0.5); } break;
       case 'ahit': if (this.role === 'host') { const a = G.actors.find(q => q.id === m.aid && !q.dead); if (a && pl) hurt(a, clamp(+m.dmg || 0, 0, 2000), { owner: pl.actor, crit: !!m.crit, pen: clamp(+m.pen || 0, 0, 1), kind: String(m.kind || ''), bleed: clamp(+m.bleed || 0, 0, 1), dir: Math.atan2(a.z - pl.actor.z, a.x - pl.actor.x) }); } break;

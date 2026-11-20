@@ -214,6 +214,15 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
+- **Recyclers work like Rust's:**
+  - Every recycler is a machine with 6 input slots, 6 output slots and an On/Off switch. You find them at gas stations, supermarkets, Haven Market and on the oil rig, and you can build your own at a Workbench T2.
+  - Put things in the input and switch it on. It breaks one item down every 5 seconds, one stack at a time, and puts what comes out in the output. It stops by itself when the input is empty or the output is full.
+  - It keeps running when you walk away, and anyone can take things out.
+  - While it runs, a green lamp lights up, the flywheels on its sides spin, it hums, and each item comes out with a crunch and a puff of smoke. The window has a progress bar.
+  - Gear (guns, tools, armour, helmets, bags and attachments) gives back about half of what it cost to craft, but never wood or stone. Half a part means a 50% chance of getting it. Components and valuables turn into scrap and resources. An item's details show what it recycles into.
+  - **+ Components** puts every component and valuable from your backpack in at once.
+  - Your own recycler keeps its contents and its switch when you save, and so do the ones at monuments.
+  - In co-op the host's game runs the recyclers. Friends see the same contents and can load one, switch it on and empty it.
 - **Workbench tech tree:** the **Tech tree** tab next to Craft shows a tree of blueprints for each workbench tier.
   - At a workbench of tier N you can spend scrap to learn any blueprint of tier N or lower, without owning the item.
   - Each tier has a few branches (sidearms, rifles, sights, explosives and so on). In a branch, a blueprint needs the one above it.

@@ -466,7 +466,7 @@ function deployLabel(d) {
     case 'campfire': return ['Campfire', 'campfire'];
     case 'workbench1': case 'workbench2': case 'workbench3': return ['Workbench', 'workbench'];
     case 'research': return ['Research table', 'research'];
-    case 'recycler': return ['Recycler', 'recycle'];
+    case 'recycler': return [d.state && d.state.on ? 'Recycler (running)' : 'Recycler', 'recycle'];
     case 'water_barrel': return ['Drink (' + Math.round(d.state.water || 0) + ')', 'drop'];
     case 'sleeping_bag': case 'bed': return null;
     default: return Home.label(d); // power, planters, cooking pot
@@ -475,7 +475,7 @@ function deployLabel(d) {
 function useLabel(u) {
   const m = u.mon;
   switch (u.type) {
-    case 'recycler': return ['Recycle', 'recycle'];
+    case 'recycler': return [u.state && u.state.on ? 'Recycler (running)' : 'Recycler', 'recycle'];
     case 'vendor': return ['Trade', 'vendor'];
     case 'fusebox': return m && m.power > G.t ? ['Powered', 'check'] : ['Insert fuse', 'info'];
     case 'lever': return m && m.lever > G.t ? ['Lever pulled', 'check'] : ['Pull lever', 'hand'];
@@ -543,7 +543,7 @@ function deployInteract(p, d) {
     case 'furnace': case 'campfire': G.ui.openOven(d); break;
     case 'workbench1': case 'workbench2': case 'workbench3': G.ui.openCraft(); break;
     case 'research': G.ui.openResearch(); break;
-    case 'recycler': G.ui.openRecycler(); break;
+    case 'recycler': G.ui.openRecycler(d); break;
     case 'water_barrel': if (d.state.water > 1 && p.water < 99) { const k = Math.min(d.state.water, 100 - p.water, 30); d.state.water -= k; p.water += k; Sfx.drink(); } else G.ui.toast(d.state.water <= 1 ? 'Empty — refills at dawn' : 'Not thirsty'); break;
     default: Home.interact(p, d); // power, planters, cooking pot
   }
@@ -551,7 +551,7 @@ function deployInteract(p, d) {
 function useInteract(p, u) {
   const m = u.mon;
   switch (u.type) {
-    case 'recycler': G.ui.openRecycler(); break;
+    case 'recycler': G.ui.openRecycler(u); break;
     case 'vendor': G.ui.openShop(u.shop); break;
     case 'fusebox':
       if (m && m.power > G.t) { G.ui.toast('Already powered'); break; }

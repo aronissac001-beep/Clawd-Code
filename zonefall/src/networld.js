@@ -12,7 +12,10 @@
 //    hits on them are sent to the host; their shots and explosions are replayed
 //    on the guest, whose own game decides if it was hit.
 //  * Guests stop simulating anything world-changing themselves (spawns, respawns,
-//    raids, airdrops, turrets, smelting) — they mirror the host.
+//    raids, airdrops, turrets, smelting, recycling) — they mirror the host.
+//  * Recyclers (recycler.js): the host owns them. Monument ones go out as 'u'
+//    records, placed ones with their deployable. A guest never sends a recycler's
+//    contents in its diff; it sends what it put in / took out ('rcop') instead.
 // ============================================================================
 import { G } from './state.js';
 import { Build } from './build.js';
@@ -26,6 +29,7 @@ import { Sfx } from './audio.js';
 import { clamp, lerp } from './util.js';
 import { Cargo } from './cargo.js';
 import { Events } from './events.js';
+import { Recycler } from './recycler.js';
 
 const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
 const hp5 = v => Math.ceil(v / 5) * 5;
@@ -40,7 +44,11 @@ const geoRec = p => p.tk ? [...p.verts.flat().map(v => Math.round(v * 1000) / 10
 function deployKey(d) { const up = d.y !== undefined && G.W && d.y - G.W.height(d.x, d.z) > 2.2 ? '|' + Math.round(d.y * 2) : ''; return 'd' + d.type + '|' + Math.round(d.x * 10) + '|' + Math.round(d.z * 10) + up; }
 function pieceRec(p) { const dr = p.door; return [p.type, p.tier, p.ci, p.cj, p.edge || '', p.level ?? null, hp5(p.hp), p.owner, p.hw || '', dr && !dr.dead ? [dr.kind, hp5(dr.hp), dr.flip ? 1 : 0] : 0, p.st || 0, p.dir || 0, geoRec(p)]; }
 function stateRec(s) { if (!s) return 0; const o = {}; for (const k in s) { const v = s[k]; o[k] = typeof v === 'number' ? r1(v) : v; } return o; }
-function deployRec(d) { return [d.type, r2(d.x), r2(d.z), r2(d.ry || 0), d.owner, hp5(d.hp), stateRec(d.state), d.inv ? d.inv.toJSON() : 0, r2(d.y ?? 0)]; }
+function deployRec(d) {
+  // a guest's recycler: where it stands and its health only (its contents come from the host; changes go up as 'rcop')
+  if (d.type === 'recycler' && G.net && G.net.role === 'guest') return [d.type, r2(d.x), r2(d.z), r2(d.ry || 0), d.owner, hp5(d.hp), 0, 0, r2(d.y ?? 0)];
+  return [d.type, r2(d.x), r2(d.z), r2(d.ry || 0), d.owner, hp5(d.hp), stateRec(d.type === 'recycler' ? { on: d.state.on ? 1 : 0, pg: d.state.pg | 0, dn: d.doneN | 0 } : d.state), d.inv ? d.inv.toJSON() : 0, r2(d.y ?? 0)];
+}
 function dropRec(d) { return [r2(d.x), r2(d.y), r2(d.z), d.kind, d.inv.toJSON(), d.inv.size, d.corpse || 0]; }
 
 /** base doors are keyed by their wall piece, monument doors by build order (same seed, same order) */
@@ -56,12 +64,13 @@ export const NW = {
   pendingOpen: new Map(), // guest: container id -> callback once its contents arrive
   gid: 0,                 // guest-made drop ids
   boomExcept: null,
+  deployKey,
   get host() { return G.net && G.net.role === 'host'; },
   get guest() { return G.net && G.net.role === 'guest'; },
   reset() { this.known = null; this.vknown = new Map(); this.sent.clear(); for (const a of this.mirrors.values()) removeActor(a); this.mirrors.clear(); this.pendingOpen.clear(); this.dropCrate = null; },
   // ---------------------------------------------------------------- world state
   collect() {
-    const s = { p: new Map(), d: new Map(), c: new Map(), r: new Map(), o: new Map(), n: new Set(), v: new Set() };
+    const s = { p: new Map(), d: new Map(), c: new Map(), r: new Map(), o: new Map(), u: new Map(), n: new Set(), v: new Set() };
     for (const p of Build.allPieces()) if (!p.dead) s.p.set(pieceKey(p), JSON.stringify(pieceRec(p)));
     for (const d of Build.deploys) if (!d.dead) s.d.set(deployKey(d), JSON.stringify(deployRec(d)));
     for (const c of G.containers) if (c.gone || c.inv || c.locked !== undefined) s.c.set(String(c.id), JSON.stringify([c.gone ? 1 : 0, c.inv ? c.inv.toJSON() : 0, c.locked ? (c.hackEnd ? Math.max(1, Math.ceil((c.hackEnd - G.t) / 5) * 5) : -1) : 0]));
@@ -69,12 +78,13 @@ export const NW = {
     for (const n of G.nodes) if (n.gone && n.id !== undefined) s.n.add(String(n.id));
     for (const id of Live.vegHidden.keys()) s.v.add(String(id));
     for (const d of G.doors) if (!d.dead) { const k = doorKey(d); if (k) s.o.set(k, JSON.stringify([d.open ? d.sign || 1 : 0, d.locked ? 1 : 0])); }
+    if (!this.guest) for (const u of G.uses) if (u.type === 'recycler' && u.inv) s.u.set(Recycler.keyOf(u), JSON.stringify(Recycler.record(u))); // monument recyclers someone has used
     return s;
   },
   diff(a, b) {
     const out = {}; let any = false;
-    for (const k of ['p', 'd', 'c', 'r', 'o']) {
-      const L = []; const A = a ? a[k] : new Map(), B = b[k];
+    for (const k of ['p', 'd', 'c', 'r', 'o', 'u']) {
+      const L = []; const A = a && a[k] ? a[k] : new Map(), B = b[k] || new Map();
       for (const [key, v] of B) if (A.get(key) !== v) L.push([key, JSON.parse(v)]);
       for (const key of A.keys()) if (!B.has(key)) L.push([key, 0]);
       if (L.length) { out[k] = L; any = true; }
@@ -97,6 +107,7 @@ export const NW = {
       for (const [k, on] of m.n || []) this.applyNode(k, on);
       for (const [k, on] of m.v || []) this.applyVeg(k, on);
       for (const [k, r] of m.o || []) this.applyDoor(k, r);
+      if (this.guest) for (const [k, r] of m.u || []) { const u = Recycler.byKey(k); if (u) Recycler.applyRecord(u, r || [0, 0, null]); }
       Build.dirty = true;
     } catch (e) { console.warn('world apply', e); }
     this.applying = false;
@@ -142,6 +153,7 @@ export const NW = {
     if (!cur) { cur = Build.placeDeploy(type, x, z, ry, owner, { y: typeof y === 'number' ? y + 0.05 : undefined, state: state || undefined }); if (!cur) return; }
     else if (typeof y === 'number' && Math.abs((cur.y ?? y) - y) > 0.3 && type !== 'ladder') Build.dropDeploy(cur);
     cur.hp = hp; if ((cur.ry || 0) !== ry) { cur.ry = ry; if (cur.mesh) cur.mesh.rotation.y = -ry; }
+    if (type === 'recycler') { if (state && this.guest) Recycler.applyRecord(cur, [state.on, state.pg, inv || null, state.dn]); return; } // the host keeps its own (guests send 'rcop')
     if (state && cur.state) Object.assign(cur.state, state);
     if (inv && cur.inv) setInv(cur.inv, inv);
   },

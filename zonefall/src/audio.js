@@ -170,6 +170,36 @@ export const Sfx = {
   win() { [523, 659, 784, 1046].forEach((f, i) => { this.tone(f, 0.3, 0.13, 'triangle', i * 0.1); this.tone(f * 2, 0.2, 0.03, 'sine', i * 0.1); }); },
   lose() { [400, 300, 200, 120].forEach((f, i) => this.tone(f, 0.4, 0.18, 'sawtooth', i * 0.18)); },
   craft() { this.noise(0.08, 1500, 2, 0.2, 'bandpass'); this.tone(600, 0.08, 0.1, 'triangle', 0.08); this.noise(0.05, 2800, 3, 0.08, 'bandpass', 0.16); },
+  // ---------------------------------------------------------------- recyclers (recycler.js)
+  /** the hum of the nearest running recycler: one shared voice, k = how loud (0..1), panned toward (x, z) */
+  rcHum(k, x, z) {
+    const c = this.ctx; if (!c || !this.sfx) return;
+    if (!this._hum) {
+      if (k <= 0.001) return;
+      const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 52;
+      const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.value = 104.5;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.Q.value = 2;
+      const nz = c.createBufferSource(); nz.buffer = this.noiseBuf; nz.loop = true;
+      const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = 3; const ng = c.createGain(); ng.gain.value = 0.06;
+      const am = c.createGain(); am.gain.value = 1; const lfo = c.createOscillator(); lfo.frequency.value = 5.5; const lg = c.createGain(); lg.gain.value = 0.25;
+      const g = c.createGain(); g.gain.value = 0.0001; const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+      o1.connect(f); o2.connect(f); nz.connect(nf); nf.connect(ng); ng.connect(f); f.connect(am); lfo.connect(lg); lg.connect(am.gain); am.connect(g);
+      if (pan) { g.connect(pan); pan.connect(this.sfx); } else g.connect(this.sfx);
+      o1.start(); o2.start(); lfo.start(); nz.start();
+      this._hum = { g, pan };
+    }
+    const H = this._hum, v = this.enabled ? k * k * 0.16 : 0;
+    H.g.gain.setTargetAtTime(Math.max(0.0001, v), c.currentTime, 0.25);
+    if (H.pan && k > 0) { this.vol(x, z); H.pan.pan.setTargetAtTime(this._pan || 0, c.currentTime, 0.1); }
+  },
+  /** the motor spinning up / running down, and an item being crunched */
+  rcStart(x, z) { const v = this.vol(x, z, 40); this.tone(55, 0.7, 0.16 * v, 'sawtooth', 0, 2.4); this.noise(0.12, 600, 1, 0.3 * v, 'lowpass'); this.noise(0.05, 2400, 3, 0.12 * v, 'bandpass', 0.05); },
+  rcStop(x, z) { const v = this.vol(x, z, 40); this.tone(130, 0.8, 0.12 * v, 'sawtooth', 0, 0.35); this.noise(0.1, 500, 1, 0.22 * v, 'lowpass', 0.55); },
+  rcGrind(x, z) {
+    const v = this.vol(x, z, 45); if (v <= 0) return;
+    this.noise(0.35, 2200, 2.5, 0.22 * v, 'bandpass', 0, 0.6); this.noise(0.2, 500, 1, 0.35 * v, 'lowpass'); this.tone(90, 0.14, 0.16 * v, 'square', 0, 0.6);
+    for (let i = 0; i < 4; i++) this.tone(rand(1400, 3200), 0.05, rand(0.03, 0.07) * v, 'triangle', 0.05 + i * rand(0.04, 0.09));
+  },
   // ---------------------------------------------------------------- the ambience bed
   startAmbient(kind) { this.ambKind = kind; }, // kept for old callers: the bed follows the world by itself
   stopAmbient() { this.ambKind = null; },
