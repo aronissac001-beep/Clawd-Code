@@ -47,12 +47,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
     - Phones on different networks (for example mobile data and someone else's Wi-Fi) connect through a free relay server.
 - **Profile and character creator:** pick a name, skin, hair style and colour, beard, shirt, trousers or shorts, a hat and an accent colour, with a live 3D preview. It dresses your first-person arms and how friends see you.
 - **Vehicles:**
-  - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over.
+  - **Dune buggies** sit on the roadsides. Use the stick or WASD to drive, and pull back to brake and reverse. They're fast on roads, slower off-road, and run people over. They drive over bridges, decks and monument floors.
   - **Motorcycles with sidecars** are parked on the roadsides too. They ride like the buggy (fast on roads, slower off-road), lean into the turns, and carry a pillion passenger and one in the sidecar.
-  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small open two-blade choppers on skids, with a passenger bench on each side.
-    - The engine spools up when you climb in. The nose turns toward where you look. Push the stick forward and it dips its nose and picks up speed; push sideways and it banks and slides. ▲/Space climbs and ▼/C descends.
-    - Let go of everything and it levels out and hovers. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low. Decks and roofs are solid to it: you can't fly into one edge-on or climb up through it.
+  - **Minicopters** wait at the airfield, by Haven Market and out in the fields. They're small Rust-style choppers: an open cockpit tub with a slanted windscreen and a low dashboard you see over, the engine behind the seat, a long two-blade rotor, a tail boom with fin and tail rotor, skids, and a passenger seat on each side.
+    - The engine spools up when you climb in. The nose swings round to where you look. The stick asks for a speed, forward or sideways, and she leans into it (full speed, about 80 km/h, in a couple of seconds); ▲/Space climbs and ▼/C descends.
+    - Let go and she coasts to a steady hover, holding her height. It settles gently onto the ground, roofs, ship decks and helipads (including the oil rig's), and kicks up dust or spray when it's low. Decks and roofs are solid to it: you can't fly into one edge-on or climb up through it.
     - If the fuel runs out in the air, the rotor autorotates and you come down fast but in one piece.
+  - Vehicles are a find rather than a car park: a handful of each, spread out across the island.
   - All of these burn low-grade fuel, which is topped up from your pockets when you climb in.
   - They take damage from crashes, falls and explosions, and wrecked ones respawn later.
   - **Horses** stand saddled at hitching rails by Haven Market, Saltmarsh Village and Hollow Creek, and a few graze out in the grassland. They need no fuel.
