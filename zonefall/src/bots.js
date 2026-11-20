@@ -21,7 +21,7 @@
 // at most one survivor raid every three days and per raider every five.
 // ============================================================================
 import { G } from './state.js';
-import { ITEMS, RECIPES, RECIPE, RECYCLE, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS, PIECES, DOORS, DEPLOY, UPKEEP } from './data.js';
+import { ITEMS, RECIPES, RECIPE, RECYCLE, WEAPONS, MELEE, NODES, GATHER_PER_HIT, LOOT, CELL, TIERS, PIECES, DOORS, DEPLOY, UPKEEP, THROWN } from './data.js';
 import { removeDoor } from './doors.js';
 import { PlayerInv, Inv } from './inventory.js';
 import { spawnActor, removeActor, moveActor, settleY, airborne } from './actors.js';
@@ -50,11 +50,30 @@ const LINES = {
   gift: ['thanks!!', 'appreciate it', 'you\'re a legend', 'cheers'],
   raid: ['door is wood lol', 'raid time', 'satchel out!', 'knock knock'],
   flee: ['im out', 'help!!', 'nope nope', 'retreating'],
+  crafted: ['finally made a {g}', 'new toy: {g}', 'crafted a {g} :)', 'who wants to meet my {g}'],
+  boom: ['cooking some boom', 'beancans ready', 'sulfur well spent', 'got some explosives in the box'],
+  nade: ['nade out!', 'grenade!', 'catch', 'fire in the hole'],
 };
 const RAID_FIRST_DAY = 5;   // no survivor raids before this day
 const RAID_MIN_BOOM = 2;    // and never with fewer than this many satchels
 const STOCK_CAP = { wood: 1500, stone: 1500 }; // least wood / stone a bot stockpiles before it stops farming it (Bots.cap)
-const say = (b, cat, persona) => { const L = LINES[cat]; const arr = Array.isArray(L) ? L : (L[persona] || L.neutral); if (b.actor && G.ui && G.ui.say) G.ui.say(b.actor, b.name, pick(arr)); b.sayT = rand(8, 18); };
+const BASE_R = 11;          // a bot base's footprint around its centre (the house and its annex)
+/** a line from LINES[cat] (persona / kind sub-list, {x} filled from vars) */
+function line(cat, sub, vars) {
+  const L = LINES[cat]; const arr = Array.isArray(L) ? L : (L[sub] || L.neutral || Object.values(L)[0]);
+  let s = pick(arr); if (vars) s = s.replace(/\{(\w)\}/g, (_, k) => vars[k] ?? ''); return s;
+}
+const say = (b, cat, persona, vars) => { if (b.actor && G.ui && G.ui.say) G.ui.say(b.actor, b.name, line(cat, persona, vars)); b.sayT = rand(8, 18); };
+/** how good a gun is in a real fight: sustained damage (magazines and reloads) weighted by its range. Rockets: 0. */
+const GSC = new Map();
+function gunScore(id) {
+  let s = GSC.get(id); if (s !== undefined) return s;
+  const W = WEAPONS[id]; s = 0;
+  if (W && !W.rocket) s = W.dmg * (W.pellets || 1) * W.mag / (W.mag / W.rof + W.reload) * clamp(0.55 + W.range / 60, 0.7, 1.4);
+  GSC.set(id, s); return s;
+}
+let GUN_R = null;
+const gunRecipes = () => GUN_R || (GUN_R = RECIPES.filter(r => WEAPONS[r.out] && !WEAPONS[r.out].rocket));
 
 let BID = 1;
 export const Bots = {
@@ -90,6 +109,13 @@ export const Bots = {
   serialize() { return this.list.map(b => ({ id: b.id, name: b.name, persona: b.persona, look: b.look, rel: b.rel, inv: b.inv.toJSON(), x: b.actor ? b.actor.x : b.x, z: b.actor ? b.actor.z : b.z, hp: b.actor ? b.actor.hp : b.hp, food: b.food, water: b.water, home: b.home, plan: b.plan, planI: b.planI, dead: b.dead, respawnAt: b.respawnAt, team: b.team, kills: b.kills, skill: b.skill, spawnDay: b.spawnDay, bps: b.bps || [], lastRaidDay: b.lastRaidDay ?? null, raidNight: b.raidNight ?? null, rumourDay: b.rumourDay ?? null, robbed: b.robbed || 0, crafted: b.crafted || 0, recycled: b.recycled || 0, looted: b.looted || 0 })); },
   ownerOf(b) { return 'bot:' + b.id; },
   byOwner(o) { return this.list.find(b => 'bot:' + b.id === o) || null; },
+  /** a line out loud (speech bubble) when it's near, else now and then in the chat log like a far-away player (p = chance) */
+  speak(b, cat, sub, vars, p = 1) {
+    if (b.actor) { say(b, cat, sub, vars); return; }
+    if (!chance(p) || !G.ui || !G.ui.chatLine || G.netGuest) return;
+    if (G.t - (this.chatT ?? -99) < 35 && G.t >= (this.chatT ?? -99)) return; // one far-away line at a time
+    this.chatT = G.t; G.ui.chatLine(b.name, line(cat, sub, vars));
+  },
   // ---------------------------------------------------------------- relations
   hostileToPlayer(b) { if (b.team) return false; if (G.t < 240 && !b.hitByPlayer) return false; return b.persona === 'hostile' ? b.rel < 0.5 : b.rel < -0.25; },
   hostileTo(b, other) {
@@ -174,7 +200,9 @@ export const Bots = {
     if (job === 'wood' || job === 'ore') {
       let best = 0; for (const s of inv.all()) { const m = MELEE[s.id]; if (m && m[job] > best) { best = m[job]; id = s.id; } }
     } else {
-      let best = -1; for (const s of inv.all()) { const W = WEAPONS[s.id]; if (!W) continue; const ammo = (s.ammo || 0) + inv.count(W.ammo); if (ammo <= 0) continue; const v = W.dmg * (W.pellets || 1) * W.rof; if (v > best) { best = v; id = s.id; } }
+      // the best gun it has ammo for (the rocket launcher only for the armoured patrol)
+      if (job === 'apc' && this.rockets(b) > 0) id = 'rocket_launcher';
+      else { const g = this.bestGun(b, 1); if (g) id = g.id; }
       if (!id) { let bm = 0; for (const s of inv.all()) { const m = MELEE[s.id]; if (m && m.dmg > bm) { bm = m.dmg; id = s.id; } } }
     }
     if (G.night > 0.5 && !WEAPONS[id] && inv.count('torch') && job !== 'wood' && job !== 'ore') id = 'torch';
@@ -197,7 +225,11 @@ export const Bots = {
     // ---- perception: threats
     if ((b.ptT = (b.ptT || 0) - dt) <= 0) { b.ptT = 0.3; b.threatC = this.findThreat(b, a); }
     const threat = b.threatC && !b.threatC.dead ? b.threatC : null;
-    if (threat) { const ty = a.hp < 30 && !b.team ? 'flee' : 'fight'; if (!b.goal || b.goal.type !== ty || b.goal.target !== threat) b.goal = { type: ty, target: threat, t: 0 }; }
+    if (threat) {
+      // the armoured patrol shrugs off bullets: keep away from it unless it came with rockets / C4 for it
+      const ty = (a.hp < 30 && !b.team) || (threat.apc && !(b.trip && b.trip.k === 'apc' && this.rockets(b) + b.inv.count('c4') > 0)) ? 'flee' : 'fight';
+      if (!b.goal || b.goal.type !== ty || b.goal.target !== threat) b.goal = { type: ty, target: threat, t: 0 };
+    }
     else if (b.goal && (b.goal.type === 'fight' || b.goal.type === 'flee') && (G.t - (b.lastSeenT || 0) > 6)) b.goal = null;
     // ---- social: greet the player
     if (P && !P.dead && b.sayT <= 0 && !threat && dist(a.x, a.z, P.x, P.z) < 9 && canSee(a, P)) {
@@ -248,7 +280,7 @@ export const Bots = {
     if (night && b.home) return { type: 'home' };
     // gear progression
     const craftable = this.nextCraft(b);
-    if (craftable) return { type: 'craft', id: craftable.id, n: 1 };
+    if (craftable) return { type: 'craft', id: craftable.r.id, n: craftable.n };
     // the base: build the current stage, then grow it (second floor, stone, an annex, sheet metal)
     if (!b.plan && inv.count('wood') >= 500 && G.day >= (b.spawnDay || 1)) { const site = this.findSite(b, a); if (site) { b.plan = site; b.planI = 0; b.home = { x: site.cx, z: site.cz }; say(b, 'build'); } }
     if (b.plan) {
@@ -270,6 +302,9 @@ export const Bots = {
     if (this.boxFor(b) && (inv.count('wood') > 900 || inv.count('stone') > 700 || inv.count('metal_ore') + inv.count('sulfur_ore') > 150 || inv.main.slots.filter(Boolean).length > 18)) return { type: 'deposit' };
     // the raiders stock up on sulfur for gunpowder
     if (this.wantsBoom(b) && inv.count('sulfur') + inv.count('sulfur_ore') < 60 && chance(0.4)) return { type: 'gather', res: 'sulfur' };
+    // the ingredients for what it's saving up for (a better gun, ammo, explosives), on purpose
+    const want = this.craftWant(b);
+    if (want && chance(0.45)) { const job = this.jobFor(b, a, want.miss); if (job && !(job.type === 'gather' && ((job.res === 'wood' && this.capped(b, 'wood')) || (job.res === 'ore' && this.capped(b, 'stone'))))) return job; }
     // otherwise: farm, loot (monuments by gear, roadside barrels), hunt, explore — with some personality
     const gear = this.gearLevel(b);
     // enough wood and stone for what it plans: stop farming them and do something else (ore still pays)
@@ -295,47 +330,119 @@ export const Bots = {
     if (res === 'metal_ore') return { type: 'gather', res: 'metal' };
     if (res === 'metal' || res === 'sulfur') { if (b.furnace && !b.furnace.dead) return b.inv.count(res === 'metal' ? 'metal_ore' : 'sulfur_ore') > 40 ? { type: 'deposit' } : { type: 'gather', res }; return { type: 'loot' }; }
     if (res === 'cloth') return { type: 'pick' };
-    if (['scrap', 'rope', 'pipe', 'gears', 'low_fuel', 'tape', 'spring'].includes(res)) return chance(0.5) && this.recyclables(b).length ? { type: 'recycle', u: recyclerNear(a.x, a.z) } : { type: 'loot' };
+    // gun parts, gunpowder and the like: ingredients it goes after on purpose
+    if (res === 'sulfur_ore') return { type: 'gather', res: 'sulfur' };
+    if (res === 'charcoal') return b.furnace && !b.furnace.dead && this.have(b, 'wood') >= 150 ? { type: 'deposit', burn: true } : { type: 'loot' };
+    if (res === 'hqm' || res === 'hqm_ore') return chance(0.35) ? { type: 'gather', res: 'metal' } : { type: 'loot' };
+    if (res === 'leather' || res === 'animal_fat' || res === 'bone') return { type: 'hunt' };
+    if (res === 'low_fuel' && this.canPay(b, RECIPE.low_fuel.cost)) return { type: 'craft', id: 'low_fuel', n: 2 };
+    if (res === 'bandage' && this.canPay(b, RECIPE.bandage.cost)) return { type: 'craft', id: 'bandage', n: 1 };
+    if (['scrap', 'rope', 'pipe', 'gears', 'low_fuel', 'tape', 'spring', 'circuit'].includes(res)) return chance(0.5) && this.recyclables(b).length ? { type: 'recycle', u: recyclerNear(a.x, a.z) } : { type: 'loot' };
+    if (['gunpowder', 'explosives', 'bandage'].includes(res)) return { type: 'loot' };
     return null;
   },
   // ---------------------------------------------------------------- gear progression
-  wbTier(b) { let t = 0; for (const d of Build.deploys) if (d.owner === this.ownerOf(b) && !d.dead && DEPLOY[d.type].wbTier) t = Math.max(t, DEPLOY[d.type].wbTier); return t; },
-  /** 0 = rock and a shirt ... 3 = rifles and plate */
+  wbTier(b) { const C = b.wbC; if (C && G.t - C.t < 6 && G.t >= C.t) return C.v; let t = 0; for (const d of Build.deploys) if (d.owner === this.ownerOf(b) && !d.dead && DEPLOY[d.type].wbTier) t = Math.max(t, DEPLOY[d.type].wbTier); b.wbC = { t: G.t, v: t }; return t; },
+  /** the best gun it carries with at least minR rounds for it (loaded + pockets): { s, id, W, score, rounds } */
+  bestGun(b, minR = 1) {
+    let best = null;
+    for (const s of b.inv.all()) { const W = WEAPONS[s.id]; if (!W || W.rocket) continue; const r = (s.ammo || 0) + b.inv.count(W.ammo); if (r < minR) continue; const sc = gunScore(s.id); if (!best || sc > best.score) best = { s, id: s.id, W, score: sc, rounds: r }; }
+    return best;
+  },
+  /** kitted out for a fight away from home: a real gun with a couple of magazines for it */
+  armedFor(b) { const g = this.bestGun(b, 1); if (!g || g.score < 30) return null; return g.rounds >= (g.W.arrow ? 12 : Math.max(g.W.mag * 2, 20)) ? g : null; },
+  medsOf(b) { return b.inv.count('bandage') + b.inv.count('medkit') * 2 + b.inv.count('stim'); },
+  /** rockets for a launcher it carries (loaded + spare) */
+  rockets(b) { let n = 0, has = false; for (const s of b.inv.all()) if (s.id === 'rocket_launcher') { has = true; n += s.ammo || 0; } return has ? n + b.inv.count('rocket') : 0; },
+  /** 0 = rock and a shirt ... 3 = rifles and plate (a gun only counts with ammo for it) */
   gearLevel(b) {
     const inv = b.inv; const ar = inv.equip.armor ? ITEMS[inv.equip.armor.id].armor || 0 : 0;
-    let gun = 0; for (const s of inv.all()) { const W = WEAPONS[s.id]; if (W) gun = Math.max(gun, W.dmg * (W.pellets || 1) * W.rof); }
-    return (gun > 150 ? 1.5 : gun > 60 ? 1 : gun > 0 ? 0.5 : 0) + (ar >= 0.4 ? 1.5 : ar >= 0.3 ? 1 : ar >= 0.16 ? 0.5 : 0);
+    const g = this.bestGun(b, 6), gun = g ? g.score : 0;
+    return (gun >= 100 ? 1.5 : gun >= 55 ? 1 : gun > 0 ? 0.5 : 0) + (ar >= 0.4 ? 1.5 : ar >= 0.3 ? 1 : ar >= 0.16 ? 0.5 : 0);
   },
-  nextCraft(b) {
+  /** can it make (or does it hold a good stock of) this ammo? */
+  ammoOk(b, am, wb) { const r = RECIPE[am]; return (r && !r.bp && r.wb <= wb) || this.have(b, am) >= 30; },
+  /** the best gun it knows how to make (workbench + blueprints, like a player) that beats what it has; affordable = only one it can pay for now */
+  gunUpgrade(b, wb, bps, cur, affordable) {
+    let best = null, bs = cur * 1.12 + 1;
+    for (const r of gunRecipes()) {
+      if (r.wb > wb || (r.bp && !bps.includes(r.id))) continue; const sc = gunScore(r.out); if (sc <= bs) continue;
+      if (!this.ammoOk(b, WEAPONS[r.out].ammo, wb)) continue;
+      if (affordable && !this.canPay(b, r.cost)) continue;
+      best = r; bs = sc;
+    }
+    return best;
+  },
+  canPay(b, cost, n = 1) { for (const k in cost) if (this.have(b, k) < cost[k] * n) return false; return true; },
+  /** explosives a survivor likes to keep (the raiders stockpile far more: wantsBoom) */
+  kit(b, wb, bps) {
+    const day = G.day - (b.spawnDay || 1) + 1;
+    return { beancan: wb >= 1 && day >= 3 ? 2 : 0, grenade: bps.includes('grenade') ? 2 : 0, satchel: wb >= 1 && day >= 5 ? 1 : 0, c4: wb >= 3 && bps.includes('c4') ? 1 : 0, rocket: bps.includes('rocket') && b.inv.all().some(s => s.id === 'rocket_launcher') ? 4 : 0 };
+  },
+  /**
+   * the next thing worth making, like a player would: tools, armour, a better gun (any it has the workbench and
+   * blueprint for, the weapons_extra.js ones too), ammo for its gun, meds, and explosives (a small kit; the raiders
+   * a stockpile). Returns { r, n } (n = batches) for one it can pay for now, or null. With want = true: the first
+   * one it can't afford yet instead (what it is saving up for, see craftWant).
+   */
+  nextCraft(b, want = false) {
     const inv = b.inv; const cnt = id => inv.count(id), eq = id => Object.values(inv.equip).some(s => s && s.id === id);
     const has = (...ids) => ids.some(id => cnt(id) > 0 || eq(id));
     const wb = this.wbTier(b), bps = b.bps || [];
     const armor = inv.equip.armor ? ITEMS[inv.equip.armor.id].armor || 0 : 0, helm = inv.equip.helmet ? ITEMS[inv.equip.helmet.id].armor || 0 : 0;
-    let gun = 0; for (const s of inv.all()) { const W = WEAPONS[s.id]; if (W) gun = Math.max(gun, W.dmg * (W.pellets || 1) * W.rof); }
-    const gs = id => { const W = WEAPONS[id]; return W ? W.dmg * (W.pellets || 1) * W.rof : 0; };
+    const main = this.bestGun(b, 1), gun = main ? main.score : 0;
     const uses = am => inv.all().some(s => WEAPONS[s.id] && WEAPONS[s.id].ammo === am);
-    const boom = this.wantsBoom(b);
+    const boom = this.wantsBoom(b), kit = this.kit(b, wb, bps), bag = inv.equip.bag ? ITEMS[inv.equip.bag.id].slots || 0 : 0;
+    const up = this.gunUpgrade(b, wb, bps, gun, !want);
+    // ammo for the guns it carries: a few magazines' worth
+    const ammoGoal = am => main && main.W.ammo === am ? Math.max(main.W.mag * 3, 40) : am === 'arrow' ? 24 : 30;
+    const ammo = am => uses(am) && cnt(am) < ammoGoal(am);
+    const sat = boom || cnt('satchel') < kit.satchel, beans = (boom ? 2 : kit.beancan) + (sat && cnt('beancan') < 2 ? 2 : 0);
+    const gp = boom ? 160 : (cnt('beancan') < beans || cnt('grenade') < kit.grenade) ? 80 : uses('pistol_ammo') || uses('shell') || uses('rifle_ammo') ? 40 : 0;
     const order = [
       ['hatchet', !has('hatchet', 'salv_axe')], ['pickaxe', !has('pickaxe', 'salv_pick')],
-      ['burlap', armor < 0.08], ['helm_wood', helm < 0.05], ['bow', gun <= 0], ['arrow', has('bow') && cnt('arrow') < 12],
+      ['burlap', armor < 0.08], ['helm_wood', helm < 0.05], ['bow', gun <= 0], ['arrow', ammo('arrow')],
       ['spear_wood', !has('spear_wood', 'machete')], ['bag_small', !inv.equip.bag && cnt('leather') >= 5],
-      ['wood_armor', armor < 0.16], ['pipe_pistol', gun < gs('pipe_pistol')], ['vest_scrap', armor < 0.22], ['helm_bucket', helm < 0.08],
-      ['salv_axe', !has('salv_axe')], ['salv_pick', !has('salv_pick')], ['machete', !has('machete')],
-      ['revolver', gun < gs('revolver')], ['boomstick', gun < gs('boomstick')], ['vest_sign', armor < 0.32],
-      ['pistol_ammo', uses('pistol_ammo') && cnt('pistol_ammo') < 40], ['shell', uses('shell') && cnt('shell') < 16],
-      ['smg', gun < gs('smg')], ['pump', gun < gs('pump')], ['vest_plate', armor < 0.46], ['helm_riot', helm < 0.14], ['rifle_ammo', uses('rifle_ammo') && cnt('rifle_ammo') < 40],
-      ['ar', gun < gs('ar')], ['helm_mil', helm < 0.2],
-      // the raiders build their stockpile: gunpowder -> beancans -> satchels
-      ['gunpowder', boom && cnt('gunpowder') < 80], ['beancan', boom && cnt('beancan') < 2], ['satchel', boom],
+      ['wood_armor', armor < 0.16], [up && up.id, !!up], ['vest_scrap', armor < 0.22], ['helm_bucket', helm < 0.08],
+      ['salv_axe', !has('salv_axe')], ['salv_pick', !has('salv_pick')], ['machete', !has('machete')], ['vest_sign', armor < 0.32],
+      ['pistol_ammo', ammo('pistol_ammo')], ['shell', ammo('shell')], ['nails', ammo('nails')], ['rifle_ammo', ammo('rifle_ammo')],
+      ['medkit', cnt('medkit') < 2 && this.have(b, 'scrap') >= 30], ['bag_ruck', bag < 12], ['vest_plate', armor < 0.46], ['helm_riot', helm < 0.14],
+      ['helm_mil', helm < 0.2], ['vest_heavy', armor < 0.6 && this.have(b, 'hqm') >= 60], ['bag_mil', bag < 18 && this.have(b, 'leather') >= 30],
+      // explosives: gunpowder (sulfur + charcoal) -> beancans -> satchels; grenades, C4 and rockets with the blueprint
+      ['gunpowder', gp > 0 && cnt('gunpowder') < gp], ['beancan', cnt('beancan') < beans], ['grenade', cnt('grenade') < kit.grenade], ['satchel', sat],
+      ['explosives', kit.c4 > cnt('c4') && this.have(b, 'explosives') < 20 && this.have(b, 'gunpowder') >= 100], ['c4', cnt('c4') < kit.c4], ['rocket', this.rockets(b) < kit.rocket],
     ];
-    for (const [id, want] of order) {
-      if (!want) continue; const r = RECIPE[id]; if (!r || r.wb > wb) continue; if (r.bp && !bps.includes(r.id)) continue;
-      if (Object.entries(r.cost).every(([k, v]) => this.have(b, k) >= v)) return r;
+    for (const [id, ok] of order) {
+      if (!ok || !id) continue; const r = RECIPE[id]; if (!r || r.wb > wb) continue; if (r.bp && !bps.includes(r.id)) continue;
+      if (!this.canPay(b, r.cost)) { if (want) return { r, n: 1 }; continue; }
+      if (want) continue;
+      // ammo and gunpowder come in a few batches at once
+      let n = 1;
+      if (r.id === 'gunpowder' || ITEMS[r.out].cat === 'ammo') { const goal = r.id === 'gunpowder' ? gp : ammoGoal(r.out); n = clamp(Math.ceil((goal - cnt(r.out)) / r.n), 1, 5); while (n > 1 && !this.canPay(b, r.cost, n)) n--; }
+      return { r, n };
     }
     return null;
   },
+  /** what it's saving up for and the first thing that recipe is missing, e.g. { r: smg, miss: 'hqm' } (recomputed every 12 s) */
+  craftWant(b) {
+    const C = b.wantC; if (C && G.t - C.t < 12 && G.t >= C.t) return C.v;
+    let v = null; const w = this.nextCraft(b, true);
+    if (w) {
+      // a level or two down: beancans -> gunpowder -> sulfur / charcoal
+      let miss = Object.keys(w.r.cost).find(k => this.have(b, k) < w.r.cost[k]);
+      for (let d = 0; d < 2 && miss && RECIPE[miss] && !RECIPE[miss].bp && RECIPE[miss].wb <= this.wbTier(b) && ITEMS[miss].cat !== 'comp'; d++) { const r2 = RECIPE[miss]; const m2 = Object.keys(r2.cost).find(k => this.have(b, k) < r2.cost[k]); if (!m2) break; miss = m2; }
+      if (miss) v = { r: w.r, miss };
+    }
+    b.wantC = { t: G.t, v }; return v;
+  },
   /** pay a recipe from pockets then boxes and make it */
-  craftNow(b, r, n = 1) { for (const [k, v] of Object.entries(r.cost)) this.pay(b, k, v * n); b.inv.add(r.out, r.n * n); b.crafted = (b.crafted || 0) + 1; this.equipBest(b); },
+  craftNow(b, r, n = 1) {
+    for (const [k, v] of Object.entries(r.cost)) this.pay(b, k, v * n); b.inv.add(r.out, r.n * n); b.crafted = (b.crafted || 0) + 1; b.wantC = null;
+    const cat = ITEMS[r.out].cat;
+    if (cat === 'gun') { b.gunsMade = (b.gunsMade || 0) + 1; this.speak(b, 'crafted', null, { g: ITEMS[r.out].name }, 0.5); }
+    else if (cat === 'throw' && r.out !== 'supply_signal') { b.boomMade = (b.boomMade || 0) + r.n * n; if (chance(0.35)) this.speak(b, 'boom', null, null, 0.3); }
+    this.equipBest(b);
+  },
   /** blueprints found in loot are learned on the spot */
   learn(b) {
     b.bps = b.bps || [];
@@ -372,13 +479,15 @@ export const Bots = {
   },
   pay(b, k, v) { let n = v - b.inv.take(k, v); for (const d of this.boxes(b)) { if (n <= 0) break; n -= d.inv.take(k, n); } },
   /** put loot in the boxes, ore in the furnace (lit), and pick up what it smelted */
-  depositAll(b) {
+  depositAll(b, burn) {
     const f = b.furnace && !b.furnace.dead ? b.furnace : null;
     if (f) {
       for (const k of ['metal', 'sulfur', 'hqm', 'charcoal']) { const n = f.inv.count(k); if (n) { f.inv.take(k, n); const left = b.inv.add(k, n); if (left) f.inv.add(k, left); } }
       for (const k of ['metal_ore', 'sulfur_ore', 'hqm_ore']) { const n = Math.min(b.inv.count(k), f.inv.room(k)); if (n > 0) { b.inv.take(k, n); f.inv.add(k, n); } }
-      const fuel = Math.min(Math.max(0, 200 - f.inv.count('wood')), Math.max(0, b.inv.count('wood') - 300), f.inv.room('wood')); if (fuel > 0) { b.inv.take('wood', fuel); f.inv.add('wood', fuel); }
-      if (f.inv.count('wood') > 0 && (f.inv.count('metal_ore') + f.inv.count('sulfur_ore') + f.inv.count('hqm_ore')) > 0) f.state.lit = true;
+      // fuel (burning wood is also how it makes charcoal for gunpowder: burn = light it up for that alone)
+      const want = burn ? 400 : 200; let fuel = Math.min(Math.max(0, want - f.inv.count('wood')), f.inv.room('wood'));
+      if (fuel > 0) { let got = b.inv.take('wood', Math.min(fuel, Math.max(0, b.inv.count('wood') - (burn ? 0 : 300)))); if (burn) for (const d of this.boxes(b)) if (got < fuel) got += d.inv.take('wood', fuel - got); if (got) f.inv.add('wood', got); }
+      if (f.inv.count('wood') > 0 && (burn || (f.inv.count('metal_ore') + f.inv.count('sulfur_ore') + f.inv.count('hqm_ore')) > 0)) f.state.lit = true;
     }
     for (const v of [b.inv.main]) for (let i = 0; i < v.slots.length; i++) {
       const s = v.slots[i]; if (!s || ['gun', 'melee', 'med', 'ammo', 'throw', 'armor', 'helmet', 'bag', 'food', 'drink'].includes(ITEMS[s.id].cat)) continue;
@@ -488,7 +597,7 @@ export const Bots = {
       case 'build': return this.buildStep(b, a, dt);
       case 'deposit': {
         const box = this.boxFor(b) || (b.furnace && !b.furnace.dead ? b.furnace : null); if (!box) { b.goal = null; return; }
-        if (this.walkTo(b, a, box.x, box.z, dt, 1.7, box.y)) { this.depositAll(b); a.st.use = 0; b.goal = null; }
+        if (this.walkTo(b, a, box.x, box.z, dt, 1.7, box.y)) { this.depositAll(b, g.burn); a.st.use = 0; b.goal = null; }
         return;
       }
       case 'stock': { // top the cupboard up for upkeep
@@ -590,9 +699,11 @@ export const Bots = {
   fight(b, a, t, dt) {
     if (!t || t.dead) { b.goal = null; return; }
     const d = dist(a.x, a.z, t.x, t.z); const ang = Math.atan2(t.z - a.z, t.x - a.x);
+    if (t.apc && a.held !== 'rocket_launcher' && this.rockets(b) > 0) this.pickWeapon(b, 'apc');
     if (!a.gunStack && !MELEE[a.held]) this.pickWeapon(b);
     if (a.held === undefined || a.held === null || (!a.gunStack && b.goal.type === 'fight')) this.pickWeapon(b);
     const sees = canSee(a, t); const g = b.goal;
+    this.maybeThrow(b, a, t, d, sees, dt);
     // a human beat before the first shot at a new target (slower for less skilled survivors)
     if (g.react === undefined) { g.react = rand(0.35, 0.9) * (1.3 - b.skill * 0.5); a.aimK = Math.min(a.aimK || 0, 0.15); }
     g.react -= dt; trackAim(a, t, sees, dt);
@@ -626,6 +737,31 @@ export const Bots = {
       a.cd = 1 / M0.rate; a.st.swing = 0;
       a.onStrike = () => { if (!t.dead && dist(a.x, a.z, t.x, t.z) < reach + 0.5) { hurt(t, M0.dmg, { owner: a, dir: Math.atan2(t.z - a.z, t.x - a.x), kind: 'melee', bleed: 0.2 }); Sfx.hit(t.x, t.z); } };
     }
+  },
+  /**
+   * now and then a grenade or beancan at someone hiding behind cover (C4 at the armoured patrol when it stops) —
+   * never where the blast would catch a friend, inside its own base, or at your base outside a raid
+   */
+  maybeThrow(b, a, t, d, sees, dt) {
+    const g = b.goal; if (!g) return;
+    g.unseen = sees ? 0 : (g.unseen || 0) + dt;
+    if ((g.nadeT = (g.nadeT ?? rand(1.5, 4)) - dt) > 0) return;
+    g.nadeT = rand(2.5, 5);
+    if (t.kind === 'animal' || t.heli || a.st.throw >= 0 || a.st.reload >= 0 || a.st.use >= 0) return;
+    let id = null;
+    if (t.apc) { if (b.inv.count('c4') && d < 9 && (t.speedNow || 0) < 0.6) id = 'c4'; }
+    else if (d > 5 && d < 18 && (g.unseen > 1.2 ? chance(0.55) : chance(0.12))) id = ['grenade', 'beancan'].find(k => b.inv.count(k)) || null;
+    if (!id) return;
+    if (!t.apc) {
+      const r = (THROWN[id].r || 3) + 2.5, near = o => o && !o.dead && (o.x - t.x) ** 2 + (o.z - t.z) ** 2 < r * r;
+      if (d < r || (G.player && !this.hostileToPlayer(b) && near(G.player))) return;
+      for (const o of G.actors) if (o !== t && o !== a && near(o) && (o.bot ? !this.hostileTo(b, o) : o.remote !== undefined && !this.hostileToPlayer(b))) return;
+      if (b.plan && dist(t.x, t.z, b.plan.cx, b.plan.cz) < BASE_R + r) return;
+      if (Build.inPrivilege(t.x, t.z) && b.goal.type !== 'raid') return;
+    }
+    b.inv.take(id, 1); a.st.throw = 0; a.ang = Math.atan2(t.z - a.z, t.x - a.x);
+    const th = throwItem(a, id, t.x + rand(-0.8, 0.8), t.z + rand(-0.8, 0.8)); if (th && id === 'c4') th.dud = false;
+    g.nadeT = rand(8, 15); b.thrownN = (b.thrownN || 0) + 1; if (chance(0.45)) say(b, 'nade');
   },
   /** pull the trigger when it makes sense (reload, run dry, settle the aim) */
   fireAt(b, a, t, W, d, sees, ang, far) {
@@ -796,20 +932,27 @@ export const Bots = {
     // stop once there's enough for the base (Bots.cap): that time goes into ore and scavenging instead.
     const axe = inv.count('salv_axe') ? 1.6 : inv.count('hatchet') ? 1 : 0.45, pk = inv.count('salv_pick') ? 1.6 : inv.count('pickaxe') ? 1 : 0.45;
     const wC = this.capped(b, 'wood'), sC = this.capped(b, 'stone'), free = (wC ? 0.5 : 0) + (sC ? 0.5 : 0);
+    // ...and it goes after what the gun / ammo / explosives it's saving up for are missing
+    const wm = (this.craftWant(b) || {}).miss, boom = this.wantsBoom(b);
+    const wantS = boom || wm === 'sulfur' || wm === 'sulfur_ore' || wm === 'gunpowder', wantM = wm === 'metal' || wm === 'metal_ore', wantH = wm === 'hqm' || wm === 'hqm_ore';
+    const wantL = !!wm && ['scrap', 'rope', 'pipe', 'gears', 'tape', 'spring', 'circuit', 'explosives', 'gunpowder', 'low_fuel'].includes(wm);
     if (!wC) inv.add('wood', Math.round(9 * axe * step));
     if (!sC && chance(0.5)) inv.add('stone', Math.round(7 * pk * step));
-    if (chance(0.35 + free * 0.25)) inv.add('metal_ore', Math.round(2.4 * pk * step));
-    if (this.wantsBoom(b) && chance(0.45)) inv.add('sulfur_ore', Math.round(2.2 * pk * step));
-    if (chance(0.06 * step)) inv.add('cloth', randi(6, 12));
-    if (chance(0.025 * step)) inv.add('leather', randi(3, 6));
-    if (chance(0.03 * step * (1 + free))) { const g = this.gearLevel(b); const tbl = g >= 2 && chance(0.4) ? 'military' : chance(0.45) ? 'barrel' : chance(0.35) ? 'toolbox' : 'crate'; rollInto(inv.main, LOOT[tbl], 0); this.learn(b); b.looted = (b.looted || 0) + 1; this.equipBest(b); }
-    // smelting at home (or charcoal from a campfire)
-    if (b.furnace && !b.furnace.dead) { for (const [o, out] of [['metal_ore', 'metal'], ['sulfur_ore', 'sulfur'], ['hqm_ore', 'hqm']]) { const k = Math.min(inv.count(o), Math.round(3 * step)); if (k > 0 && inv.count('wood') > 50) { inv.take(o, k); inv.add(out, k); inv.take('wood', Math.ceil(k / 4)); inv.add('charcoal', Math.ceil(k / 2)); } } }
-    else if (this.wantsBoom(b) && chance(0.3)) inv.add('charcoal', Math.round(step));
+    if (chance(0.35 + free * 0.25 + (wantM ? 0.3 : 0))) inv.add('metal_ore', Math.round(2.4 * pk * step));
+    if (wantS && chance(0.45 + free * 0.2)) inv.add('sulfur_ore', Math.round(2.2 * pk * step));
+    if (wantH && chance(0.04 * step)) inv.add('hqm_ore', randi(2, 5));
+    if (chance((wm === 'cloth' ? 0.12 : 0.06) * step)) inv.add('cloth', randi(6, 12));
+    if (chance((wm === 'leather' || wm === 'animal_fat' ? 0.06 : 0.025) * step)) { inv.add('leather', randi(3, 6)); inv.add('animal_fat', randi(2, 5)); }
+    if (chance(0.03 * step * (1 + free + (wantL || wantH ? 0.5 : 0)))) { const g = this.gearLevel(b); const tbl = g >= 2 && chance(0.4) ? 'military' : chance(0.45) ? 'barrel' : chance(0.35) ? 'toolbox' : 'crate'; rollInto(inv.main, LOOT[tbl], 0); this.learn(b); b.looted = (b.looted || 0) + 1; this.equipBest(b); }
+    // smelting at home (or charcoal from a campfire); burning wood on its own when it wants charcoal for gunpowder
+    if (b.furnace && !b.furnace.dead) {
+      for (const [o, out] of [['metal_ore', 'metal'], ['sulfur_ore', 'sulfur'], ['hqm_ore', 'hqm']]) { const k = Math.min(inv.count(o), Math.round(3 * step)); if (k > 0 && this.have(b, 'wood') > 50) { inv.take(o, k); inv.add(out, k); this.pay(b, 'wood', Math.ceil(k / 4)); inv.add('charcoal', Math.ceil(k / 2)); } }
+      if (wm === 'charcoal' || (boom && this.have(b, 'charcoal') < 120)) { const k = Math.min(Math.round(2 * step), this.have(b, 'wood') - 400); if (k > 0) { this.pay(b, 'wood', k); inv.add('charcoal', Math.ceil(k / 2)); } }
+    } else if ((boom || wm === 'charcoal') && chance(0.3)) inv.add('charcoal', Math.round(step));
     // a trip to a recycler now and then
     if (this.recyclables(b).length >= 3 && chance(0.02 * step)) this.recycleAll(b);
     // gear
-    const cr = this.nextCraft(b); if (cr) this.craftNow(b, cr);
+    const cr = this.nextCraft(b); if (cr) this.craftNow(b, cr.r, cr.n);
     // the base
     if (!b.plan && inv.count('wood') >= 500 && G.day >= (b.spawnDay || 1)) { const site = this.findSite(b, { x: b.x, z: b.z }); if (site) { b.plan = site; b.planI = 0; b.home = { x: site.cx, z: site.cz }; } }
     if (b.plan) {
