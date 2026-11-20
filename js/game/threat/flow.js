@@ -42,11 +42,6 @@ export const DIG_COST = 100;
 export const MAX_LOOT_SEED = 200;
 export const GOAL_SLOT = Object.freeze({ core: 0, loot: 3, dig: 6, people: 9, edge: 9 });
 export const REBUILD_EVERY = 10;
-/** The people field's cadence (Stage 2.9b): its goals are the able colonists, who move nearly every
- *  tick, so its stamp changed at every check and a reaver raid rebuilt the whole field every 10 ticks
- *  (bench: tick p95 0.8-1.2 ms on the day-30 bot hold). A foe that sees a colonist walks straight at
- *  them (raiders.foeTarget); the field only brings it within sight, so 30 ticks is fresh enough. */
-export const REBUILD_PEOPLE = 30;
 /** Smash cost x10 of a wall or door by hp band (1 = up to 25% hp .. 4 = above 75%). */
 export const SMASH = Object.freeze({ base: 30, perBand: 50 });
 const DIAG = (c) => ((c * 14 + 5) / 10) | 0;
@@ -300,8 +295,7 @@ export function flowSystem(s) {
   kept.sort((a, b) => FIELD_GOALS.indexOf(a.goal) - FIELD_GOALS.indexOf(b.goal));
   s.rt.flow = kept;
   for (const fl of kept) {
-    const every = fl.goal === 'people' ? REBUILD_PEOPLE : REBUILD_EVERY;
-    if (s.tick % every !== fl.slot % every || fl.built === s.tick) continue;
+    if (s.tick % REBUILD_EVERY !== fl.slot % REBUILD_EVERY || fl.built === s.tick) continue;
     const goals = goalTiles(s, fl.goal), st = flowStamp(s, goals, fl.goal === 'dig');
     if (st !== fl.stamp) rebuildField(s, fl, goals, st);
   }
