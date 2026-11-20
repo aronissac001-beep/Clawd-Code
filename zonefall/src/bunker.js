@@ -288,7 +288,8 @@ export const Bunker = {
   },
   /** the vault door follows the state (locked and shut until solved) */
   syncDoor(snap) {
-    const d = this.door, S = this.S || this.gS; if (!d || d.dead || !S) return;
+    if (isGuest()) return; // the host decides; guests get the door in its world diff
+    const d = this.door, S = this.S; if (!d || d.dead || !S) return;
     const L = !S.sv; if (d.locked !== L) { d.locked = L; d.unlockT = 1e9; }
     if (L && d.open) { if (closeDoor(d, !!snap) !== false && snap) { d.a = 0; } }
   },
@@ -478,7 +479,7 @@ export const Bunker = {
     else if (!f) S.fl = null;
     S.fo = Array.isArray(m.fo) ? m.fo.filter(q => Array.isArray(q) && q.slice(0, 3).every(num)).slice(0, 8).map(q => ({ x: q[0], z: q[1], a0: q[2], id: q[3] })) : [];
     const h = m.hit; if (h && num(h.x) && num(h.z) && num(h.y) && h.id !== this.seenHit) { this.seenHit = h.id; S.fl = null; this.blast(h.x, h.y, h.z, null); }
-    this.rads(); this.syncDoor();
+    this.rads(); // (the vault door itself comes with the host's world diff: networld.js)
   },
   /** host: a guest's request ('bkop' / 'nkreq') */
   hostReq(m, pl) {

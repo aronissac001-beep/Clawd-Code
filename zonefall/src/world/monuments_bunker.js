@@ -162,7 +162,7 @@ function bunker(K) {
   K.prop('barrier', -2.6, F - 2.2, 0); K.prop('barrier', 2.8, F - 5.5, 0); K.prop('barrier', -2.8, F - 9, 0);
   // the breach: a fence panel pushed in, sandbags
   lmesh(K, M.box(0.1, 2.4, 3.4), M.mat('#9aa3a8', { tex: 'metal', transparent: true, opacity: 0.5 }), -F + 1.4, 0.5, 20.75, 0, { rz: 1.2 });
-  K.prop('sandbags', -F + 3.5, 17.4, Q); K.prop('sandbags', -F + 3.5, 24.2, Q);
+  bags(K, -F + 3.5, 17.4, 0.9, 2.0); bags(K, -F + 3.5, 24.2, 0.9, 2.0);
   // the guard booth at the gate
   K.room({ x: 10, z: 41.5, w: 4.4, d: 3.4, h: 2.7, wall: 'concrete', roof: 'concrete_dark', trim: 'hazard', floor: 'concrete_dark', doors: [{ side: 'n', w: 1.2 }], windows: [{ side: 'w', w: 1.6 }, { side: 's', w: 1.6 }], roofProps: false });
   K.prop('desk', 10.6, 42.4, 0); K.container('ammobox', 11.4, 40.6, 0);
@@ -181,7 +181,7 @@ function bunker(K) {
   K.deployModel('floodlight', 6.5, 12.6, Q); K.light(6.5, 12.6, 2.4, '#fff2d8', 1.4, 16);
   for (const [x, z, r] of [[-8, 24, 0], [4, 34, PI], [-8, 40, 0], [26, 6, PI]]) K.prop('lamp', x, z, r);
   // sandbag nests either side of the drive
-  for (const [x, z] of [[-13, 19], [9, 19]]) { K.prop('sandbags', x, z - 1.4, 0); K.prop('sandbags', x - 1.4, z - 0.6, Q); K.prop('sandbags', x + 1.4, z - 0.6, Q); }
+  for (const [x, z] of [[-13, 19], [9, 19]]) { bags(K, x, z - 1.4, 2.0, 0.9); bags(K, x - 1.4, z - 0.6, 0.9, 2.0); bags(K, x + 1.4, z - 0.6, 0.9, 2.0); }
   K.container('ammobox', -13, 19.6, 0); K.container('military', 9, 19.8, 0);
   // the helipad (west yard)
   K.cyl(-29, 31, 6.5, 0.12, 'concrete_dark', { collide: false, seg: 28 });
@@ -199,7 +199,7 @@ function bunker(K) {
   K.prop('container', 20, 41, 0, { color: '#5a7048' }); K.prop('container', 20, 41, 0, { y: 2.6, collide: false, color: '#3e6a8e' }); K.prop('container', 28, 41.5, 0.08, { color: '#6a6a70' });
   K.container('crate', 24, 38.6, 0); K.container('barrel', 15.6, 39);
   K.prop('dish', 33, -33, 0); K.prop('transformer', 26.5, -36, 0); K.prop('transformer', 29, -36, 0); K.container('crate', 38, -38, 0);
-  K.prop('cable_spool', 22, -28, 0); K.prop('drums', 18.4, -20.5, 0); K.prop('drums', 17.6, 2.4, 0);
+  K.prop('cable_spool', 22, -28, 0); K.prop('drums', 18.4, -20.5, 0);
   // warning signs
   for (const [x, z] of [[-7.5, 43.5], [7.5, 43.5], [-15, 11]]) { K.prop('streetsign', x, z, 0); }
 
@@ -266,7 +266,7 @@ function bunker(K) {
   vbox(K, -3, -3.75, 5, 0.06, 1.6, '#2a3a2e', 1.4); vbox(K, -3, -3.72, 4.6, 0.04, 1.2, '#4a7a52', 1.6); // a site map on the wall
   lamp(-3, 2); lamp(-3, -1.5); lamp(1.5, 6);
   K.npc('scientist', -6, 2, { patrol: [[-6, 2], [0, 2], [0, 8], [-6, 8]] }); K.npc('scientist', 1.5, -1.5, { guard: true });
-  B.beacons.push([-3, 9.2, 3.2], [-3, Z1 + 1.6, 5.2]);
+  B.beacons.push([-3, Z1 + 1.6, 5.2]);
   // ---- G: guard office (terminal A)
   K.prop('desk', -19.4, 2.0, Q); K.prop('desk', -19.4, -1.6, Q); K.prop('shelf', -16, 9.2, 0); K.prop('table', -13.4, 5.2, 0);
   for (const [z, c] of [[2.0, '#3cff8a'], [-1.6, '#8ad0ff']]) { vbox(K, -20.4, z, 0.1, 1.4, 0.9, '#1a1d22', 1.0); vbox(K, -20.34, z, 0.04, 1.2, 0.7, c, 1.1); }
@@ -284,7 +284,7 @@ function bunker(K) {
   B.spots.push([-27, 1], [-24, 6.2]);
   // ---- R: generator hall
   for (const x of [-29, -22]) { K.prop('generator', x, -15.6, 0); K.prop('transformer', x + 3, -15.8, 0); }
-  K.prop('tank_h', -20, -6.6, 0); K.prop('pipes', -31, -10.5, Q); K.prop('cable_spool', -14, -15.8, 0); K.prop('workbench_old', -13.6, -5.2, 0);
+  K.prop('tank_h', -20, -6.6, 0); K.prop('pipes', -31, -10.5, Q); K.prop('pallets', -14, -15.8, 0); K.prop('workbench_old', -13.6, -5.2, 0);
   K.container('toolbox', -32.2, -5.2, Q); K.container('crate', -12, -12.4, 0); K.container('barrel', -32.2, -17.2); K.container('barrel', -31.3, -17.3); K.container('military', -14.5, -12.6, 0);
   K.prop('fusebox', -32.72, -12.8, 0, { collide: false, y: 1.0 }); // a dead one: the live one is in launch control
   ceilingPipes(K); lamp(-28, -11, '#fff0d0'); lamp(-17, -11, '#fff0d0');
@@ -340,6 +340,12 @@ function bunker(K) {
   K.npc('scientist', 22, 22, { patrol: [[22, 22], [40, 22], [40, 2], [22, 2]] });
   K.npc('scientist_heavy', -24, 26, { patrol: [[-24, 26], [-36, 36], [-12, 34]] });
 }
+/** a cheap sandbag wall (w x d, two courses of bags) */
+function bags(K, x, z, w, d) {
+  K.box(x, z, w, d, 0.45, '#8a7c58', { tex: 2 }); K.box(x, z, w * 0.94, d * 0.94, 0.4, '#7e7150', { y: 0.45, collide: false });
+  const along = w > d, n = Math.max(2, Math.round((along ? w : d) / 0.55));
+  for (let k = 1; k < n; k++) { const u = -0.5 + k / n; vbox(K, x + (along ? u * w : 0), z + (along ? 0 : u * d), along ? 0.04 : d * 1.01, along ? d * 1.01 : 0.04, 0.84, '#5e5238', 0.02); }
+}
 /** a few pipes along the generator hall's ceiling */
 function ceilingPipes(K) { for (const z of [-17.2, -16.6]) vbox(K, -22, z, 21, 0.28, 0.28, z < -17 ? 'rust' : 'metal', 3.1); }
 
@@ -392,7 +398,7 @@ function silo(K, B) {
   // lights, the doorway's hazard frame, a status screen by the door
   K.light(SX, SZ, 9.5, '#e8f0ff', 1.3, 14); K.light(SX, SZ + 3, 3.0, '#ffe0c0', 0.8, 9);
   { const [a, b] = L(-6.2, -2.6); vbox(K, a, b, 0.5, 0.06, 0.9, '#1a1d22', 1.2); }
-  B.beacons.push([SX - 6.2, SZ + 2.4, 3.0], [SX + RIN - 0.2, SZ, SH + 0.3], [SX - RIN + 0.2, SZ, SH + 0.3]);
+  B.beacons.push([SX + RIN - 0.2, SZ, SH + 0.3]);
   B.silo = { x: SX, z: SZ, rin: RIN, top: SH };
 }
 
