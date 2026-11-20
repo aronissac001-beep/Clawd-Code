@@ -126,7 +126,9 @@ export const DATA = {
     { id: 'festival', label: 'A festival', value: 8, durationH: 24, tags: ['event'] },
     { id: 'feast', label: 'A feast', value: 8, durationH: 24, tags: ['food', 'event'] },
     { id: 'our_history', label: 'Our history', value: 3, durationH: 24, tags: ['event'] },
-    { id: 'lord_ember', label: "Captured a Lord's Ember", value: 15, durationH: 240, tags: ['event'] },
+    // a great beast slain (3.12): the whole hold for 10 days; the one who struck the last blow more
+    { id: 'slew_beast', label: 'A great beast is slain', value: 10, durationH: 240, tags: ['event'] },
+    { id: 'slew_beast_blow', label: 'I struck down a great beast', value: 15, durationH: 240, tags: ['event'] },
     { id: 'new_arrival', label: 'A new face in the hold', value: 2, durationH: 48, tags: ['social'] },
     { id: 'hold_grew', label: 'The hold has grown', value: 4, durationH: 72, tags: ['wealth'], text: 'A new prosperity tier.' },
   ],

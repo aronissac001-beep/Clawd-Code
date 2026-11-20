@@ -42,7 +42,7 @@ export * as capture from './capture.js';
 export * as sappers from './sappers.js';
 export * as warnings from './warnings.js';
 export * as stats from './stats.js';
-export * as lords from './lords/index.js';
+export * as beasts from './beasts/index.js';
 export { setThreatContent } from './defs.js';
 
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);

@@ -21,13 +21,12 @@ import * as m_structures_workshops from './structures/workshops.js';
 import * as m_structures_defence from './structures/defence.js';
 import * as m_structures_utility from './structures/utility.js';
 import * as m_structures_civic from './structures/civic.js';
-import * as m_structures_monuments from './structures/monuments.js';
-import * as m_structures_charter from './structures/charter.js';
+import * as m_structures_prestige from './structures/prestige.js';
 import * as m_rooms from './rooms.js';
 import * as m_research from './research.js';
 import * as m_tiers from './tiers.js';
-import * as m_charters from './charters.js';
-import * as m_specs from './specs.js';
+import * as m_renown from './renown.js';
+import * as m_addons from './addons.js';
 import * as m_professions from './professions.js';
 import * as m_perks from './perks.js';
 import * as m_roles from './roles.js';
@@ -75,13 +74,12 @@ export const MODULES = Object.freeze({
   'structures/defence.js': m_structures_defence,
   'structures/utility.js': m_structures_utility,
   'structures/civic.js': m_structures_civic,
-  'structures/monuments.js': m_structures_monuments,
-  'structures/charter.js': m_structures_charter,
+  'structures/prestige.js': m_structures_prestige,
   'rooms.js': m_rooms,
   'research.js': m_research,
   'tiers.js': m_tiers,
-  'charters.js': m_charters,
-  'specs.js': m_specs,
+  'renown.js': m_renown,
+  'addons.js': m_addons,
   'professions.js': m_professions,
   'perks.js': m_perks,
   'roles.js': m_roles,

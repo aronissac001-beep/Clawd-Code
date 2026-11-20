@@ -8,11 +8,13 @@
 
 import { benchGiver, workplaceGiver } from './craft.js';
 import { addLore } from '../../colony/research.js';
+import { didDeed } from '../../people/coldeeds.js';
 
 export const STUDY_SHIFT_MIN = 120;
+/** A study shift's lore points; the scholar whose work finishes a research has researched it (Deep Reader, EMBERCROWN-FORTRESS.md 3.1). */
+export function studyYield(s, col, b, n) { if (addLore(s, n)) didDeed(s, col, 'researched'); }
 export const STUDY_GIVER = workplaceGiver({
-  id: 'study', work: 'lore', defs: ['study'], sk: 'lore', shiftMin: STUDY_SHIFT_MIN, perMin: 1, order: 0,
-  yieldFn: (s, col, b, n) => { addLore(s, n); },
+  id: 'study', work: 'lore', defs: ['study'], sk: 'lore', shiftMin: STUDY_SHIFT_MIN, perMin: 1, order: 0, yieldFn: studyYield,
 });
 export const LORE_BENCH_GIVER = benchGiver('lore', 'lorebench');
 

@@ -1,7 +1,10 @@
 // Title screen and colony list (owner I; doc 10.8): Continue | Colonies | New colony | Settings |
-// Import, and a small link to the classic game at classic/. New colony founds at once with the
-// defaults; "Choose the start" opens the options (storyteller, difficulty with Ironhold, name, seed).
+// Import. New colony founds at once with the defaults; "Choose the start" opens the options (storyteller, difficulty, name, seed).
 // Colonies lists every saved colony (up to 8, A's colonyRoom) with Continue for each.
+// Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, F8): a fallen colony is a Ruin. Continue never opens one; its
+// Fallen card (ruin.js) offers Annals, View the ruin, Export and Delete, and no backup. Settings >
+// Storage holds Recover from a device problem (A's mountRecoverPanel) and, for one release, the
+// "Old roguelite saves" row (export, then remove the embercrown.* keys; 1.1).
 //
 // Contract with js/main.js (owner A):  mountTitle(root, api)
 //   api.listColonies() -> [card]            C14 index (cards from slots.cardOf)
@@ -21,8 +24,13 @@ import { all } from '../game/core/content.js';
 import { DIFFICULTIES } from '../game/core/schema.js';
 import { settingsList } from './sheet.js';
 import { randomSeedText } from '../engine/rng.js';
+import { deleteColony, classicSaves } from '../game/save/slots.js';
+import { installSim } from '../game/core/setup.js';
+import { mountRecoverPanel, exportClassicSaves, clearClassicSaves } from '../main.js';
+import { fallenCard, annalsView, loadRuinState, prepareRuinExport, shareRuinExport, exportedText, RUIN_TEXT } from './ruin.js';
+import { STAGE } from './stage.js';
 
-const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', ironhold: 'Hard, one save slot and no backups: every loss is final.' };
+const DIFF_TEXT = { hearthkeeper: 'Gentle raids, kind weather: for building.', warden: 'Lighter threats than the default.', steadfast: 'The hold as designed. The default.', hard: 'Heavier raids than the default. A hold that falls stays fallen.' };
 const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
 
 let mounted = null;   // { root, node }
@@ -53,11 +61,6 @@ export function mountTitle(root, api) {
   clear(root);
   root.classList.add('ec-title-root');
   const status = h('p.ec-title-status', { role: 'status', 'aria-live': 'polite' });
-  // a view switch re-renders under the finger: the touch's late click must not land on the classic
-  // link that slides into its place (a ghost click navigated to /classic/ in the phone check)
-  let quietUntil = 0;
-  const classic = h('a.ec-classic', { href: './classic/', 'data-act': 'classic' }, 'Play the classic Embercrown');
-  classic.addEventListener('click', (e) => { if (performance.now() < quietUntil) e.preventDefault(); });
   const list = h('div.ec-title-actions');
   const node = h('section.ec-title', { 'aria-label': 'Embercrown: The Hold' },
     backdrop(),
@@ -68,25 +71,29 @@ export function mountTitle(root, api) {
       h('p.ec-title-pitch', { text: PITCH }),
       list,
       status,
-      classic,
     ));
   const busy = (on) => { for (const b of list.querySelectorAll('button')) b.disabled = on || b.dataset.off === '1'; };
 
   let view = 'main';
   const back = () => { const b = h('button.ec-btn.ec-back', { 'data-act': 'title-back', type: 'button' }, h('span.ec-btn-label', { text: 'Back' })); onTap(b, () => { view = 'main'; refresh(); }); return b; };
   const refresh = () => {
-    quietUntil = performance.now() + 600;
     clear(list);
     if (view === 'options') return optionsView();
     if (view === 'colonies') return coloniesView();
     if (view === 'settings') return settingsView();
+    if (view === 'annals') return annalsTitleView();
     let cards = [];
     try { cards = api.listColonies() || []; } catch (e) { status.textContent = 'Saved colonies could not be read.'; }
-    const last = cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))[0] || null;
+    const byPlayed = cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
+    // Continue opens the newest hold that still stands; a Ruin is never continued (1.3)
+    const last = byPlayed.find((c) => !c.fallen) || null;
+    const newestFallen = byPlayed[0] && byPlayed[0].fallen ? byPlayed[0] : null;
     const cont = h('button.ec-btn.primary.ec-continue', { 'data-act': 'continue', type: 'button' },
       h('span.ec-btn-label', { text: 'Continue' }),
-      last ? h('span.ec-btn-sub', { text: last.missing ? `${last.name}: missing from this browser` : `${last.name}: ${cardLine(last)}` }) : h('span.ec-btn-sub', { text: 'No colony yet' }));
+      last ? h('span.ec-btn-sub', { text: last.missing ? `${last.name}: missing from this browser` : `${last.name}: ${cardLine(last)}` }) : h('span.ec-btn-sub', { text: cards.length ? 'No hold still stands' : 'No colony yet' }));
     if (!last) { cont.disabled = true; cont.dataset.off = '1'; cont.classList.remove('primary'); }
+    // the hold that fell last (played after any standing one): its Fallen card leads the title
+    if (newestFallen) list.append(ruinCard(newestFallen));
     // eviction (11.1): refreshColonies marks a card whose blob is gone; say so before any tap
     if (last && last.missing) status.textContent = `${last.name} is missing from this browser's storage. Import a backup to bring it back.`;
     onTap(cont, async () => {
@@ -145,8 +152,10 @@ export function mountTitle(root, api) {
     const opts = h('button.ec-btn.ec-new-opts', { 'data-act': 'new-options', type: 'button' }, h('span.ec-btn-label', { text: 'Choose the start' }), h('span.ec-btn-sub', { text: 'Storyteller, difficulty, name' }));
     onTap(opts, () => { view = 'options'; refresh(); });
     list.append(opts);
+    // every colony (the main view shows at most the newest standing hold and the newest Ruin)
     if (cards.length > 1) {
-      const cl = h('button.ec-btn.ec-colonies', { 'data-act': 'colonies', type: 'button' }, h('span.ec-btn-label', { text: `Colonies (${cards.length})` }), h('span.ec-btn-sub', { text: 'Continue any saved hold' }));
+      const fallenN = cards.filter((c) => c.fallen).length;
+      const cl = h('button.ec-btn.ec-colonies', { 'data-act': 'colonies', type: 'button' }, h('span.ec-btn-label', { text: `Colonies (${cards.length})` }), h('span.ec-btn-sub', { text: fallenN ? `Continue a hold, or read a ruin (${fallenN} fallen)` : 'Continue any saved hold' }));
       onTap(cl, () => { view = 'colonies'; refresh(); });
       list.append(cl);
     }
@@ -196,7 +205,8 @@ export function mountTitle(root, api) {
     let cards = [];
     try { cards = api.listColonies() || []; } catch (_) { cards = []; }
     for (const c of cards.slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))) {
-      const b = h('button.ec-btn', { type: 'button', 'data-act': 'colony-open' }, h('span.ec-btn-label', { text: `${c.name}${c.iron ? ' (Ironhold)' : ''}` }), h('span.ec-btn-sub', { text: c.missing ? 'Missing from this browser' : cardLine(c) }));
+      if (c.fallen) { list.append(ruinCard(c)); continue; }
+      const b = h('button.ec-btn', { type: 'button', 'data-act': 'colony-open' }, h('span.ec-btn-label', { text: c.name }), h('span.ec-btn-sub', { text: c.missing ? 'Missing from this browser' : cardLine(c) }));
       onTap(b, async () => {
         busy(true); status.textContent = `Opening ${c.name}...`;
         try { const s0 = await api.continueColony(c.id); if (!s0) { status.textContent = `${c.name} is missing from this browser's storage.`; busy(false); return; } status.textContent = ''; view = 'main'; api.enter(s0, { resumed: true }); }
@@ -209,7 +219,75 @@ export function mountTitle(root, api) {
   function settingsView() {
     const box = h('div.ec-title-settings');
     settingsList(box, { read: () => api.readSettings(), write: (p) => { api.writeSettings(p); refresh(); }, toast: (t) => { status.textContent = t; }, standalone: !!(api.isStandalone && api.isStandalone()) });
+    storageBlock(box);
     list.append(box, back());
+  }
+  // ---- Settings > Storage: the old roguelite saves (one release) and Recover from a device problem ----------
+  function storageBlock(box) {
+    box.append(h('h3.ec-sub', { text: 'Storage' }));
+    let old = { keys: [], chars: 0 };
+    try { old = classicSaves(); } catch (_) { /* no localStorage */ }
+    if (old.keys.length) {
+      const kb = Math.max(1, Math.round((old.chars * 2) / 1024));
+      const row = h('button.ec-row', { type: 'button', 'data-act': 'old-saves' },
+        h('span.ec-row-n', null, `Old roguelite saves: ${kb} KB`, h('span.ec-row-help', { text: 'From the old game this hold replaced. Saves them to a file, then removes them.' })),
+        h('span.ec-row-s', { text: 'Export and remove' }));
+      onTap(row, async () => {
+        status.textContent = 'Exporting the old saves...';
+        try {
+          const r = await exportClassicSaves();
+          if (!r.ok) { status.textContent = r.reason === 'cancelled' ? 'Nothing was removed.' : (r.reason || 'Nothing was removed.'); return; }
+          clearClassicSaves(r.token);
+          status.textContent = `The old saves are in ${r.filename} and are removed from this browser.`;
+          refresh();
+        } catch (e) { status.textContent = `The old saves were not removed: ${e && e.message ? e.message : e}`; }
+      });
+      box.append(row);
+    }
+    try {
+      mountRecoverPanel(box, {
+        toast: (t) => { status.textContent = t; },
+        onLoaded: (s0) => { installSim({ stage: STAGE }); view = 'main'; api.enter(s0, { resumed: true }); },
+      });
+    } catch (_) { box.append(h('p.ec-bio-d', { text: 'The stored copies cannot be listed here.' })); }
+  }
+  // ---- the Fallen card (1.3): Annals, View the ruin, Export, Delete. No Continue, no backup -----------------
+  const exports = new Map();   // colony id -> Promise of the prepared export files (ready before the tap)
+  const prepExport = (c) => { if (!exports.has(c.id)) exports.set(c.id, prepareRuinExport(c.id).catch((e) => { exports.delete(c.id); throw e; })); return exports.get(c.id); };
+  let annalsOf = null;
+  function ruinCard(c) {
+    if (!c.missing) prepExport(c).catch(() => null);
+    return fallenCard(c, {
+      annals: () => { annalsOf = c; view = 'annals'; refresh(); },
+      view: async () => {
+        busy(true); status.textContent = `Opening the ruin of ${c.name}...`;
+        try {
+          const s0 = await api.continueColony(c.id);
+          if (!s0) { status.textContent = `${c.name} is missing from this browser's storage.`; busy(false); return; }
+          status.textContent = ''; view = 'main'; api.enter(s0, { resumed: false, ruin: true });
+        } catch (e) { status.textContent = `The ruin could not be opened: ${e.message}`; busy(false); }
+      },
+      export: async () => {
+        status.textContent = 'Preparing the export...';
+        try { const r = await shareRuinExport(await prepExport(c)); status.textContent = exportedText(r); }
+        catch (e) { status.textContent = `The export failed: ${e && e.message ? e.message : e}`; }
+      },
+      del: async () => {
+        try { await deleteColony(c.id); exports.delete(c.id); status.textContent = `${c.name} is deleted.`; refresh(); }
+        catch (e) { status.textContent = `${c.name} could not be deleted: ${e.message}`; }
+      },
+    });
+  }
+  function annalsTitleView() {
+    const c = annalsOf;
+    const box = h('div.ec-title-settings.ec-title-annals', { 'aria-label': c ? `${c.name}: Annals` : 'Annals' });
+    box.append(h('h2.ec-title-h', { text: c ? `${c.name}: ${RUIN_TEXT.annals}` : RUIN_TEXT.annals }));
+    const wait = h('p.ec-bio-d', { text: 'Reading the Annals...' });
+    box.append(wait);
+    list.append(box, back());
+    if (!c) { wait.textContent = 'No hold chosen.'; return; }
+    loadRuinState(c.id).then((s0) => { wait.remove(); if (s0) annalsView(box, s0); else box.append(h('p.ec-bio-d', { text: `${c.name} is missing from this browser's storage.` })); })
+      .catch((e) => { wait.textContent = `The Annals could not be read: ${e.message}`; });
   }
   refresh();
   root.append(node);

@@ -32,6 +32,7 @@ import { startingBand, spawnColonist } from '../people/colonists.js';
 import { installThreat } from '../threat/index.js';
 import { installDefence } from '../defence/index.js';
 import { installColony } from '../colony/index.js';
+import { installFall } from '../colony/fall.js';
 import { installAnimals } from '../animals/index.js';
 
 const STAGES = ['1a', '1b', '2', '3'];
@@ -61,6 +62,8 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
   if (at('1b')) installDefence({});
   installColony({ tiers: at('1b'), ledger: at('1b'), research: at('2'), charters: at('3'), deeds: at('2') });
   installAnimals({ ai: at('2'), giver: at('2') });
+  // Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3): the hourly fall check, from 1b (when colonists can be downed and die)
+  if (at('1b')) installFall();
   installed = { stage, checks, removeChecks };
   return installed;
 }
@@ -147,8 +150,9 @@ function freeTilesAround(s, cx, cy, n) {
  * Found a colony (title > New colony). Deterministic in (seed, opts).
  * @param {{ seed: number|string, name?: string, start?: string, w?: number, id?: string, reveal?: number,
  *           difficulty?: string, storyteller?: string }} opts
- *   difficulty: one of schema DIFFICULTIES (default steadfast); 'ironhold' also sets colony.iron (one save
- *   slot, no backups: save/slots.js). storyteller: a storytellers.js id (default: the data's default).
+ *   difficulty: one of schema DIFFICULTIES (default steadfast; 'hard' is threat x1.4 with the normal save
+ *   slots and backups: there is no Ironhold, EMBERCROWN-FORTRESS.md F9). storyteller: a storytellers.js id
+ *   (default: the data's default).
  * @returns the state, runtime built, with the Hearth (done), the band and the start stock
  */
 export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null } = {}) {
@@ -157,7 +161,6 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
   if (difficulty !== null && difficulty !== undefined) {
     if (!DIFFICULTIES.includes(difficulty)) throw new Error(`foundColony: unknown difficulty ${difficulty}`);
     s.colony.difficulty = difficulty;
-    s.colony.iron = difficulty === 'ironhold';
   }
   if (storyteller) {
     if (!def('storyteller', storyteller)) throw new Error(`foundColony: unknown storyteller ${storyteller}`);

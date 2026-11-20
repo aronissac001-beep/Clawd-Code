@@ -1,7 +1,6 @@
 /* Embercrown: The Hold (owner I; doc 10). Phone-first chrome: warm firelight on cold grey.
    Sizes in pt (CSS px) follow doc 10.1 / balance.js LAYOUT: top bar 44, rail 52, bottom bar 56,
-   peek card 120, landscape side rail 56 and overlay panel 320. Text >= 14 px, targets >= 44 pt.
-   The roguelite's stylesheet lives on in classic/css/. */
+   peek card 120, landscape side rail 56 and overlay panel 320. Text >= 14 px, targets >= 44 pt. */
 :root {
   --sa-t: env(safe-area-inset-top, 0px);
   --sa-r: env(safe-area-inset-right, 0px);
@@ -72,10 +71,6 @@ body.ec-game #title, body.ec-game #screens { display: none; }
 .ec-btn.pressed, .ec-btn:active { transform: translateY(1px); }
 .ec-btn-label { font-size: calc(18px * var(--ts)); font-weight: 650; }
 .ec-btn-sub { font-size: calc(14px * var(--ts)); color: var(--dim); }
-.ec-classic {
-  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 14px; margin-top: 8px;
-  font-size: calc(15px * var(--ts)); color: var(--dim); text-decoration: underline; text-decoration-color: rgba(205, 187, 152, 0.45); text-underline-offset: 3px;
-}
 @media (orientation: landscape) and (max-height: 500px) {
   .ec-title-col { width: min(720px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; align-items: center; text-align: left; }
   .ec-title-head, .ec-title-pitch { grid-column: 1; }
@@ -83,7 +78,6 @@ body.ec-game #title, body.ec-game #screens { display: none; }
   .ec-title-pitch { margin: 6px 0 0; align-self: start; }
   .ec-title-actions { grid-column: 2; grid-row: 1 / span 2; }
   .ec-title-status { grid-column: 2; margin: 0; min-height: 0; }
-  .ec-classic { grid-column: 1; justify-self: start; margin: 0; padding: 0; }
   .ec-title-name { font-size: calc(34px * var(--ts)); }
   .ec-title-bg { height: 100%; opacity: 0.5; }
   .ec-title-lights { display: none; }
@@ -714,3 +708,36 @@ body.land .ec-toast { max-width: min(420px, calc(100% - 16px)); }
 .ec-hour { min-width: 0; }
 .ec-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ec-bill-line > span { min-width: 0; flex: 1 1 120px; }
+/* ---------- Stage 2.9: the fall and the Ruin (EMBERCROWN-FORTRESS.md 1.3), earned perks (3.1) ---------- */
+/* the title's Fallen card: a greyed banner, the date of the fall, Annals / View the ruin / Export / Delete */
+.ec-fallen { text-align: left; padding: 8px 10px 10px; border-radius: 12px; background: linear-gradient(#2b2830, #201e25); border: 1.5px solid rgba(154, 139, 116, 0.55); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); filter: saturate(0.6); }
+.ec-fallen-banner { display: flex; align-items: center; gap: 8px; color: var(--faint); }
+.ec-fallen-ic .ic { width: 20px; height: 20px; }
+.ec-fallen-tag { font-size: calc(14px * var(--ts)); font-weight: 650; letter-spacing: 0.18em; text-transform: uppercase; }
+.ec-fallen-name { margin: 2px 0 0; font-size: calc(18px * var(--ts)); font-weight: 650; color: var(--dim); overflow-wrap: anywhere; }
+.ec-fallen-when { margin: 0 0 8px; font-size: calc(14px * var(--ts)); color: var(--faint); }
+.ec-fallen-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ec-fallen-b { min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px; background: rgba(46, 36, 32, 0.9); border: 1.5px solid var(--line); color: var(--text); text-align: left; min-width: 0; }
+.ec-fallen-b .ic { width: 20px; height: 20px; color: var(--brass-hi); }
+.ec-fallen-bl { font-size: calc(15px * var(--ts)); min-width: 0; overflow-wrap: anywhere; }
+.ec-fallen-b.bad { border-color: var(--bad); }
+.ec-fallen-b.bad .ic, .ec-fallen-b.bad .ec-fallen-bl { color: var(--bad); }
+.ec-fallen-b.pressed { transform: translateY(1px); }
+.ec-title-h { margin: 4px 0 6px; font-size: calc(18px * var(--ts)); color: var(--brass-hi); }
+/* "The Hearth goes cold" and the Annals (sheets) */
+.ec-cold-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 2px; }
+.ec-cold-ic .ic { width: 36px; height: 36px; color: var(--faint); }
+.ec-cold-name { margin: 0; font-size: calc(20px * var(--ts)); font-weight: 700; color: var(--brass-hi); overflow-wrap: anywhere; }
+.ec-cold-when { margin: 2px 0 0; font-size: calc(15px * var(--ts)); color: var(--dim); }
+.ec-cold-list { margin: 0 0 6px; padding: 0 0 0 18px; font-size: calc(15px * var(--ts)); line-height: 1.4; color: var(--text); }
+.ec-cold-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.ec-annals-d { color: var(--faint); }
+.ec-cold-acts { display: grid; gap: 10px; margin: 14px 0 4px; }
+/* the ruin viewer: no tools, no speed, no alerts; a Ruin chip in the top bar */
+body.ec-ruin .ec-alerts, body.ec-ruin .ec-threat { display: none !important; }
+.ec-ruin-tag { color: var(--faint); border-color: rgba(154, 139, 116, 0.55); }
+.ec-ruin-tag .ic { color: var(--faint); }
+/* the Skills tab: what each next perk still needs */
+.ec-perk-next { padding: 6px 0; border-bottom: 1px solid rgba(201, 151, 62, 0.12); }
+.ec-perk-next-t { margin: 0; font-size: calc(15px * var(--ts)); color: var(--text); overflow-wrap: anywhere; }
+.ec-perk-next .ec-bio-d { margin: 2px 0 0; }

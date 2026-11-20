@@ -21,8 +21,7 @@
 // 8-way moves with no corner cutting; doors cost DOOR_WALK10 for colonists and block hostiles.
 // Buffers are allocated on first use for the live map size, never at import (D1).
 //
-// The roguelite's flow fields moved out: H owns them in js/game/threat/flow.js (the old code is in
-// classic/js/game/systems/pathing.js for salvage).
+// Flow fields live elsewhere: H owns them in js/game/threat/flow.js.
 
 import { W, H, N, TILE, idx, DX8, DY8 } from '../core/grid.js';
 import { newPath } from '../core/schema.js';

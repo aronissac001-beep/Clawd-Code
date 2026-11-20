@@ -132,7 +132,7 @@ export function setStage(s, raid, stage) {
 
 const addBy = (list, key, d) => { for (const e of list) if (e[0] === key) { e[1] += d; return; } list.push([key, d]); };
 /**
- * Damage a foe. BUS.dmgMult handlers multiply (lit-tile bonus, charter and trait effects); the
+ * Damage a foe. BUS.dmgMult handlers multiply (lit-tile bonus, perk and trait effects); the
  * armoured affix takes 30% off. Records who hurt it (Stage 2). A reaver brought down may be downed
  * instead of killed (capture, 9.5).
  * @returns {number} damage dealt

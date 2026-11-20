@@ -1,6 +1,6 @@
 // Colony systems and animals (owner K): content and tuning lookups for js/game/colony/*,
 // js/game/animals/* and js/game/work/givers/animals.js. Numbers come from js/data/ (tiers.js,
-// research.js, charters.js, deeds.js, traders.js, factions.js, animals.js, items.js, balance.js);
+// research.js, renown.js, deeds.js, traders.js, factions.js, animals.js, items.js, balance.js);
 // this module only finds them. The default registry is G's CONTENT; core/content.js (A) may
 // install a validated one with setColonyContent(reg).
 

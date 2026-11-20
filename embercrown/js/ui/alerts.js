@@ -1,9 +1,9 @@
 // Alerts (owner I; doc 10.6): conditions shown while they hold, as the right-edge icon stack (4
 // visible, "+N"). Tap: jump to the subject. Long-press: explain, with "Snooze 1 day".
-// Rules (most urgent first): raid, fire, starving, bleeding, downed, infection, taint rising, cold,
+// Rules (most urgent first): the hold is falling (no one free and able: the fall clock, 1.3), raid, fire, starving, bleeding, downed, infection, taint rising, cold,
 // mood break risk, demand unmet (Ember-touched), letter waiting, manhunter, idle colonists, no doctor,
-// food < 3 days, Hearth fuel < 1 day, unburied corpses, stockpile full, bed missing, perk to choose,
-// trader here, cave-in rumbling.
+// food < 3 days, Hearth fuel < 1 day, unburied corpses, stockpile full, bed missing, trader here,
+// cave-in rumbling. (Stage 2.9: no "perk to choose": perks are earned, EMBERCROWN-FORTRESS.md 3.1.)
 // UI only: alerts read state and never write it. Idle is timed on the UI side (a colonist idle for
 // a game hour or more), snoozes are per colony in localStorage ('ec2.snooze.<id>'), in game ticks.
 // A target: { colonist } | { building } | { tile: [x, y] } | { threat } | { animal } | { zone } |
@@ -13,6 +13,7 @@ import { FIX, NEED_IDS, WORK_IDS } from '../game/core/schema.js';
 import { W } from '../game/core/grid.js';
 import { threatChip } from '../game/threat/warnings.js';
 import { foodDays } from '../data/advice.js';
+import { fallClockHours, FALL_HOURS, isFallen } from '../game/colony/fall.js';
 /** F's ember record: met is the tick the demand was met, or -1 (null in older records). */
 const emberMet = (em) => typeof em.met === 'number' ? em.met >= 0 : !!em.met;
 
@@ -39,6 +40,18 @@ const infected = (c) => (c.hp.wounds || []).some((w) => (w.infected | 0) > 0);
  * extra: { letters (UI letter tracker), demand } from the shell.
  */
 export const ALERT_RULES = Object.freeze([
+  {
+    // the fall clock (1.3): no colonist free and able; at FALL_HOURS the hold falls for good
+    id: 'falling', icon: 'skull', tone: 'bad',
+    test(s) {
+      if (isFallen(s)) return null;
+      const hrs = fallClockHours(s);
+      if (!hrs) return null;
+      const c = s.col.find((x) => x.hp && !x.hp.dead && x.hp.down) || s.col.find((x) => x.hp && !x.hp.dead) || null;
+      const left = Math.max(0, FALL_HOURS - hrs);
+      return { text: `No one stands: the hold falls in ${left} h`, why: `No colonist is free and able. If no one stands for ${FALL_HOURS} hours, the Hearth goes cold and the hold falls for good. A downed colonist in a bed counts as rescued.`, target: c ? { colonist: c.id } : { open: 'colony' } };
+    },
+  },
   {
     id: 'raid', icon: 'horde', tone: 'bad',
     test(s) {
@@ -212,14 +225,6 @@ export const ALERT_RULES = Object.freeze([
       const n = alive(s).length;
       if (beds >= n) return null;
       return { text: `${n - beds} without a bed`, why: 'Sleeping on the floor sours mood. Build beds (Build > Housing) or stamp a bedroom.', target: { open: 'build' } };
-    },
-  },
-  {
-    id: 'perk', icon: 'trophy', tone: '',
-    test(s, view, x) {
-      const c = x && x.perkOf ? alive(s).find((cc) => x.perkOf(cc)) : null;
-      if (!c) return null;
-      return { text: `${first(c)} can choose a perk`, why: 'A key skill reached 10 or 20: two perks to pick from in the Skills tab.', target: { open: 'skills', colonist: c.id } };
     },
   },
   {

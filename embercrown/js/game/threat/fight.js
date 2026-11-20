@@ -48,6 +48,7 @@ import { startOrder, holdHere } from './orders.js';
 import { def } from './defs.js';
 import { coverAt, towerOf } from '../defence/towers.js';
 import { RIFT } from './rift.js';
+import { didDeed } from '../people/coldeeds.js';
 import { closeRift } from './raids2.js';
 
 const TW = 32;
@@ -152,6 +153,7 @@ function swing(s, col, f, w) {
   const ranged = !!w.ranged;
   awardXp(s, col, ranged ? 'archery' : 'melee', COMBAT.xpPerSwing);
   if (roll100(s) >= hitPct(col, ranged && stage2())) return;
+  if (ranged) didDeed(s, col, 'shots_hit');   // Fire Arrows (EMBERCROWN-FORTRESS.md 3.1)
   let dmg = w.dmg + Math.floor(level(col, ranged ? 'archery' : 'melee') / COMBAT.dmgPerLvl);
   if (w.beast && isBeast(f)) dmg = Math.floor((dmg * COMBAT.beastPct) / 100);
   damageFoe(s, f, dmg, w.kind, col);
