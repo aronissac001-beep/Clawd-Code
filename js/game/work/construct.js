@@ -13,7 +13,7 @@
 // target building is claimed exclusively (keyBld) for the whole job, so one builder serves a frame
 // at a time and a cancelled blueprint ends the job through endJobsOn.
 
-import { W, H, idx, tx, ty } from '../core/grid.js';
+import { W, H, idx, tx, ty, tz } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { emit } from '../core/events.js';
 import { bldById } from '../core/state.js';
@@ -25,7 +25,7 @@ import { footprint } from '../world/pass.js';
 import {
   WORK, RUN, NEXT, END, T, makeJob, registerToil, registerEffect, keyBld, keyItem, keyId, myClaim, workHooks, isReserved,
 } from './jobs.js';
-import { itemDef, categoryOf, take, put, carried, spawn, freeCount, stackAt, stacksOn, countOn, capAt, withZoneEdit } from './items.js';
+import { itemDef, categoryOf, take, put, putAt, carried, spawn, freeCount, stackAt, stacksOn, countOn, capAt, withZoneEdit } from './items.js';
 import { release, colTile } from './reserve.js';
 import { refreshBuildingIndex, standSpot, distTo, reachableFrom } from './windex.js';
 export { footprint };
@@ -140,15 +140,15 @@ function sourcesFor(s, col, f, k = WORK.candidatesK) {
   const b = s.rt.idx.items;
   const bucket = f.k ? b[f.k] : b['@' + f.cat];
   if (!bucket) return [];
-  const ci = colTile(col), cx = tx(ci), cy = ty(ci);
+  const ci = colTile(col), cx = tx(ci), cy = ty(ci), cz = tz(ci);
   const out = [];
   for (const id of bucket) {
     const it = s.items[id];
     if (it.f || (f.k && f.cat && categoryOf(it.k) !== f.cat)) continue;
     if (f.m !== undefined && f.m !== null && it.m !== f.m) continue;
     if (freeCount(s, id, col.id) <= 0) continue;
-    if (!reachableFrom(s, col, idx(it.x, it.y))) continue;
-    out.push([(it.x - cx) * (it.x - cx) + (it.y - cy) * (it.y - cy), id]);
+    if (!reachableFrom(s, col, idx(it.x, it.y, it.z | 0))) continue;
+    out.push([(it.x - cx) * (it.x - cx) + (it.y - cy) * (it.y - cy) + 4 * ((it.z | 0) - cz) * ((it.z | 0) - cz), id]);
   }
   out.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   return out.slice(0, k).map((p) => s.items[p[1]]);
@@ -165,7 +165,7 @@ export function deliveryJob(s, col, b) {
     const src = sourcesFor(s, col, f);
     if (!src.length) continue;
     let it = null, bd = Infinity;
-    for (const c of src) { const d = distTo(s, col, idx(c.x, c.y)); if (d < bd) { bd = d; it = c; } }
+    for (const c of src) { const d = distTo(s, col, idx(c.x, c.y, c.z | 0)); if (d < bd) { bd = d; it = c; } }
     if (!it) continue;
     const cap = capUnits(col, it.k);
     // targets: b first, then other open blueprints nearby with the same need and material
@@ -190,7 +190,7 @@ export function deliveryJob(s, col, b) {
     }
     const take1 = Math.min(total, freeCount(s, it.id, col.id));
     if (take1 <= 0) continue;
-    const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, take1)];
+    const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, take1)];
     const claims = [[keyItem(it.id), take1]];
     let got = take1;
     // top-up: same kind, material and quality within WORK.topUpR of the first stack
@@ -199,7 +199,7 @@ export function deliveryJob(s, col, b) {
         if (o.id === it.id || o.q !== it.q || Math.max(Math.abs(o.x - it.x), Math.abs(o.y - it.y)) > WORK.topUpR) continue;
         const n2 = Math.min(total - got, freeCount(s, o.id, col.id));
         if (n2 <= 0) continue;
-        toils.push(T.goto(idx(o.x, o.y)), T.pickup(o.id, n2));
+        toils.push(T.goto(idx(o.x, o.y, o.z | 0)), T.pickup(o.id, n2));
         claims.push([keyItem(o.id), n2]);
         got += n2;
         break;
@@ -236,8 +236,8 @@ export function deconstructJob(s, col, b) {
 
 // ---- Toils -------------------------------------------------------------------------------------------
 const nearBld = (s, col, b) => {
-  const ci = colTile(col), x = tx(ci), y = ty(ci);
-  for (const i of footprint(s, b)) if (Math.max(Math.abs(tx(i) - x), Math.abs(ty(i) - y)) <= 1) return true;
+  const ci = colTile(col), x = tx(ci), y = ty(ci), z = tz(ci);
+  for (const i of footprint(s, b)) if (tz(i) === z && Math.max(Math.abs(tx(i) - x), Math.abs(ty(i) - y)) <= 1) return true;
   return false;
 };
 registerToil('deliver', (s, col, job, toil) => {
@@ -290,7 +290,7 @@ function clearFootprint(s, b) {
       const ids = stacksOn(s, i);
       const it = s.items[ids[ids.length - 1]];
       const bundle = take(s, it.id, it.n);
-      if (bundle) put(s, bundle, tx(i), ty(i));
+      if (bundle) putAt(s, bundle, i);
     }
   }
 }
@@ -299,17 +299,17 @@ function pushOutColonists(s, b) {
   for (const c of s.col) {
     const ci = colTile(c);
     if (!fp.includes(ci) || passable(s, ci, 0)) continue;
-    const to = nearestOpen(s, tx(ci), ty(ci));
+    const to = nearestOpen(s, tx(ci), ty(ci), tz(ci));
     if (to >= 0) { c.x = tx(to) * 32 + 16; c.y = ty(to) * 32 + 16; c.path = null; }
   }
 }
-function nearestOpen(s, x, y) {
+function nearestOpen(s, x, y, z = 0) {
   for (let r = 1; r <= 8; r++) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const xx = x + dx, yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-      if (passable(s, idx(xx, yy), 0)) return idx(xx, yy);
+      if (passable(s, idx(xx, yy, z), 0)) return idx(xx, yy, z);
     }
   }
   return -1;
@@ -367,10 +367,10 @@ registerEffect('deconstruct', (s, col, job) => {
   const b = bldById(s, keyId(job.target));
   if (!b || b.st !== 'done' || !b.dcon) return END.TARGET_GONE;
   const back = refundOf(b);
-  const x = b.x, y = b.y;
+  const x = b.x, y = b.y, z = b.z | 0;
   release(s, col, keyBld(b.id));
   removeBuilding(s, b);
-  for (const [k, m, q, n] of back) spawn(s, k, m, q, n, x, y);
+  for (const [k, m, q, n] of back) spawn(s, k, m, q, n, x, y, { z });
   return undefined;
 });
 

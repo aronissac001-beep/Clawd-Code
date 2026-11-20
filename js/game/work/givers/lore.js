@@ -67,7 +67,7 @@ function tablets(s) {
 }
 const tabletTarget = (s, col, it) => {
   if (!isTablet(it) || it.f || !openTarget(s, col, keyItem(it.id))) return null;
-  const i = idx(it.x, it.y);
+  const i = idx(it.x, it.y, it.z | 0);
   if (!reachableFrom(s, col, i)) return null;
   const d = distTo(s, col, i);
   return d === Infinity ? null : { key: keyItem(it.id), id: it.id, i, d };

@@ -195,10 +195,10 @@
  },
  "ms": 112180,
  "rebaselined": {
-  "commit": "440e1a8",
-  "dirty": false,
+  "commit": "4743f1b",
+  "dirty": true,
   "date": "2026-11-20",
-  "note": "S9.8: Stage 2.9b (bot policy, threat floor caps, Hollow morale, deed sources)",
+  "note": "Z1 E4+E5: zone distance fields removed",
   "hour": {
    "tick": 868200,
    "hash": "6968bdf28723b854",
@@ -327,7 +327,7 @@
   },
   "day": {
    "tick": 882000,
-   "hash": "08f54c4ce47f1c4a"
+   "hash": "93e631b58a19eec3"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

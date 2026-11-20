@@ -24,7 +24,7 @@
 // a winding tunnel is not taken as near). A target the colonist cannot reach (different component in
 // the end-of-tick labels) gets distance Infinity and is dropped here, before any A* call.
 
-import { W, H, CW, CH, CLUSTER, clusterOf, idx, tx, ty, DX4, DY4, DESIG } from '../core/grid.js';
+import { W, H, D, PLANE, CW, CH, CLUSTERS, CLUSTER, clusterOf, idx, tx, ty, tz, DX4, DY4, DESIG, TER } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { registerIdxPart, WORK, isReserved, isUnreachable } from './jobs.js';
 import { regionDist, passable, compOf } from '../world/terrain.js';
@@ -52,7 +52,8 @@ export const sortedHas = (a, v) => {
   while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; }
   return a[lo] === v;
 };
-const clusterLists = () => { const out = []; for (let c = 0; c < CW * CH; c++) out.push([]); return out; };
+// Z1: one list per 16 x 16 x 1 cluster on every level (CLUSTERS = CW * CH * D; CW * CH at D = 1)
+const clusterLists = () => { const out = []; for (let c = 0; c < CLUSTERS; c++) out.push([]); return out; };
 
 // ---- Designations ---------------------------------------------------------------------------------
 /** Indexed designation kinds (Stage 1a: the Mine and Chop givers; Stage 2.9b: Smooth and Engrave, givers/stone.js). */
@@ -91,7 +92,7 @@ export const clearDesig = (s, i, bits) => setDesig(s, i, s.L.desig[i] & ~bits);
 const isFrame = (b) => !!b && b.st !== 'done';
 export function rebuildFrameIndex(s) {
   const out = clusterLists();
-  for (const b of s.bld) if (isFrame(b)) out[clusterOf(idx(b.x, b.y))].push(b.id);
+  for (const b of s.bld) if (isFrame(b)) out[clusterOf(idx(b.x, b.y, b.z | 0))].push(b.id);
   return out;
 }
 // ---- Bills (finished workbenches with bills) ---------------------------------------------------------
@@ -115,8 +116,8 @@ export function refreshBuildingIndex(s, b, gone = false) {
   const ix = s.rt.idx;
   if (Array.isArray(ix.places)) { if (!gone && isPlace(b)) sortedInsert(ix.places, b.id); else sortedRemove(ix.places, b.id); }
   else if (!gone && isPlace(b)) ix.places = [b.id];
-  if (Array.isArray(ix.frames) && ix.frames.length === CW * CH) {
-    const list = ix.frames[clusterOf(idx(b.x, b.y))];
+  if (Array.isArray(ix.frames) && ix.frames.length === CLUSTERS) {
+    const list = ix.frames[clusterOf(idx(b.x, b.y, b.z | 0))];
     if (!gone && isFrame(b)) sortedInsert(list, b.id); else sortedRemove(list, b.id);
   }
   if (Array.isArray(ix.bills)) {
@@ -136,7 +137,7 @@ export function rebuildGrowIndex(s) {
 }
 function onZoned(s, z, tiles) {
   const p = s.rt.idx.plants;
-  if (!Array.isArray(p) || p.length !== CW * CH) return;
+  if (!Array.isArray(p) || p.length !== CLUSTERS) return;
   for (const i of tiles) {
     const list = p[clusterOf(i)];
     if (zoneType(s, s.L.zone[i]) === 'grow') sortedInsert(list, i); else sortedRemove(list, i);
@@ -164,25 +165,33 @@ function onBillsChanged(s, b) { refreshBuildingIndex(s, b); }
 
 // ---- Ring search over clusters ---------------------------------------------------------------------
 /**
- * Visit cluster indexes in Chebyshev rings around cluster (cx, cy), nearest ring first, each ring in
- * row-major order. fn(c, ring) -> true stops after the CURRENT ring is finished.
+ * Visit cluster indexes in Chebyshev rings around cluster (cx, cy) of level cz (Z1: a level counts as one
+ * ring step, so ring r holds every cluster with max(|dx|, |dy|, |dz|) = r), nearest ring first, each ring
+ * level by level from the lowest, each level in row-major order. At D = 1 this is the Stage 2 order.
+ * fn(c, ring) -> true stops after the CURRENT ring is finished.
  */
-export function clusterRings(cx, cy, fn, maxR = Math.max(CW, CH)) {
+export function clusterRings(cx, cy, fn, maxR = Math.max(CW, CH, D), cz = 0) {
+  const per = CW * CH;
+  // past this ring nothing is left on the map (the loops below only visit clusters that exist)
+  const far = Math.max(cx, CW - 1 - cx, cy, CH - 1 - cy, cz, D - 1 - cz);
+  if (maxR > far) maxR = far;
   for (let r = 0; r <= maxR; r++) {
     let stop = false;
-    for (let y = cy - r; y <= cy + r; y++) {
-      if (y < 0 || y >= CH) continue;
-      for (let x = cx - r; x <= cx + r; x++) {
-        if (x < 0 || x >= CW) continue;
-        if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
-        if (fn(y * CW + x, r)) stop = true;
+    const z0 = Math.max(0, cz - r), z1 = Math.min(D - 1, cz + r);
+    const y0 = Math.max(0, cy - r), y1 = Math.min(CH - 1, cy + r), x0 = Math.max(0, cx - r), x1 = Math.min(CW - 1, cx + r);
+    for (let z = z0; z <= z1; z++) {
+      const edgeZ = Math.abs(z - cz) === r, base = z * per;
+      for (let y = y0; y <= y1; y++) {
+        const row = base + y * CW;
+        if (edgeZ || Math.abs(y - cy) === r) { for (let x = x0; x <= x1; x++) if (fn(row + x, r)) stop = true; }
+        else { if (cx - r >= 0 && fn(row + cx - r, r)) stop = true; if (r > 0 && cx + r < CW && fn(row + cx + r, r)) stop = true; }
       }
     }
     if (stop) return;
   }
 }
-/** The colonist's cluster coordinates. */
-export function colCluster(col) { const c = clusterOf(colTile(col)); return [c % CW, (c / CW) | 0]; }
+/** The colonist's cluster coordinates [cx, cy, level]. */
+export function colCluster(col) { const c = clusterOf(colTile(col)), per = CW * CH, p = c % per; return [p % CW, (p / CW) | 0, (c / per) | 0]; }
 
 /**
  * Nearest-first candidate collection. lists(c) -> the sorted entries of cluster c (tile indexes or ids);
@@ -193,7 +202,7 @@ export function colCluster(col) { const c = clusterOf(colTile(col)); return [c %
  */
 export function collect(s, col, lists, accept, k = WORK.candidatesK) {
   const out = [];
-  const [cx, cy] = colCluster(col);
+  const [cx, cy, cz] = colCluster(col);
   let seen = 0, capped = false;
   clusterRings(cx, cy, (c) => {
     if (capped) return true;
@@ -204,7 +213,7 @@ export function collect(s, col, lists, accept, k = WORK.candidatesK) {
       if (seen >= WORK.scanMax) capped = true;   // a whole cluster at a time, so the cut is deterministic
     }
     return out.length >= k || capped;
-  });
+  }, Math.max(CW, CH, D), cz);
   out.sort((p, q) => p.d - q.d || p.key - q.key);
   if (out.length > k) out.length = k;
   return out;
@@ -213,13 +222,17 @@ export function collect(s, col, lists, accept, k = WORK.candidatesK) {
 // ---- Standing spots ----------------------------------------------------------------------------------
 /**
  * The best tile to stand on to work on a set of target tiles (a rock tile to mine, a building
- * footprint): a passable tile 4-adjacent to the set (and not in it), in the colonist's component,
- * with the smallest region-graph distance from the colonist (ties: lower tile index).
+ * footprint): a passable tile 4-adjacent to the set on the same level (and not in it), in the
+ * colonist's component, with the smallest region-graph distance from the colonist (ties: lower tile index).
  * opts.onTarget: the target tiles themselves may be stood on (felling a tree); when one of them can
  * be, the neighbours are not considered.
+ * opts.mode (Z1, 2.3): 'adj' (the default: planar 4-neighbours, GOAL ADJ4), 'above' (only the voxel
+ * directly above the single target: the stair dug from the stair over it, goal mode ABOVE) or
+ * 'adjStair' (the planar neighbours plus the voxel above when it is a walkable stair or ramp top:
+ * goal mode ADJ_STAIR).
  * @returns {{ i: number, d: number }} i = -1 and d = Infinity when there is none
  */
-export function standSpot(s, col, tiles, { onTarget = false } = {}) {
+export function standSpot(s, col, tiles, { onTarget = false, mode = 'adj' } = {}) {
   const from = colTile(col);
   const comp = compOf(s, from, 0);
   let best = -1, bd = Infinity;
@@ -229,12 +242,16 @@ export function standSpot(s, col, tiles, { onTarget = false } = {}) {
     if (d < bd || (d === bd && j < best)) { bd = d; best = j; }
   };
   if (onTarget) { for (const i of tiles) consider(i); if (best >= 0) return { i: best, d: bd }; }
+  if (mode === 'above' || mode === 'adjStair') {
+    for (const i of tiles) if (i + PLANE < s.L.terrain.length && GOAL_ABOVE_OK(s, i + PLANE)) consider(i + PLANE);
+    if (mode === 'above') return { i: best, d: bd };
+  }
   for (const i of tiles) {
-    const x = tx(i), y = ty(i);
+    const x = tx(i), y = ty(i), z = tz(i);
     for (let k = 0; k < 4; k++) {
       const nx = x + DX4[k], ny = y + DY4[k];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const j = idx(nx, ny);
+      const j = idx(nx, ny, z);
       if (tiles.length > 1 && tiles.includes(j)) continue;
       if (tiles.length === 1 && j === tiles[0]) continue;
       consider(j);
@@ -242,6 +259,8 @@ export function standSpot(s, col, tiles, { onTarget = false } = {}) {
   }
   return { i: best, d: bd };
 }
+/** A voxel one can stand on to work the voxel below it (ABOVE): a stair down (STAIR_D, STAIR_UD) or a ramp top. */
+function GOAL_ABOVE_OK(s, j) { const t = s.L.terrain[j]; return t === TER.STAIR_D || t === TER.STAIR_UD || t === TER.RAMP_TOP; }
 /** Footprint tiles of a building (B's resolver: def size and rotation). */
 export const tilesOfBld = (s, b) => footprint(s, b);
 

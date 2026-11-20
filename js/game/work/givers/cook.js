@@ -7,7 +7,7 @@
 import { tx, ty } from '../../core/grid.js';
 import { def } from '../../core/content.js';
 import { benchGiver, workplaceGiver } from './craft.js';
-import { spawn } from '../items.js';
+import { spawn, spawnAt } from '../items.js';
 import { colTile } from '../reserve.js';
 
 export const FISH_MIN = 30, FISH_SHARE_R = 8;
@@ -22,6 +22,6 @@ export const FISH_GIVER = workplaceGiver({
     // a shared shore: every other catch is lost (deterministic: by the colonist's work count)
     let got = n;
     if (shared(s, b)) { const job = col.job; got = 0; for (let k = 0; k < n; k++) { job.fishN = (job.fishN | 0) + 1; if (job.fishN % 2 === 0) got++; } }
-    if (got > 0) { const ci = colTile(col); spawn(s, 'fish', null, 0, got, tx(ci), ty(ci)); }
+    if (got > 0) { const ci = colTile(col); spawnAt(s, 'fish', null, 0, got, ci); }
   },
 });

@@ -11,7 +11,7 @@
 // one; until then `straightMover` + `stubMovementSystem` (Stage 0 stubs, straight 8-connected
 // lines that ignore walls, one tile per tick) let jobs run in tests and the stub world.
 
-import { idx, tx, ty, cheb, ctrW, TER_PASSABLE } from '../core/grid.js';
+import { idx, tx, ty, tz, cheb, ctrW, TER_PASSABLE } from '../core/grid.js';
 import { newPath } from '../core/schema.js';
 import { bldById } from '../core/state.js';
 import {
@@ -23,7 +23,7 @@ import { claim, release, endJob, colTile } from './reserve.js';
 
 const atGoal = (col, goal, adj) => {
   const i = colTile(col);
-  return adj ? cheb(tx(i), ty(i), tx(goal), ty(goal)) <= 1 : i === goal;
+  return adj ? tz(i) === tz(goal) && cheb(tx(i), ty(i), tx(goal), ty(goal)) <= 1 : i === goal;
 };
 const moverOf = () => getMover() || straightMover;
 
@@ -51,12 +51,13 @@ registerToil('pickup', (s, col, job, toil) => {
   const it = getItem(s, toil.id);
   if (!it) return END.TARGET_GONE;
   const ci = colTile(col), x = tx(ci), y = ty(ci);
-  if ((it.x !== x || it.y !== y) && !(blockedGoal(s, idx(it.x, it.y)) && cheb(x, y, it.x, it.y) <= 1)) return 'notThere';
+  if ((it.z | 0) !== tz(ci)) return 'notThere';
+  if ((it.x !== x || it.y !== y) && !(blockedGoal(s, idx(it.x, it.y, it.z | 0)) && cheb(x, y, it.x, it.y) <= 1)) return 'notThere';
   // Release our claim first: the stack may vanish when we empty it, and its id may be reused.
   release(s, col, keyItem(toil.id));
   const b = take(s, toil.id, toil.n, col.id);
   if (!b) return 'nothingToTake';
-  if (!addCarry(col, b)) { put(s, b, it.x, it.y); return 'carryMismatch'; }
+  if (!addCarry(col, b)) { put(s, b, it.x, it.y, { z: it.z | 0 }); return 'carryMismatch'; }
   return NEXT;
 });
 
@@ -65,10 +66,10 @@ registerToil('drop', (s, col, job, toil) => {
   const ci = colTile(col);
   let x = tx(ci), y = ty(ci);
   if (toil.i >= 0) {
-    if (cheb(x, y, tx(toil.i), ty(toil.i)) > 1) return 'notThere';
+    if (tz(toil.i) !== tz(ci) || cheb(x, y, tx(toil.i), ty(toil.i)) > 1) return 'notThere';
     x = tx(toil.i); y = ty(toil.i);
   }
-  drop(s, col, x, y);
+  drop(s, col, x, y, tz(ci));
   return carried(col) ? 'noRoom' : NEXT;
 });
 

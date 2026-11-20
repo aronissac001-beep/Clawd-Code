@@ -12,7 +12,7 @@
 // 100 for weapons (the Soldier outfit only: workers do not carry weapons), value for trinkets;
 // quality scales them (5.8). Wealth counts worn gear nowhere (it is off the map's stacks).
 
-import { idx, tx, ty } from '../core/grid.js';
+import { idx, tx, ty, tz } from '../core/grid.js';
 import { colById } from '../core/state.js';
 import { def, all } from '../core/content.js';
 import { registerApplier } from '../core/commands.js';
@@ -66,7 +66,7 @@ export function dressJob(s, col) {
       const slot = slotOf(it.k);
       const dg = gearScore(it) - gearScore(g.slots[slot] || null);
       if (dg < gain) continue;
-      const d = distTo(s, col, idx(it.x, it.y)) - (storeBldAt(s, idx(it.x, it.y)) ? 64 : 0);   // racks first
+      const d = distTo(s, col, idx(it.x, it.y, it.z | 0)) - (storeBldAt(s, idx(it.x, it.y, it.z | 0)) ? 64 : 0);   // racks first
       if (dg > gain || d < bd) { gain = dg; bd = d; best = it; }
     }
   }
@@ -78,7 +78,7 @@ export function dressJob(s, col) {
     }
     return null;
   }
-  return { job: makeJob('dress', keyItem(best.id), [T.goto(idx(best.x, best.y)), T.pickup(best.id, 1), { t: 'wear' }]), claims: [[keyItem(best.id), 1]] };
+  return { job: makeJob('dress', keyItem(best.id), [T.goto(idx(best.x, best.y, best.z | 0)), T.pickup(best.id, 1), { t: 'wear' }]), claims: [[keyItem(best.id), 1]] };
 }
 registerToil('wear', (s, col, job) => {
   const c = carried(col);
@@ -90,7 +90,7 @@ registerToil('wear', (s, col, job) => {
   g.slots[slot] = { ...c, n: 1 };
   job.carry = null;
   const ci = colTile(col);
-  if (old) put(s, makeBundle(old.k, old.m, old.q | 0, 1, { hp: old.hp ?? 100, age: old.age | 0, name: old.name || null, maker: old.maker ?? null }), tx(ci), ty(ci));
+  if (old) put(s, makeBundle(old.k, old.m, old.q | 0, 1, { hp: old.hp ?? 100, age: old.age | 0, name: old.name || null, maker: old.maker ?? null }), tx(ci), ty(ci), { z: tz(ci) });
   return NEXT;
 });
 registerToil('undress', (s, col, job, toil) => {
@@ -98,7 +98,7 @@ registerToil('undress', (s, col, job, toil) => {
   if (!w) return NEXT;
   delete g.slots[toil.slot];
   const ci = colTile(col);
-  put(s, makeBundle(w.k, w.m, w.q | 0, 1, { hp: w.hp ?? 100, age: w.age | 0, name: w.name || null, maker: w.maker ?? null }), tx(ci), ty(ci));
+  put(s, makeBundle(w.k, w.m, w.q | 0, 1, { hp: w.hp ?? 100, age: w.age | 0, name: w.name || null, maker: w.maker ?? null }), tx(ci), ty(ci), { z: tz(ci) });
   return NEXT;
 });
 

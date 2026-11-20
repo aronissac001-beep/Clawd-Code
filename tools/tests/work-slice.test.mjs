@@ -181,12 +181,12 @@ test('filling one cell does not rebuild a zone field; filling the last one does'
   cmd(s, { t: 'zone', op: 'new', type: 'stockpile', rect: { x0: 10, y0: 10, x1: 12, y1: 12 }, preset: 'all' });
   tick(s);
   const g = s.rt.zoneField[0];
-  assert.ok(g && g.dist && g.open.length === 1, 'one open group with a field');
-  const n0 = fieldBuildCount(), field0 = g.dist;
+  assert.ok(g && g.open.length === 1 && !('dist' in g), 'one open group (Z1 E5: no zone distance field)');
+  const n0 = fieldBuildCount(), field0 = g;
   I.spawn(s, 'wood', 'wood', 0, 5, 11, 11);
   tick(s);
   assert.equal(fieldBuildCount(), n0, 'no rebuild after filling one cell');
-  assert.equal(s.rt.zoneField[0].dist, field0, 'same field object');
+  assert.equal(s.rt.zoneField[0], field0, 'same group object');
   assert.equal(s.rt.zoneFree.lists[0].cells.length, 8);
   assert.deepEqual(verifyCaches(s), []);
   for (let y = 10; y <= 12; y++) for (let x = 10; x <= 12; x++) if (!I.stackAt(s, idx(x, y))) I.spawn(s, 'stone', 'granite', 0, 1, x, y);

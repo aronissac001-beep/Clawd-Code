@@ -11,8 +11,22 @@
 //                open to the sky (roof 0 or 1); the map edge counts as rock. Mined tiles keep a
 //                rock roof (2 or 3), so mining never changes depth.
 // Nothing here allocates at import (D1).
+//
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.4, 2.5, 2.8). At D > 1:
+//   - support is per level: the chamfer runs on each plane at base z * PLANE and never crosses levels.
+//     supportPatch(s, x, row) takes the full-volume row (z * H + y, which is what (i / W) | 0 gives),
+//     so terrain.js's refreshSupport works unchanged; at D = 1 row === y. Stair voxels and RAMP are
+//     supports (2.5).
+//   - rt.depth no longer measures rock: it holds the levels below the surface (zS - z, 0 at and above it)
+//     for the ore tables and discoveries (2.4: "levels below the surface replace the R2 depth"). Nothing
+//     is a depth source, so no terrain write rebuilds it. (A deletes the key with the v4 schema.)
+//   - the static `fluid` layer (u8 of N, when s.L.fluid exists): bits 0-2 depth, bit 3 ember, bit 4
+//     source. Water of depth 1-2 walks at x2, 3 at x3, 4+ is impassable; any ember is impassable.
+//     setFluid(s, i, v) is the write (terrain.js re-exports it as the C5 v3 setFluid).
+//   - footprints carry the building's level (b.z).
 
-import { W, H, N, TER, TER_WALK10, TER_OPAQUE, ROOF, idx } from '../core/grid.js';
+import { W, H, N, D, PLANE, zS, TER, TER_WALK10, TER_OPAQUE, ROOF, idx } from '../core/grid.js';
+import { FLUID } from '../../data/levels.js';
 import { structDef, hasFlag, sizeOf } from './defs.js';
 import { worldRec, worldStage2, getKey } from './worldrec.js';
 
@@ -83,9 +97,10 @@ function defaultPass(s, b) {
 /** Footprint: def size (rotated) with (b.x, b.y) the top-left tile, clipped to the map. */
 function defaultFootprint(s, b) {
   const d = structDef(b.def);
-  if (!d || !d.size || (d.size[0] === 1 && d.size[1] === 1)) return [idx(b.x, b.y)];
+  const z = b.z | 0;
+  if (!d || !d.size || (d.size[0] === 1 && d.size[1] === 1)) return [idx(b.x, b.y, z)];
   const [w, h] = sizeOf(d, b.rot | 0), out = [];
-  for (let y = b.y; y < b.y + h; y++) for (let x = b.x; x < b.x + w; x++) if (x >= 0 && y >= 0 && x < W && y < H) out.push(idx(x, y));
+  for (let y = b.y; y < b.y + h; y++) for (let x = b.x; x < b.x + w; x++) if (x >= 0 && y >= 0 && x < W && y < H) out.push(idx(x, y, z));
   return out;
 }
 let passOf = defaultPass;
@@ -108,8 +123,10 @@ const bldAt = (s, occ, i) => { const id = occ[i]; return id >= 0 ? s.bld[id] || 
 
 /** walkCost of tile i from terrain and the building in `occ` (rt.occ or a rebuilt one). */
 export function walkOf(s, i, occ = s.rt.occ) {
-  const t = TER_WALK10[s.L.terrain[i]];
+  let t = TER_WALK10[s.L.terrain[i]];
   if (t === 0) return 0;
+  const fl = s.L.fluid;
+  if (fl && fl[i]) { t = fluidWalk(fl[i], t); if (t === 0) return 0; }
   const b = bldAt(s, occ, i);
   if (!b) return t;
   const p = passOf(s, b);
@@ -121,6 +138,7 @@ export function walkOf(s, i, occ = s.rt.occ) {
 export function isSupport(s, i, occ = s.rt.occ) {
   const t = s.L.terrain[i];
   if (t === TER.ROCK || t === TER.RUBBLE) return true;
+  if (t >= TER.STAIR_U && t <= TER.RAMP) return true;       // stairs and ramps hold a ceiling (2.5; never at D = 1)
   const b = bldAt(s, occ, i);
   return !!b && passOf(s, b).support === 1;
 }
@@ -132,6 +150,7 @@ export function isOpaque(s, i, occ = s.rt.occ) {
 }
 /** A depth source: not rock or rubble, and open to the sky (no roof or a built roof). */
 export function isDepthSource(s, i) {
+  if (D > 1) return false;                                  // depth is levels below the surface at D > 1
   const t = s.L.terrain[i];
   if (t === TER.ROCK || t === TER.RUBBLE) return false;
   const r = s.L.roof[i];
@@ -153,11 +172,15 @@ export function walkRebuild(s, occ = occRebuild(s)) {
 export function supportRebuild(s, occ = occRebuild(s)) {
   const a = new Uint8Array(N);
   for (let i = 0; i < N; i++) a[i] = isSupport(s, i, occ) ? 0 : SUPPORT_CAP;
-  chamfer(a, 0, 0, W - 1, H - 1, SUPPORT_CAP);
+  for (let z = 0; z < D; z++) chamfer(a, 0, 0, W - 1, H - 1, SUPPORT_CAP, z * PLANE);
   return a;
 }
 export function depthRebuild(s) {
   const a = new Uint8Array(N);
+  if (D > 1) {
+    for (let z = 0; z < zS; z++) a.fill(Math.min(DEPTH_CAP, zS - z), z * PLANE, (z + 1) * PLANE);
+    return a;
+  }
   for (let i = 0; i < N; i++) a[i] = isDepthSource(s, i) ? 0 : DEPTH_CAP;
   chamfer(a, 0, 0, W - 1, H - 1, DEPTH_CAP);
   return a;
@@ -167,10 +190,10 @@ export function depthRebuild(s) {
  * Exact Chebyshev distance transform in place over the inclusive box (two passes, unit weights).
  * Cells outside the box are ignored, so a box edge behaves like the map edge (not a source).
  */
-export function chamfer(a, x0, y0, x1, y1, cap) {
+export function chamfer(a, x0, y0, x1, y1, cap, base = 0) {
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      const i = y * W + x;
+      const i = base + y * W + x;
       let v = a[i];
       if (v === 0) continue;
       if (x > x0) { const u = a[i - 1] + 1; if (u < v) v = u; }
@@ -185,7 +208,7 @@ export function chamfer(a, x0, y0, x1, y1, cap) {
   }
   for (let y = y1; y >= y0; y--) {
     for (let x = x1; x >= x0; x--) {
-      const i = y * W + x;
+      const i = base + y * W + x;
       let v = a[i];
       if (v === 0) continue;
       if (x < x1) { const u = a[i + 1] + 1; if (u < v) v = u; }
@@ -200,21 +223,76 @@ export function chamfer(a, x0, y0, x1, y1, cap) {
   }
 }
 
-/** Recompute rt.support exactly inside the (2R+1)^2 window around tile (x, y), R = SUPPORT_CAP. */
-export function supportPatch(s, x, y) {
+/**
+ * Recompute rt.support exactly inside the (2R+1)^2 window around tile (x, y), R = SUPPORT_CAP. At D > 1 the
+ * second argument is the full-volume row z * H + y ((i / W) | 0), and the patch stays on level z.
+ */
+export function supportPatch(s, x, row) {
   const R = SUPPORT_CAP, a = s.rt.support, occ = s.rt.occ;
+  const y = row % H, base = row >= H ? ((row / H) | 0) * PLANE : 0;
   const bx0 = Math.max(0, x - 2 * R), by0 = Math.max(0, y - 2 * R);
   const bx1 = Math.min(W - 1, x + 2 * R), by1 = Math.min(H - 1, y + 2 * R);
   const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
   // work in a scratch copy of the outer box so that tiles outside the inner window keep their values
   const tmp = scratch(bw * bh);
   for (let yy = 0; yy < bh; yy++) for (let xx = 0; xx < bw; xx++) {
-    const i = (by0 + yy) * W + bx0 + xx;
+    const i = base + (by0 + yy) * W + bx0 + xx;
     tmp[yy * bw + xx] = isSupport(s, i, occ) ? 0 : R;
   }
   boxChamfer(tmp, bw, bh, R);
   const ix0 = Math.max(0, x - R), iy0 = Math.max(0, y - R), ix1 = Math.min(W - 1, x + R), iy1 = Math.min(H - 1, y + R);
-  for (let yy = iy0; yy <= iy1; yy++) for (let xx = ix0; xx <= ix1; xx++) a[yy * W + xx] = tmp[(yy - by0) * bw + (xx - bx0)];
+  for (let yy = iy0; yy <= iy1; yy++) for (let xx = ix0; xx <= ix1; xx++) a[base + yy * W + xx] = tmp[(yy - by0) * bw + (xx - bx0)];
+}
+
+// ---- Static fluid (2.8; Z1 and Z2) ------------------------------------------------------------------
+export const FL = Object.freeze({ DEPTH: 7, EMBER: 8, SOURCE: 16 });
+export const fluidDepth = (v) => v & FL.DEPTH;
+export const isEmber = (v) => (v & FL.EMBER) !== 0 && (v & FL.DEPTH) !== 0;
+/** Walk cost x10 of terrain cost t with fluid byte v on the voxel (0 = impassable). */
+export function fluidWalk(v, t) {
+  const dep = v & FL.DEPTH;
+  if (!dep) return t;
+  if (v & FL.EMBER) return 0;
+  const pct = FLUID.walkPct[dep];
+  if (!pct) return 0;
+  const w = Math.floor((t * pct) / 100);
+  return w > WALK_MAX ? WALK_MAX : w;
+}
+/**
+ * The ember voxels of the world (sorted voxel indexes): light and heat sources (2.6). A pure function of the
+ * fluid layer, cached per layer array (built by one scan on first use) and kept exact by setFluid.
+ */
+const EMBERS = new WeakMap();
+export function emberVoxels(s) {
+  const L = s.L.fluid;
+  if (!L) return [];
+  let em = EMBERS.get(L);
+  if (!em) { em = []; for (let i = 0; i < L.length; i++) if ((L[i] & FL.EMBER) && (L[i] & FL.DEPTH)) em.push(i); EMBERS.set(L, em); }
+  return em;
+}
+/** The fluid byte of voxel i (0 when the world has no fluid layer: every D = 1 world). */
+export const fluidAt = (s, i) => (s.L.fluid ? s.L.fluid[i] : 0);
+/**
+ * Write the fluid byte of voxel i (C5 v3 setFluid; static fluid only until Z3). Patches rt.walkCost and sets
+ * the region, light and temperature flags with the voxel in the dirty list when passability or ember
+ * changed. Returns true when the byte changed. No-op when the world has no fluid layer.
+ */
+export function setFluid(s, i, v) {
+  const L = s.L.fluid;
+  if (!L || L[i] === (v & 255)) return false;
+  const before = L[i];
+  L[i] = v & 255;
+  const em = EMBERS.get(L);
+  if (em && isEmber(before) !== isEmber(v)) {
+    let lo = 0, hi = em.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (em[m] < i) lo = m + 1; else hi = m; }
+    if (isEmber(v)) em.splice(lo, 0, i); else if (em[lo] === i) em.splice(lo, 1);
+  }
+  const rt = s.rt, w = walkOf(s, i), d = rt.dirty;
+  if (rt.walkCost[i] !== w) { const was = rt.walkCost[i]; rt.walkCost[i] = w; if (passW(was, 0) !== passW(w, 0) || passW(was, 1) !== passW(w, 1)) d.regions = true; }
+  if (isEmber(before) !== isEmber(v)) { d.light = true; d.temperature = true; }
+  d.tiles.push(i);
+  return true;
 }
 let scr = null;
 function scratch(n) { if (!scr || scr.length < n) scr = new Uint8Array(Math.max(n, 1024)); return scr; }
@@ -231,4 +309,39 @@ function boxChamfer(a, w, h, cap) {
     if (y < h - 1) { const r = i + w; let u = a[r] + 1; if (u < v) v = u; if (x > 0) { u = a[r - 1] + 1; if (u < v) v = u; } if (x < w - 1) { u = a[r + 1] + 1; if (u < v) v = u; } }
     a[i] = v > cap ? cap : v;
   }
+}
+
+/** A lined seep (2.8: block or brick floor and walls around it, Masonry): the voxel dries and its source bit clears. E's job calls it. */
+export const lineSeep = (s, i) => setFluid(s, i, fluidAt(s, i) & ~(FL.SOURCE | FL.DEPTH));
+/** A seep: water standing in a source voxel (a mined aquifer or a spring); a well on it is a free clean-water well. */
+export const isSeep = (s, i) => { const v = fluidAt(s, i); return (v & FL.SOURCE) !== 0 && (v & FL.EMBER) === 0 && (v & FL.DEPTH) !== 0; };
+
+// ---- Dirty levels (2.6 edition 4; D > 1) --------------------------------------------------------------
+/**
+ * The levels a write at voxel t can change for the per-level passes (light, rooms): its own level z; z-1 and
+ * z+1 when the write touches vertical connectivity (the voxel, or the one above or below, is open air, a ramp
+ * top, a stair or a ramp); and, where the column's sky line moved, every level between the old and the new
+ * line: the levels from skyZ - 1 up when the voxel is at the sky line, and the run of open air under the voxel
+ * (a lid laid over a shaft darkens the whole shaft). Adds to the Set `out`.
+ */
+export function addDirtyLevels(s, t, out, skyZ = s.rt.skyZ) {
+  const ter = s.L.terrain, z = (t / PLANE) | 0, c = t % PLANE;
+  out.add(z);
+  const vert = (v) => v === TER.AIR || (v >= TER.STAIR_U && v <= TER.RAMP_TOP);
+  if (vert(ter[t]) || (z + 1 < D && vert(ter[t + PLANE])) || (z > 0 && vert(ter[t - PLANE]))) {
+    if (z > 0) out.add(z - 1);
+    if (z + 1 < D) out.add(z + 1);
+  }
+  if (skyZ) {
+    const sz = skyZ[c];
+    if (z >= sz - 1) for (let k = Math.max(0, sz - 1); k <= Math.min(D - 1, z + 1); k++) out.add(k);
+  }
+  if (z > 0 && (ter[t - PLANE] === TER.AIR || ter[t - PLANE] === TER.RAMP_TOP)) {
+    for (let k = z - 1; k >= 0; k--) {
+      out.add(k);
+      const v = ter[k * PLANE + c];
+      if (v !== TER.AIR && v !== TER.RAMP_TOP) break;
+    }
+  }
+  return out;
 }

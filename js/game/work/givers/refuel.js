@@ -29,11 +29,11 @@ export function refuelJob(s, col, b, stand) {
   const from = colTile(col);
   const src = itemCandidates(s, { k: w.k, holder: col.id, minN: 1 }, from, (i) => reachableFrom(s, col, i), WORK.candidatesK);
   let it = null, bd = Infinity;
-  for (const c of src) { const d = distTo(s, col, idx(c.x, c.y)); if (d < bd) { bd = d; it = c; } }
+  for (const c of src) { const d = distTo(s, col, idx(c.x, c.y, c.z | 0)); if (d < bd) { bd = d; it = c; } }
   if (!it) return null;
   const n = Math.min(w.n, capUnits(col, it.k), freeCount(s, it.id, col.id));
   if (n <= 0) return null;
-  const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, n), T.carry(stand), { t: 'refuel', b: b.id }];
+  const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, n), T.carry(stand), { t: 'refuel', b: b.id }];
   return { job: makeJob('refuel', keyFuel(b.id), toils), claims: [[keyItem(it.id), n], [keyFuel(b.id), 0]] };
 }
 

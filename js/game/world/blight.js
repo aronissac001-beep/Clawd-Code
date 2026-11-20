@@ -14,8 +14,14 @@
 //       toward the hold unless they are lit or claimed; outside Ashfall patches hold still.
 //   Both are pure functions of the saved state and the day (no RNG stream), so saves continue
 //   identically. Writes go through terrain.setBlight (render patches).
+//
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.9). At D > 1 blight is a layer of N read per level: the
+// surface (zS) as before (the Grey Edge creeps in from the border of the surface level in Ashfall), plus the
+// Hollow Reach floor (the `reach` band, js/data/levels.js), which starts blighted (mapgen3) and creeps 1
+// tile a day toward lit ground in every season. Neighbours never cross levels.
 
-import { W, H, N, TER, TER_WATER, TER_PASSABLE } from '../core/grid.js';
+import { W, H, N, D, PLANE, zS, TER, TER_WATER, TER_PASSABLE } from '../core/grid.js';
+import { LEVELS } from '../../data/levels.js';
 import { TICKS_PER_DAY, dayOf, seasonOf } from '../core/time.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { WORLD } from '../../data/worldgen.js';
@@ -31,10 +37,16 @@ const land = (t) => TER_PASSABLE[t] === 1 && !TER_WATER[t] && t !== TER.ROCK && 
 export const blighted = (s, i) => s.L.blight[i] > 0;
 /** Number of blighted tiles within Chebyshev r of tile i (F's "Blight nearby" thought). */
 export function blightNear(s, i, r = 3) {
-  const x = i % W, y = (i / W) | 0;
+  const base = i - (i % PLANE), x = i % W, y = ((i % PLANE) / W) | 0;
   let n = 0;
-  for (let yy = Math.max(0, y - r); yy <= Math.min(H - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(W - 1, x + r); xx++) if (s.L.blight[yy * W + xx]) n++;
+  for (let yy = Math.max(0, y - r); yy <= Math.min(H - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(W - 1, x + r); xx++) if (s.L.blight[base + yy * W + xx]) n++;
   return n;
+}
+/** The level of the Hollow Reach (D > 1), or -1 when the world is not deep enough. */
+export function reachLevel() {
+  if (D === 1) return -1;
+  const b = LEVELS.find((l) => l.id === 'reach'), z = zS + b.rel[0];
+  return z >= 0 && z < D ? z : -1;
 }
 export function blightCount(s) { let n = 0; for (let i = 0; i < N; i++) if (s.L.blight[i]) n++; return n; }
 
@@ -61,7 +73,7 @@ export function huskSites(s) {
     q.length = 0; q.push(st); seen[st] = 1;
     let lit = false;
     for (let h = 0; h < q.length; h++) {
-      const c = q[h], x = c % W, y = (c / W) | 0;
+      const c = q[h], x = c % W, y = ((c % PLANE) / W) | 0;
       if (light && light[c] > 0) lit = true;
       const nb = [x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1, y > 0 ? c - W : -1, y < H - 1 ? c + W : -1];
       for (const j of nb) if (j >= 0 && !seen[j] && L.blight[j] >= 64 && land(L.terrain[j])) { seen[j] = 1; q.push(j); }
@@ -73,17 +85,18 @@ export function huskSites(s) {
 
 /** H's blight surge (9.7): one creep step out of season (every full tile may spread). Returns tiles blighted. */
 export function blightSurge(s) { return creep(s, dayOf(s.tick), s.rt.light, (i, v) => (setBlightFn ? setBlightFn(s, i, v) : (s.L.blight[i] = v))); }
-function creep(s, day, light, set) {
+function creep(s, day, light, set, only = -1) {
   const L = s.L, full = [];
   let spread = 0;
-  for (let i = 0; i < N; i++) if (L.blight[i] === 255) full.push(i);
+  const i0 = only >= 0 ? only * PLANE : 0, i1 = only >= 0 ? i0 + PLANE : N;
+  for (let i = i0; i < i1; i++) if (L.blight[i] === 255) full.push(i);
   for (const i of full) {
     const h = hash3(i, day, 0xb1);
     if (h % 4 !== 0) continue;
-    const d = (h >>> 2) & 3, x = i % W, y = (i / W) | 0;
+    const d = (h >>> 2) & 3, base = i - (i % PLANE), x = i % W, y = ((i % PLANE) / W) | 0;
     const nx = x + [0, 1, 0, -1][d], ny = y + [-1, 0, 1, 0][d];
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-    const j = ny * W + nx;
+    const j = base + ny * W + nx;
     if (L.blight[j] || !land(L.terrain[j]) || (light && light[j] >= BLIGHT.lit)) continue;
     set(j, 255); spread++;
   }
@@ -102,10 +115,21 @@ export function blightDay(s) {
     if (!v) continue;
     let clean = light && light[i] >= BLIGHT.lit;
     if (!clean) {
-      const x = i % W, y = (i / W) | 0;
+      const x = i % W, y = ((i % PLANE) / W) | 0;
       for (const [cx, cy, r] of discs) if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) { clean = true; break; }
     }
     if (clean) { set(i, Math.max(0, v - BLIGHT.cleansePerDay)); cleansed++; }
+  }
+  if (D > 1) {
+    const reach = reachLevel();
+    if (seasonOf(s.tick) === BLIGHT.edgeSeason) {
+      const b0 = zS * PLANE;
+      for (let x = 0; x < W; x++) for (const y of [0, H - 1]) edgeCatch(s, b0 + y * W + x, day, set);
+      for (let y = 1; y < H - 1; y++) for (const x of [0, W - 1]) edgeCatch(s, b0 + y * W + x, day, set);
+      spread += creep(s, day, light, set, zS);
+    }
+    if (reach >= 0) spread += creep(s, day, light, set, reach);    // the Hollow Reach creeps all year
+    return { cleansed, spread };
   }
   if (seasonOf(s.tick) === BLIGHT.edgeSeason) {
     // the Grey Edge: border land catches blight (1 tile in 8 a day)

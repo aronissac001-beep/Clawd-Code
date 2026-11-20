@@ -123,7 +123,7 @@ test('scrubbing faster than one level per 150 ms bakes nothing; bakes start afte
 test('mining at z patches the held chunks of z and z + 1 (no bake); uniform chunks hold no canvas', async () => {
   const s = fortress();
   const { r, cam, frame, tick } = rig(s);
-  const z = s.zS - 3;
+  const z = s.zS - 6;
   cam.setLevel(z); frame();
   await dwell();
   for (let k = 0; k < 120; k++) { tick(); frame(); }

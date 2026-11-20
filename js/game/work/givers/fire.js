@@ -10,7 +10,7 @@
 //   (the next fire is the next job). Medicine-free, tool-free: buckets come with wells (Stage 3).
 //   FIRE_GIVER makes the same job inside the Haul work type, so idle haulers anywhere join.
 
-import { W, tx, ty, cheb } from '../../core/grid.js';
+import { W, tx, ty, tz, cheb } from '../../core/grid.js';
 import { WORK_IDS } from '../../core/schema.js';
 import { RUN, NEXT, T, makeJob, registerToil, keyTile, myClaim } from '../jobs.js';
 import { colTile } from '../reserve.js';
@@ -74,7 +74,7 @@ registerToil('beat', (s, col, job, toil) => {
   if (!burning(s, toil.i)) return NEXT;
   if (myClaim(s, keyTile(toil.i), col.id) < 0) return 'lostClaim';
   const ci = colTile(col);
-  if (cheb(tx(ci), ty(ci), tx(toil.i), ty(toil.i)) > 1) return 'notThere';
+  if (tz(ci) !== tz(toil.i) || cheb(tx(ci), ty(ci), tx(toil.i), ty(toil.i)) > 1) return 'notThere';
   job.work++;
   if (job.work % BEAT_TICKS === 0 && extinguish(s, toil.i, FIRE.extinguish)) return NEXT;
   return job.work >= FIGHT_TICKS ? NEXT : RUN;

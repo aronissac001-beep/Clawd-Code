@@ -13,8 +13,14 @@
 // runtime object (a WeakMap on s.rt, so a load or initRuntime starts fresh) and marked stale by the
 // terrain write hook (terrain and roof changes) and by setOcc via markClaimsDirty; it is rebuilt on
 // the next read. So every read equals a from-scratch rebuild (C13 "derived exact"), with no rt key.
+//
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.9). At D > 1 claims cover COLUMNS: a disc claims its x, y
+// on every level. An underground voxel (cover >= 1, not rock) outside every disc is claimed when a tunnel
+// (planar 4-neighbours) or a stair or ramp link (vertical.linksOf) connects it to a claimed open voxel. The
+// map is a u8 of N; claimColumns(s) gives the per-column disc map (u8 of PLANE) for overlays.
 
-import { W, H, N, TER, ROOF } from '../core/grid.js';
+import { W, H, N, D, PLANE, TER, ROOF } from '../core/grid.js';
+import { upOK, downOK, coverRebuild } from './vertical.js';
 import { structDef, allOf } from './defs.js';
 import { WORLD } from '../../data/worldgen.js';
 
@@ -38,8 +44,37 @@ const underground = (s, i) => {
   return (r === ROOF.THIN || r === ROOF.MOUNTAIN) && t !== TER.ROCK && t !== TER.RUBBLE;
 };
 
+/** The per-column disc map (u8 of PLANE, 1 = inside a claim disc). */
+export function claimColumns(s) {
+  const a = new Uint8Array(PLANE);
+  for (const [cx, cy, r] of claimSources(s)) {
+    const r2 = r * r;
+    for (let y = Math.max(0, cy - r); y <= Math.min(H - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(W - 1, cx + r); x++) {
+      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) a[y * W + x] = 1;
+    }
+  }
+  return a;
+}
+function claimRebuild3(s) {
+  const a = new Uint8Array(N), col = claimColumns(s), ter = s.L.terrain, cover = s.rt && s.rt.cover && s.rt.cover.length === N ? s.rt.cover : coverRebuild(s);
+  const open = (j) => ter[j] !== TER.ROCK && ter[j] !== TER.RUBBLE && ter[j] !== TER.VOID;
+  const q = [];
+  for (let z = 0; z < D; z++) for (let c = 0; c < PLANE; c++) if (col[c]) { const i = z * PLANE + c; a[i] = 1; if (open(i)) q.push(i); }
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h], p = c % PLANE, x = p % W, y = (p / W) | 0;
+    const nb = [y > 0 ? c - W : -1, x < W - 1 ? c + 1 : -1, y < H - 1 ? c + W : -1, x > 0 ? c - 1 : -1,
+      upOK(ter, c) ? c + PLANE : -1, downOK(ter, c) ? c - PLANE : -1];
+    for (const j of nb) {
+      if (j < 0 || a[j] || !open(j) || cover[j] < 1) continue;
+      a[j] = 1; q.push(j);
+    }
+  }
+  return a;
+}
+
 /** The claim map from scratch. */
 export function claimRebuild(s) {
+  if (D > 1) return claimRebuild3(s);
   const a = new Uint8Array(N);
   const q = [];
   for (const [cx, cy, r] of claimSources(s)) {
@@ -84,7 +119,7 @@ export function claimBorder(s) {
   const a = claimMap(s), out = [];
   for (let i = 0; i < N; i++) {
     if (!a[i]) continue;
-    const x = i % W, y = (i / W) | 0;
+    const x = i % W, y = ((i % PLANE) / W) | 0;
     if (x === 0 || y === 0 || x === W - 1 || y === H - 1 || !a[i - 1] || !a[i + 1] || !a[i - W] || !a[i + W]) out.push(i);
   }
   return out;
@@ -109,7 +144,8 @@ export function waystoneWhy(s, x, y) {
   const a = claimMap(s);
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     const xx = x + dx, yy = y + dy;
-    if (xx >= 0 && yy >= 0 && xx < W && yy < H && a[yy * W + xx]) return null;
+    if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+    for (let z = 0; z < D; z++) if (a[z * PLANE + yy * W + xx]) return null;   // D > 1: claimed on any level of the column (the veto has no z)
   }
   return 'a Waystone must stand on claimed land or touch its border';
 }
