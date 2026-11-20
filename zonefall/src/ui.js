@@ -96,7 +96,7 @@ export const UI = {
   },
   banner(big, small) { const b = $('#banner'); b.innerHTML = '<b>' + big + '</b><small>' + (small || '') + '</small>'; b.classList.remove('hidden'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(this._bt); this._bt = setTimeout(() => b.classList.add('hidden'), 3600); },
   floatText(text, x, y, z, col) { this.floats.push({ text, x, y, z, t: 0, col: col || '#fff' }); if (this.floats.length > 14) this.floats.shift(); },
-  blastFlash(k) { this.flashK = Math.max(this.flashK || 0, Math.min(1, k) * 0.95); },
+  blastFlash(k) { this.flashK = Math.max(this.flashK || 0, Math.min(2.4, k) * 0.95); }, // k > 1 holds the white-out longer (the nuclear strike)
   hurtFlash(d, dir) { const v = $('#hurt'); v.style.opacity = Math.min(0.85, 0.25 + d / 30); clearTimeout(this._hf); this._hf = setTimeout(() => v.style.opacity = 0, 160); if (dir !== null && G.player) this.hitDirs = (this.hitDirs || []).concat([{ a: dir + Math.PI, t: 0 }]); },
   /** floating comic damage number over an actor the player hit (pellets within 0.15 s add up) */
   dmgNum(a, d, crit, h) {
@@ -284,6 +284,7 @@ export const UI = {
     const p = G.player; if (!p || p.dead) return;
     const s = p.inv.belt.slots[i];
     if (s && ITEMS[s.id].use && !['gun', 'melee', 'throw'].includes(ITEMS[s.id].cat)) { useItem(p, p.inv.belt, i); this.updateHud(); return; }
+    if (s && ITEMS[s.id].nuke && G.bunker) { G.bunker.useController(); return; } // the Nuclear Targeting Controller: straight to the map
     p.sel = i; refreshHeld(p); Sfx.click(); Input.setHeld('ads', false, $('#b-ads')); this.updateHud();
   },
   refreshAll() { for (const s of this.hbSlots) s._k = null; this.updateHud(); },
@@ -792,6 +793,7 @@ export const UI = {
     let h = '<div class="dt-h"><div class="dt-ic ' + rarCls(s.id) + '"><img src="' + ic(s.id) + '"></div><div class="dt-t"><b class="' + rarCls(s.id) + '">' + def.name + (s.n > 1 ? ' ×' + s.n : '') + '</b>' +
       '<small><span class="rar ' + rarCls(s.id) + '">' + rar[0].toUpperCase() + rar.slice(1) + '</span> · ' + catName(def.cat).split(' — ')[0] + (held ? ' · <span class="good">in hand</span>' : '') + '</small></div></div>';
     if (def.desc) h += '<p class="dt-desc">' + def.desc + '</p>';
+    if (def.nuke && G.bunker) h += '<p class="dt-desc ' + (G.bunker.ready() ? 'good' : 'bad') + '">' + G.bunker.ctlInfo() + '</p>';
     if (Recycler.canRecycle(s.id)) h += '<p class="dt-desc dt-rc">♻ Recycles into ' + Recycler.yieldText(s.id) + '</p>';
     const W = WEAPONS[s.id];
     if (W && !W.rocket && !W.arrow) h += '<div class="dt-load"><span>Loaded</span><i><u style="width:' + Math.min(100, (s.ammo || 0) / gunMag(s) * 100) + '%"></u></i><b>' + (s.ammo || 0) + ' / ' + gunMag(s) + '</b><small>' + nm(s.ammoId || W.ammo) + '</small></div>';
@@ -841,6 +843,7 @@ export const UI = {
     const acts = el('div', 'acts'); const A = (label, fn, cls) => { const b = el('button', cls || '', label); b.onclick = () => { fn(); this.rebuild(); }; acts.appendChild(b); return b; };
     const inv = this.sel.inv, i = this.sel.i;
     if (def.use) A('Use', () => { useItem(p, inv, i); this.sel = null; }, 'primary');
+    if (def.nuke && G.bunker) { const bt = A('☢ Target a strike', () => { this.closeSheet(); setTimeout(() => G.bunker.useController(), 30); }, 'primary'); bt.disabled = !G.bunker.ready(); }
     if (['armor', 'helmet', 'bag'].includes(def.cat)) A('Equip', () => { this.equipFrom(inv, i, def.cat); this.sel = null; }, 'primary');
     if (def.cat === 'art') A('Equip', () => { const k = p.inv.arts[0] ? (p.inv.arts[1] ? 0 : 1) : 0; this.equipFrom(inv, i, 'art' + k); this.sel = null; }, 'primary');
     if (def.cat === 'bp') A('Learn', () => { if (!G.run.bps.includes(def.teach)) { G.run.bps.push(def.teach); this.toast('Learned ' + nm(RECIPE[def.teach].out), 'good'); Sfx.win(); } inv.slots[i] = null; this.sel = null; }, 'primary');
@@ -1063,14 +1066,19 @@ export const UI = {
     });
   },
   // ---------------------------------------------------------------- map
-  openMap() {
-    // the big map: a calm base map, one icon shape + colour per kind of place, layers you can switch, zoom + pan
-    const CAT = { haven: 'safe', fishvillage: 'safe', reactor: 'reactor', fort: 'outlaw', cave: 'nature', deepcave: 'nature', arch: 'nature', spires: 'nature' };
+  openMap(opts = {}) {
+    // the big map: a calm base map, one icon shape + colour per kind of place, layers you can switch, zoom + pan.
+    // opts.target (the Nuclear Targeting Controller, bunker.js): tapping picks a target instead of zooming; a panel confirms it
+    const TG = opts && opts.target ? Object.assign({ x: null, z: null }, opts.target) : null;
+    const CAT = { haven: 'safe', fishvillage: 'safe', reactor: 'reactor', bunker: 'nuke', fort: 'outlaw', cave: 'nature', deepcave: 'nature', arch: 'nature', spires: 'nature' };
     const catOf = m => CAT[m.type] || ((MONUMENTS[m.type].tier || 0) >= 2 ? 'mil' : 'loot');
     const CARD = { green: '#5fd068', blue: '#4aa8ff', red: '#ff5a4a' };
     const icon = (g, cat, x, y, sc = 1, card) => {
       g.save(); g.translate(x, y); g.scale(sc, sc); g.lineWidth = 1.4; g.strokeStyle = '#120c10';
       if (cat === 'safe') { g.fillStyle = '#3fae54'; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.fillRect(-1.4, -4, 2.8, 8); g.fillRect(-4, -1.4, 8, 2.8); }
+      else if (cat === 'nuke') { // the Nuclear Bunker: a missile on a black-and-yellow disc
+        g.fillStyle = '#1c1a1e'; g.beginPath(); g.arc(0, 0, 7.5, 0, 7); g.fill(); g.lineWidth = 2.2; g.strokeStyle = '#ffd23a'; g.stroke(); g.lineWidth = 1; g.strokeStyle = '#120c10'; g.beginPath(); g.arc(0, 0, 8.7, 0, 7); g.stroke();
+        g.fillStyle = '#f2efe6'; g.beginPath(); g.moveTo(0, -6); g.lineTo(1.6, -3); g.lineTo(1.6, 3); g.lineTo(3.2, 5.5); g.lineTo(-3.2, 5.5); g.lineTo(-1.6, 3); g.lineTo(-1.6, -3); g.closePath(); g.fill(); g.fillStyle = '#e8432f'; g.fillRect(-1.6, -1.2, 3.2, 1.2); }
       else if (cat === 'reactor') { g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 6.5, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#120c10'; for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 5, k * 2.094 - 0.5, k * 2.094 + 0.5); g.closePath(); g.fill(); } g.fillStyle = '#ffd23a'; g.beginPath(); g.arc(0, 0, 1.4, 0, 7); g.fill(); }
       else if (cat === 'mil') { g.fillStyle = '#e8743a'; g.beginPath(); g.moveTo(0, -7); g.lineTo(6.5, 0); g.lineTo(0, 7); g.lineTo(-6.5, 0); g.closePath(); g.fill(); g.stroke(); if (card) { g.fillStyle = CARD[card] || '#fff'; g.beginPath(); g.arc(0, 0, 2.4, 0, 7); g.fill(); g.lineWidth = 0.8; g.stroke(); } }
       else if (cat === 'outlaw') { g.fillStyle = '#7a1f1a'; g.fillRect(-5, -5, 10, 10); g.strokeRect(-5, -5, 10, 10); g.strokeStyle = '#ffd0c8'; g.lineWidth = 1.8; g.beginPath(); g.moveTo(-3, -3); g.lineTo(3, 3); g.moveTo(3, -3); g.lineTo(-3, 3); g.stroke(); }
@@ -1080,7 +1088,7 @@ export const UI = {
     };
     let L; try { L = JSON.parse(localStorage.getItem('zf_map_layers') || 'null'); } catch (e) { L = null; }
     L = Object.assign({ names: true, vehicles: false, transport: true, events: true }, L || {});
-    this.openSheet('Map', body => {
+    this.openSheet(TG ? '☢ Pick a target' : 'Map', body => {
       const land = innerWidth > innerHeight;
       const S = Math.max(220, Math.min(innerHeight - (land ? 64 : 150), innerWidth - (land ? 214 : 40), 900));
       if (!G.mapCanvasHi || G.mapCanvasHi.src !== G.mapCanvas) { try { G.mapCanvasHi = buildMapCanvas(G.W, 1280); G.mapCanvasHi.src = G.mapCanvas; } catch (e) { G.mapCanvasHi = G.mapCanvas; } }
@@ -1103,7 +1111,11 @@ export const UI = {
           rects.push(R); g.lineWidth = 3; g.strokeStyle = 'rgba(18,12,16,.78)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
         };
         const isc = Math.min(1.5, 0.7 + z * 0.17); // smaller icons at 1x: the bigger island has ~90 sites
-        const mons = G.monuments.slice().sort((a, b) => ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(a)) - ['safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'].indexOf(catOf(b)));
+        const ORD = ['nuke', 'safe', 'reactor', 'mil', 'outlaw', 'loot', 'nature'];
+        const mons = G.monuments.slice().sort((a, b) => ORD.indexOf(catOf(a)) - ORD.indexOf(catOf(b)));
+        // the Nuclear Bunker's fallout zones (under everything else)
+        const NK = G.bunker && G.bunker.mapInfo ? G.bunker.mapInfo() : null;
+        if (NK) for (const f of NK.fo) { const x = X(f.x), y = Y(f.z), r = f.r * k; if (!on(x, y, r)) continue; g.fillStyle = 'rgba(150,230,60,0.28)'; g.strokeStyle = 'rgba(200,255,80,0.9)'; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.setLineDash([]); }
         // icons first, so labels can be laid out around them
         for (const m of mons) { const x = X(m.x), y = Y(m.z); if (!on(x, y, 8)) continue; icon(g, catOf(m), x, y, isc, MONUMENTS[m.type].card); const ir = [x - 7 * isc, y - 7 * isc, x + 7 * isc, y + 7 * isc]; ir.icon = true; rects.push(ir); }
         if (L.transport && G.train) {
@@ -1127,6 +1139,22 @@ export const UI = {
           if (EV.rig && EV.rig.phase && EV.rig.phase !== 'locked') pulse(X(EV.rig.x), Y(EV.rig.z), '#ffd23a', EV.rig.phase === 'hacking' ? 'Rig crate: hacking' : 'Rig crate open');
           if (Array.isArray(EV.helis)) for (const h of EV.helis) { const x = X(h.x), y = Y(h.z); if (!on(x, y, 8)) continue; g.save(); g.translate(x, y); g.rotate(h.ang || 0); g.fillStyle = '#ff8a1e'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(8, 0); g.lineTo(-6, -4); g.lineTo(-3, 0); g.lineTo(-6, 4); g.closePath(); g.fill(); g.stroke(); g.restore(); }
           if (G.cargo && L.transport) { const C = G.cargo.mapInfo(); label('Cargo ship', X(C.x), Y(C.z) - 11, 'bold 10px system-ui', '#cfe6ff', true); }
+          for (const f of NK ? NK.fo : []) label('☢ Fallout', X(f.x), Y(f.z) + 4, '800 10px system-ui', '#d8ff80', true);
+          if (NK && NK.missile) { // the missile in flight: its course, where it is, the target
+            const Mi = NK.missile; g.strokeStyle = 'rgba(255,80,60,0.85)'; g.lineWidth = 1.6; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(X(Mi.x0), Y(Mi.z0)); g.lineTo(X(Mi.x1), Y(Mi.z1)); g.stroke(); g.setLineDash([]);
+            const tx = X(Mi.x1), ty = Y(Mi.z1), pr = 10 + 4 * Math.sin(performance.now() / 150); g.strokeStyle = '#ff3a2a'; g.lineWidth = 2; g.beginPath(); g.arc(tx, ty, pr, 0, 7); g.moveTo(tx - 15, ty); g.lineTo(tx + 15, ty); g.moveTo(tx, ty - 15); g.lineTo(tx, ty + 15); g.stroke();
+            g.save(); g.translate(X(Mi.x), Y(Mi.z)); g.rotate(Mi.ang); g.fillStyle = '#fff'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -3.5); g.lineTo(-4, 0); g.lineTo(-6, 3.5); g.closePath(); g.fill(); g.stroke(); g.restore();
+            label('☢ Missile ' + Math.ceil(Mi.left) + ' s', X(Mi.x), Y(Mi.z) - 12, '800 10px system-ui', '#ff8a70', true);
+          }
+        }
+        if (NK) label(NK.missile ? 'Silo: launched' : NK.ready ? 'Silo ready' : 'Silo reloading', X(NK.x), Y(NK.z) + 12 + 7 * isc, '700 9px system-ui', NK.ready ? '#ffd23a' : '#c8b890', false);
+        // targeting: the silo, a line to the aim point and the blast's rings
+        if (TG) {
+          const sx = X(TG.from.x), sy = Y(TG.from.z); g.strokeStyle = 'rgba(255,210,58,0.6)'; g.lineWidth = 1; g.setLineDash([2, 3]); g.beginPath(); g.arc(sx, sy, TG.min * k, 0, 7); g.stroke(); g.setLineDash([]);
+          if (TG.x !== null) { const tx = X(TG.x), ty = Y(TG.z), bad = !!TG.check(TG.x, TG.z);
+            g.strokeStyle = bad ? 'rgba(200,200,200,0.8)' : 'rgba(255,90,60,0.9)'; g.lineWidth = 1.6; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(sx, sy); g.lineTo(tx, ty); g.stroke(); g.setLineDash([]);
+            for (const [r, c] of [[115, 'rgba(255,170,60,0.22)'], [45, 'rgba(255,60,40,0.42)']]) { g.fillStyle = bad ? 'rgba(160,160,160,0.2)' : c; g.beginPath(); g.arc(tx, ty, r * k, 0, 7); g.fill(); }
+            g.strokeStyle = bad ? '#bbb' : '#ff3a2a'; g.lineWidth = 2; g.beginPath(); g.arc(tx, ty, Math.max(6, 45 * k), 0, 7); g.moveTo(tx - 12, ty); g.lineTo(tx + 12, ty); g.moveTo(tx, ty - 12); g.lineTo(tx, ty + 12); g.stroke(); }
         }
         // you and yours
         for (const d of Build.deploys) if (d.owner === 'player' && (d.type === 'sleeping_bag' || d.type === 'bed')) { g.fillStyle = '#80c0ff'; g.strokeStyle = '#120c10'; g.lineWidth = 1; g.fillRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); g.strokeRect(X(d.x) - 3, Y(d.z) - 3, 6, 6); }
@@ -1135,7 +1163,7 @@ export const UI = {
         if (G.net && G.net.players) for (const pl of G.net.players.values()) if (pl.actor) { const x = X(pl.actor.x), y = Y(pl.actor.z); g.fillStyle = '#ffd23a'; g.strokeStyle = '#120c10'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke(); label(pl.name, x, y - 8, '800 10px system-ui', '#ffe680', true); }
         // names: the big sites always, the rest once you zoom in (and only where they fit)
         if (L.names) {
-          for (const m of mons) { const cat = catOf(m); if (z < 2 && !(cat === 'safe' || cat === 'reactor' || cat === 'mil')) continue; label(m.name, X(m.x), Y(m.z) - 9 - 7 * isc, '700 10px system-ui', cat === 'mil' ? '#ffd2b0' : cat === 'safe' ? '#c8ffc8' : '#fff', false, cat === 'safe' || cat === 'reactor' || cat === 'mil'); }
+          for (const m of mons) { const cat = catOf(m), big = cat === 'safe' || cat === 'reactor' || cat === 'mil' || cat === 'nuke'; if (z < 2 && !big) continue; label(m.name, X(m.x), Y(m.z) - 9 - 7 * isc, (cat === 'nuke' ? '800' : '700') + ' 10px system-ui', cat === 'nuke' ? '#ffd23a' : cat === 'mil' ? '#ffd2b0' : cat === 'safe' ? '#c8ffc8' : '#fff', cat === 'nuke', big); }
           if (L.transport && G.train && z >= 2) for (const st of G.train.stations) label(st.name, X(st.x), Y(st.z) + 14, 'italic 800 10px system-ui', '#ffc928', false);
         }
         const p = G.player; g.save(); g.translate(X(p.x), Y(p.z)); g.rotate(p.ang); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, 6); g.lineTo(-3, 0); g.lineTo(-6, -6); g.closePath(); g.fill(); g.stroke(); g.restore();
@@ -1147,12 +1175,27 @@ export const UI = {
       c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz }; moved = false; c.setPointerCapture && c.setPointerCapture(e.pointerId); });
       c.addEventListener('pointermove', e => { if (!down || view.zoom === 1) return; const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 6) moved = true; if (!moved) return; const sc = (WORLD / view.zoom) / S; view.cx = down.cx - dx * sc; view.cz = down.cz - dy * sc; draw(); });
       c.addEventListener('pointerup', e => { if (!down) return; const was = down; down = null; if (moved) return; const rc = c.getBoundingClientRect(), u = (e.clientX - rc.left) / rc.width, v = (e.clientY - rc.top) / rc.height; const span = WORLD / view.zoom, wx = view.cx - span / 2 + u * span, wz = view.cz - span / 2 + v * span; void was;
+        if (TG) { TG.x = clamp(wx, 0, WORLD); TG.z = clamp(wz, 0, WORLD); Sfx.ui && Sfx.ui(); draw(); tgPanel(); return; } // targeting: a tap picks the spot
         const zi = ZOOMS.indexOf(view.zoom); zoomTo(ZOOMS[(zi + 1) % ZOOMS.length], wx, wz); Sfx.ui && Sfx.ui(); });
       const zrow = el('div', 'mapzoom'); side.appendChild(zrow);
       const zb = (t, f) => { const b = el('button', 'mini', t); b.onclick = f; zrow.appendChild(b); return b; };
       zb('−', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi > 0) zoomTo(ZOOMS[zi - 1]); }); const zlab = el('span', 'zlab', '1×'); zrow.appendChild(zlab); zb('+', () => { const zi = ZOOMS.indexOf(view.zoom); if (zi < ZOOMS.length - 1) zoomTo(ZOOMS[zi + 1], G.player.x, G.player.z); });
       zb('◎', () => zoomTo(Math.max(2, view.zoom), G.player.x, G.player.z));
-      side.appendChild(el('div', 'maphint', 'Tap to zoom · drag to move'));
+      side.appendChild(el('div', 'maphint', TG ? 'Tap the map to aim · + / − to zoom · drag to move' : 'Tap to zoom · drag to move'));
+      // targeting: what's picked, and the button that fires
+      const tgBox = TG ? el('div', 'maptarget') : null;
+      const tgPanel = () => {
+        if (!TG) return; tgBox.innerHTML = '';
+        const why = TG.x === null ? null : TG.check(TG.x, TG.z);
+        const info = el('div', 'dim small', TG.x === null ? 'Tap where the missile should come down. It kills inside about 45 m and hurts out to 115 m, then leaves fallout for a day.' : why ? '<b class="bad">' + why + '</b>' : 'Target: grid <b>' + G.bunker.grid(TG.x, TG.z) + '</b>, ' + Math.round(dist(TG.from.x, TG.from.z, TG.x, TG.z)) + ' m from the silo. Flight about ' + Math.round(G.bunker.flightTime(TG.x, TG.z)) + ' s.');
+        tgBox.appendChild(info);
+        const fire = el('button', 'primary', '☢ Launch'); fire.disabled = TG.x === null || !!why; fire.style.cssText = 'width:100%;margin-top:6px;background:#c8321f;border-color:#ff8060;font-weight:800';
+        fire.onclick = () => { const x = TG.x, zz = TG.z; this.closeSheet(); TG.ok(x, zz); };
+        const no = el('button', '', 'Cancel'); no.style.cssText = 'width:100%;margin-top:4px'; no.onclick = () => this.closeSheet();
+        tgBox.appendChild(fire); tgBox.appendChild(no);
+      };
+      if (TG) { side.appendChild(tgBox); tgPanel(); view.zoom = 1; }
+      { const iv = setInterval(() => { if (!c.isConnected) { clearInterval(iv); return; } const nk = G.bunker && G.bunker.mapInfo ? G.bunker.mapInfo() : null; if (nk && nk.missile) draw(); }, 250); } // follow a missile in flight
       // layers
       const lay = el('div', 'maplayers'); side.appendChild(lay);
       for (const [key, name] of [['names', 'Names'], ['transport', 'Train & ship'], ['events', 'Events'], ['vehicles', 'Vehicles']]) {
@@ -1160,7 +1203,7 @@ export const UI = {
       }
       // legend with the real icons
       const leg = el('div', 'legend'); side.appendChild(leg);
-      for (const [cat, name, card] of [['safe', 'Safe zone'], ['loot', 'Loot site'], ['mil', 'Military (keycard)', 'green'], ['reactor', 'Reactor'], ['outlaw', 'Outlaw fort'], ['nature', 'Cave / rocks']]) {
+      for (const [cat, name, card] of [['nuke', 'Nuclear Bunker'], ['safe', 'Safe zone'], ['loot', 'Loot site'], ['mil', 'Military (keycard)', 'green'], ['reactor', 'Reactor'], ['outlaw', 'Outlaw fort'], ['nature', 'Cave / rocks']]) {
         const row = el('div', 'legrow'); const ic = el('canvas'); ic.width = ic.height = 36; ic.style.width = ic.style.height = '18px'; const gg = ic.getContext('2d'); gg.scale(2, 2); icon(gg, cat, 9, 9, 1, card); row.appendChild(ic); row.appendChild(el('span', '', name)); leg.appendChild(row);
       }
       draw();
