@@ -195,13 +195,13 @@
  },
  "ms": 112180,
  "rebaselined": {
-  "commit": "65fa313",
+  "commit": "1bb088f",
   "dirty": false,
   "date": "2026-11-20",
-  "note": "S9.7: state v3 migration; Colonist.done counts deeds, so perks are earned",
+  "note": "S9.8: Stage 2.9b (bot policy, threat floor caps, Hollow morale, deed sources, people-field cadence)",
   "hour": {
    "tick": 868200,
-   "hash": "84e3896f7d14d9fd",
+   "hash": "6968bdf28723b854",
    "moods": [
     {
      "id": 1,
@@ -327,7 +327,7 @@
   },
   "day": {
    "tick": 882000,
-   "hash": "5f60ac01c2726133"
+   "hash": "08f54c4ce47f1c4a"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,
