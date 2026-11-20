@@ -21,7 +21,7 @@
 // Imminent drops the game to 1x and may auto-pause: that is the UI's (speed is not sim state); it
 // listens for the `raidStage` event with stage 'imminent' (C8).
 
-import { W } from '../core/grid.js';
+import { W, PLANE } from '../core/grid.js';
 import { TICKS_PER_HOUR } from '../core/time.js';
 import { def, variants } from './defs.js';
 import { incidentDef } from './incidents.js';
@@ -53,7 +53,8 @@ export function composition(members) {
 function edgeOf(plan) {
   if (!plan || !plan.edge) return null;
   const i = plan.edge.i;
-  return { side: plan.edge.side, word: EDGE_WORDS[plan.edge.side] || plan.edge.side, i, x: i % W, y: (i / W) | 0 };
+  const p = i % PLANE, z = (i / PLANE) | 0;
+  return { side: plan.edge.side, word: EDGE_WORDS[plan.edge.side] || plan.edge.side, i, x: p % W, y: (p / W) | 0, ...(z ? { z } : {}) };
 }
 function fill(v, s, raid, plan, members) {
   const rank = STAGE_RANK[v.stage] || 0;

@@ -46,7 +46,7 @@ export function benchGiver(work, id = work) {
       if (!tg) return null;
       let b = null;
       if (tg.kind === 'bld') b = bldById(s, tg.id);
-      else if (tg.x !== undefined && inB(tg.x, tg.y)) { const o = s.rt.occ[idx(tg.x, tg.y)]; b = o >= 0 ? bldById(s, o) : null; }
+      else if (tg.x !== undefined && inB(tg.x, tg.y)) { const o = s.rt.occ[idx(tg.x, tg.y, tg.z | 0)]; b = o >= 0 ? bldById(s, o) : null; }
       return target(s, col, b);
     },
   });

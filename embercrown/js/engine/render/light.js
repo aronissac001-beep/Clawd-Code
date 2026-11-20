@@ -23,7 +23,7 @@
 // interpolated toward the open neighbours, then POSTERISED to 5 bands (LIGHT_BANDS) with a 4 x 4
 // Bayer dither at the band edges, so light falls off in stepped, dithered rings that match the art.
 
-import { TILE, W, H, N, TER_OPAQUE, ROOF, getBit } from '../../game/core/grid.js';
+import { TILE, W, H, PLANE, TER_OPAQUE, ROOF, getBit } from '../../game/core/grid.js';
 import { hourOf, minuteOf, seasonOf } from '../../game/core/time.js';
 import { isOpaque } from '../../game/world/pass.js';
 import * as SP from '../sprites.js';
@@ -39,10 +39,11 @@ export const LIGHT_BANDS = [0, 50, 100, 160, 200];
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 // QUANT[a * 16 + t]: alpha a (0-255) posterised at dither threshold t (0-15); a >= 200 stays as it is (fog)
 // (built on the first LightLayer, not at import: check-imports forbids typed arrays at import)
-let QUANT = null;
+let QUANT = null, QCONST = null;
 function buildQuant() {
   if (QUANT) return;
   QUANT = new Uint8Array(256 * 16);
+  QCONST = new Uint8Array(256);   // 1 when alpha a posterises to one value whatever the dither (a band value, fog)
   for (let a = 0; a < 256; a++) for (let t = 0; t < 16; t++) {
     let v = a;
     if (a > 0 && a < 200) {
@@ -52,6 +53,7 @@ function buildQuant() {
     }
     QUANT[a * 16 + t] = v;
   }
+  for (let a = 0; a < 256; a++) { let c = 1; for (let t = 1; t < 16; t++) if (QUANT[a * 16 + t] !== QUANT[a * 16]) c = 0; QCONST[a] = c; }
 }
 const quant = (a, x, y) => QUANT[(a > 255 ? 255 : a < 0 ? 0 : a | 0) * 16 + BAYER[((y & 3) << 2) | (x & 3)]];
 const NIGHT_RGB = [10, 12, 34], UNDER_RGB = [9, 8, 14], FOG_RGB = [23, 21, 31], FOG_A = 245;
@@ -109,7 +111,7 @@ export class LightLayer {
     this.lv = null;            // per tile: level of an open tile, OPAQUE, or FOG
     this.und = null;           // per tile: 1 when under a roof
     this.dirty = [];           // tiles to refresh
-    this.dirtyMark = null;     // Uint8Array(N) de-dupe
+    this.dirtyMark = null;     // Uint8Array(PLANE) de-dupe
     this.flames = [];          // tile indexes of flames (set by the entity layer each frame)
     this.flickerNext = 0; this.flickerOn = [];
     this.st = { full: 0, tiles: 0, lastMs: 0, fullMs: 0, drawn: 0 };
@@ -126,11 +128,11 @@ export class LightLayer {
     this.img = this.g.createImageData(cw, ch);
     this.px = LE ? new Uint32Array(this.img.data.buffer) : null;
     this.base = new Uint8Array(cw * ch); // alpha before flicker
-    this.dirtyMark = new Uint8Array(N);
-    this.lv = new Float32Array(N); this.und = new Uint8Array(N);
-    this.tileA = new Uint8Array(N); // max alpha written for each tile (a fully lit view skips the draw)
-    this.fon = new Uint8Array(N); this.fseen = new Uint32Array(N); this.flist = []; this.fgen = 0; // known flames (firelight falloff)
-    this.prev = { light: new Uint8Array(N), roof: new Uint8Array(N), ter: new Uint8Array(N), fog: new Uint8Array(s.L.fog.length), op: new Uint8Array(N), tick: -1 };
+    this.dirtyMark = new Uint8Array(PLANE);
+    this.lv = new Float32Array(PLANE); this.und = new Uint8Array(PLANE);
+    this.tileA = new Uint8Array(PLANE); // max alpha written for each tile (a fully lit view skips the draw)
+    this.fon = new Uint8Array(PLANE); this.fseen = new Uint32Array(PLANE); this.flist = []; this.fgen = 0; // known flames (firelight falloff)
+    this.prev = { light: new Uint8Array(PLANE), roof: new Uint8Array(PLANE), ter: new Uint8Array(PLANE), fog: new Uint8Array(s.L.fog.length), op: new Uint8Array(PLANE), tick: -1 };
     this.amb = -1;
     this.flickerOn.length = 0;
   }
@@ -171,6 +173,17 @@ export class LightLayer {
   }
   fill(x, y, x0, y0, n, c, a) {
     const ppt = this.ppt, cw = W * ppt;
+    // fast path (Stage Z1 E6: the full rebuild on a level change): an alpha that posterises to one value
+    // writes whole rows at once, the same pixels put() would write
+    const ai = a | 0;
+    if (this.px && ai === a && ai >= 0 && ai < 256 && QCONST[ai]) {
+      const q = QUANT[ai * 16];
+      if (q > this.curA) this.curA = q;
+      const cc = c === WARM32 ? WARM_BAND.get(q) ?? WARM32 : c, v = ((q << 24) | cc) >>> 0;
+      const px = this.px, base = this.base;
+      for (let py = y0; py < y0 + n; py++) { const p = (y * ppt + py) * cw + x * ppt + x0; for (let k = p; k < p + n; k++) { px[k] = v; base[k] = ai; } }
+      return;
+    }
     for (let py = y0; py < y0 + n; py++) {
       const ty = y * ppt + py;
       let p = ty * cw + x * ppt + x0;
@@ -284,11 +297,11 @@ export class LightLayer {
     this.syncFlames();
     if (q !== this.amb) {
       this.amb = q;
-      for (let i = 0; i < N; i++) this.level(s, i, q);
-      for (let i = 0; i < N; i++) this.writeTile(s, i, q);
+      for (let i = 0; i < PLANE; i++) this.level(s, i, q);
+      for (let i = 0; i < PLANE; i++) this.writeTile(s, i, q);
       if (light) P.light.set(light); else P.light.fill(0);
       P.roof.set(L.roof); P.ter.set(L.terrain); P.fog.set(L.fog);
-      for (let i = 0; i < N; i++) P.op[i] = this.lv[i] === OPAQUE ? 1 : 0;
+      for (let i = 0; i < PLANE; i++) P.op[i] = this.lv[i] === OPAQUE ? 1 : 0;
       P.tick = s.tick;
       this.dirty.length = 0; this.dirtyMark.fill(0);
       this.g.putImageData(this.img, 0, 0);
@@ -297,7 +310,7 @@ export class LightLayer {
     }
     if (P.tick !== s.tick) { // diff the inputs once per tick (about 0.1 ms at 128)
       P.tick = s.tick;
-      for (let i = 0; i < N; i++) {
+      for (let i = 0; i < PLANE; i++) {
         const op = TER_OPAQUE[L.terrain[i]] === 1 || ((occ && occ[i] >= 0) || P.op[i] ? this.opaque(s, i) : false) ? 1 : 0;
         if ((light && light[i] !== P.light[i]) || L.roof[i] !== P.roof[i] || L.terrain[i] !== P.ter[i] || op !== P.op[i]) {
           if (light) P.light[i] = light[i];
@@ -306,7 +319,7 @@ export class LightLayer {
         }
       }
       for (let k = 0; k < L.fog.length; k++) if (L.fog[k] !== P.fog[k]) {
-        for (let b = 0; b < 8; b++) { const i = k * 8 + b; if (i < N) this.markTile(i); }
+        for (let b = 0; b < 8; b++) { const i = k * 8 + b; if (i < PLANE) this.markTile(i); }
         P.fog[k] = L.fog[k];
       }
     }

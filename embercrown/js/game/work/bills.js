@@ -105,7 +105,7 @@ export function gatherIngredients(s, col, bench, bill) {
       const dx = it.x - bx, dy = it.y - by, d = dx * dx + dy * dy;
       if (d > R * R) continue;
       const free = freeCount(s, id, col.id) - (used.get(id) || 0);
-      if (free <= 0 || !reachableFrom(s, col, idx(it.x, it.y))) continue;
+      if (free <= 0 || !reachableFrom(s, col, idx(it.x, it.y, it.z | 0))) continue;
       cands.push([d, id, free]);
     }
     cands.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
@@ -146,7 +146,7 @@ export function craftJob(s, col, b, bi, picks) {
       const it = s.items[id];
       if (!first) toils.push({ t: 'stow' });
       first = false;
-      toils.push(T.goto(idx(it.x, it.y)), T.pickup(id, n));
+      toils.push(T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(id, n));
       claims.push([keyItem(id), n]);
     }
   }
@@ -229,12 +229,12 @@ function spawnProducts(s, r, mats, col, b, x, y) {
     if (unique) {
       for (let k = 0; k < (o.n | 0); k++) {
         const q = r.quality && col ? rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1) : 1;
-        const id = spawn(s, o.k, m, q, 1, x, y, { maker: col ? col.id : null });
+        const id = spawn(s, o.k, m, q, 1, x, y, { maker: col ? col.id : null, z: b.z | 0 });
         emit(s, 'crafted', { itemId: id, k: o.k, q, colId: col ? col.id : null });
         if (q >= 4 && col) emit(s, 'masterwork', { itemId: id, colId: col.id });
       }
     } else {
-      const id = spawn(s, o.k, m, 0, o.n | 0, x, y);
+      const id = spawn(s, o.k, m, 0, o.n | 0, x, y, { z: b.z | 0 });
       emit(s, 'crafted', { itemId: id, k: o.k, q: 0, colId: col ? col.id : null });
       if (r.id === 'butcher' && col) emit(s, 'butchered', { colId: col.id, k: o.k });
     }

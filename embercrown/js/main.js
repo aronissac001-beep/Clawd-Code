@@ -68,18 +68,22 @@ import { applyCommand } from './game/core/commands.js';
 import { step } from './game/core/sim.js';
 import { dispatch, on } from './game/core/events.js';
 import { yearOf, dateText } from './game/core/time.js';
-import { installSim, foundColony } from './game/core/setup.js';
-import { saveBlob, loadBlob, snapshot } from './game/save/colonysave.js';
+import { installSim, foundColony, FORTRESS_D } from './game/core/setup.js';
+import { fortressRequested, FORTRESS } from './game/core/flags.js';
+import { migrateWorld } from './game/core/migrate4.js';
+import { saveBlob, loadBlob, snapshot, isDeep } from './game/save/colonysave.js';
+import { buildPristine, attachPristine, pristineOf } from './game/save/pristine.js';
 import {
   listColonies, refreshColonies, readSlots, writeSlot, quickSave, promoteQuick, cardOf, persistState,
   onStorageAlert, storageMode, exportBlob, importBlob, deleteColony, writeDawn, readDawn, readSlot, updateCard,
+  ensurePristineStored, pristineResolver, writePristine, readPristineBytes,
   readSettings, writeSettings as storeSettings, storageBytes, peekBlob, colonyRoom, classicSaves, exportClassic, clearClassic, MAX_COLONIES,
   readCopies, restoreCopy, isFallenCard,
 } from './game/save/slots.js';
 import { isFallen, fallSummary } from './game/colony/fall.js';
 import { addChron } from './game/colony/chronicle.js';
 import { settingsAttrs, SETTINGS } from './game/save/settings.js';
-import { textToBlob } from './game/save/codec.js';
+import { textToBlob, WORLD_KIND } from './game/save/codec.js';
 import { backupDue, dawnIndex, seasonKey, PERSIST_TEXT, MOVE_STEPS, MOVED_TEXT, promptOn, canTurnOffPrompt } from './game/save/backups.js';
 import { randomSeedText } from './engine/rng.js';
 
@@ -100,7 +104,7 @@ export function applySettings(settings = readSettings()) {
 
 const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-export const app = { s: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null, ruin: false };
+export const app = { s: null, deepened: null, log: [], debug: false, persist: 'unknown', alerts: [], ready: null, lastSave: null, saving: 0, backupDue: null, backupFile: null, ruin: false };
 
 /** Register every system once (content, appliers, world, work, people, threat, colony). */
 export function ensureSim() { return installSim({ stage: '1a' }); }
@@ -109,7 +113,11 @@ export function ensureSim() { return installSim({ stage: '1a' }); }
 export function newColony(seed = randomSeedText(), opts = {}) {
   const full = colonyRoom(); if (full) throw new Error(full);
   ensureSim();
-  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
+  const d = fortressRequested(IN_BROWSER ? location.search : '') ? FORTRESS_D : 1;   // Stage Z1: ?fortress=1 (flags.js)
+  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d });
+  // a world with depth keeps its pristine world from this moment (EMBERCROWN-FORTRESS.md 5.1): built once,
+  // before any tick, and stored before the first EC3 save (writeNow)
+  if (isDeep(app.s) && !pristineOf(app.s)) attachPristine(app.s, buildPristine(app.s, { worldKind: WORLD_KIND.NATIVE, genVersion: app.s.genVersion | 0 }));
   app.log = []; app.ruin = false; fallSeen = null;
   lastYear = yearOf(app.s.tick); lastDawn = dawnIndex(app.s.tick); lastDawnId = app.s.id;
   if (IN_BROWSER) saveNow('new').catch(() => null);
@@ -123,9 +131,13 @@ export async function continueColony(id) {
   let err = null;
   for (const slot of slots) {
     try {
-      const s = await loadBlob(slot.bytes);
+      const s = await loadBlob(slot.bytes, { pristine: pristineResolver(id) });
       s.id = id;  // the slot names the colony (an import under a new id keeps the blob's bytes)
+      const deepened = await upgradeWorld(s);
       setOpen(s);
+      // the migrated hold is saved as EC3 at once, into the older slot: the newer one keeps the EC2 blob until
+      // this write is verified (writeSlot reads it back), so a failed migration loses nothing (5.3)
+      if (deepened) await writeNow(s, 'migrate').catch(() => null);   // a failed write: both old slots stand, the next save retries
       return s;
     } catch (e) { err = e; }
   }
@@ -134,6 +146,22 @@ export async function continueColony(id) {
   if (s) return s;
   if (err) throw err;
   return null;
+}
+
+/**
+ * The fortress switch (EMBERCROWN-FORTRESS.md 5.3, 5.4; Stage Z1 E13): a colony saved with one plane (an EC2
+ * blob of Stage 2) gets its depth on load. core/migrate4.js turns it into a 128 x 128 x 20 hold with the old
+ * plane as the surface level, the old mountain as real rock above and mapgen3's levels below, writes the
+ * Chronicle line, and builds the pristine world (worldKind 2), which is stored here before the first EC3 save.
+ * A Ruin is left as it fell (it never changes again). Pure in the save: the same blob migrates to the same
+ * world. Returns true when the colony was migrated.
+ */
+async function upgradeWorld(s) {
+  if (!FORTRESS || isDeep(s) || isFallen(s)) return false;
+  migrateWorld(s);
+  await ensurePristineStored(s);
+  app.deepened = s.id;   // the shell shows the returning-player card once (intros.js 'depth')
+  return true;
 }
 
 /** The dawn slot as the colony (the last resort of continueColony; otherwise only through recoverCopy). */
@@ -208,12 +236,14 @@ export async function recoverCopy(id, which) {
   ensureSim();
   const copy = (await readCopies(id)).find((k) => k.which === which);
   if (!copy) throw new Error('That copy is no longer stored on this device.');
-  const s = await loadBlob(copy.bytes);
+  const s = await loadBlob(copy.bytes, { pristine: pristineResolver(id) });
   s.id = id;
+  await upgradeWorld(s);   // an EC2 copy (made before the switch) gets its depth first (5.3)
   if (!isFallen(s)) {
     const card = listColonies().find((c) => c.id === id) || {};
     // a copy from before the hold fell: the Chronicle says so, so the record stays honest (1.3)
     if (card.fallen) addChron(s, 'recovered', 'chron_recovered', { date: dateText(s.tick), from: which, fell: Number.isInteger(card.fallenAt) ? dateText(card.fallenAt) : null });
+    await ensurePristineStored(s);
     const bytes = await saveBlob(s);
     await restoreCopy(id, bytes, cardOf(s, { recoveredFrom: which }));
   }
@@ -277,7 +307,9 @@ let lastDawn = null;
 export async function saveDawn() {
   const s = app.s;
   if (!s) return null;
-  const bytes = await saveBlob(s);
+  // the dawn backup embeds the pristine world of a deep colony (5.1: a dawn slot is self-sufficient)
+  if (isDeep(s)) await ensurePristineStored(s);
+  const bytes = await saveBlob(s, undefined, { embed: true });
   const r = await writeDawn(s.id, bytes);
   try { window.dispatchEvent(new CustomEvent('ec2:dawn', { detail: { id: s.id, tick: s.tick, ok: !!r } })); } catch (_) { /* Node, old browsers */ }
   return r;
@@ -373,7 +405,7 @@ async function importVerified(input) {
   const id = await importBlob(want);
   const slot = await readSlot(id);
   let verified = !!slot && slot.bytes.length === want.length && slot.bytes.every((v, k) => v === want[k]);
-  if (verified) { try { await loadBlob(slot.bytes); } catch (_) { verified = false; } }
+  if (verified) { try { await loadBlob(slot.bytes, { pristine: pristineResolver(id) }); } catch (_) { verified = false; } }
   return { id, name: peek.name, day: peek.day, pop: peek.pop, verified, text: verified ? MOVED_TEXT : 'The colony could not be checked after the import. Keep the Safari copy.' };
 }
 
@@ -385,14 +417,14 @@ export async function pasteColonyFromSafari(text = null) {
     t = await navigator.clipboard.readText();
   }
   t = String(t || '').trim();
-  if (!t.startsWith('EC2:')) throw new Error('The clipboard does not hold a colony. In Safari, tap Move to app again, then come back.');
+  if (!t.startsWith('EC2:') && !t.startsWith('EC3:')) throw new Error('The clipboard does not hold a colony. In Safari, tap Move to app again, then come back.');
   return importVerified(t);
 }
-/** The file-picker fallback: an .ecsave file (bytes) or a text file holding "EC2:...". */
+/** The file-picker fallback: an .ecsave file (bytes) or a text file holding "EC2:..." or "EC3:...". */
 export async function importColonyFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const head = String.fromCharCode(...bytes.subarray(0, 4));
-  return importVerified(head === 'EC2:' ? new TextDecoder().decode(bytes).trim() : bytes);
+  return importVerified(head === 'EC2:' || head === 'EC3:' ? new TextDecoder().decode(bytes).trim() : bytes);
 }
 
 // ---- Settings > Storage (11.1, 11.2) ---------------------------------------------------------------------
@@ -450,6 +482,7 @@ export async function saveNow(why = 'manual') {
 async function writeNow(s, why) {
   app.saving++;
   try {
+    if (isDeep(s)) await ensurePristineStored(s);   // the first EC3 save waits for the verified pristine record
     const bytes = await saveBlob(s);
     const r = await writeSlot(s.id, bytes, cardOf(s));
     app.lastSave = { ...r, why };
@@ -523,8 +556,11 @@ function installDebugHook() {
     applySettings, writeSettings, exportClassicSaves, clearClassicSaves, colonyRoom,
     checkFall, isRuin, ruinSummary, openRuin, recoveryList, recoverCopy, mountRecoverPanel, RECOVER_TEXT,
     snapshotMs: () => { if (!app.s) return null; const t0 = performance.now(); const { payload } = snapshot(app.s); return { ms: performance.now() - t0, rawBytes: payload.length }; },
-    reload: async () => { if (!app.s) return null; const h = stateHash(app.s); const t = await loadBlob(await saveBlob(app.s)); t.id = app.s.id; app.s = t; return { same: stateHash(t) === h, hash: h }; },
-    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes, writeSlot, classicSaves, exportClassic, clearClassic, colonyRoom, readCopies, restoreCopy, isFallenCard },
+    reload: async () => { if (!app.s) return null; const h = stateHash(app.s); const t = await loadBlob(await saveBlob(app.s), { pristine: pristineResolver(app.s.id) }); t.id = app.s.id; app.s = t; return { same: stateHash(t) === h, hash: h }; },
+    // tests (Stage Z1 E8): open a state built in the page (a stub fortress) as the colony; its pristine world
+    // is attached if it has none
+    adopt: (s) => { if (isDeep(s) && !pristineOf(s)) attachPristine(s, buildPristine(s, { worldKind: WORLD_KIND.NATIVE })); setOpen(s); return s.id; },
+    storage: { listColonies, refreshColonies, readSlots, quickSave: () => app.s && quickSave(app.s), promoteQuick, storageMode, exportBlob, importBlob, deleteColony, persistState, readDawn, writeDawn, updateCard, readSettings, writeSettings, storageBytes, writeSlot, classicSaves, exportClassic, clearClassic, colonyRoom, readCopies, restoreCopy, isFallenCard, ensurePristineStored, pristineResolver, writePristine, readPristineBytes },
   };
 }
 

@@ -24,8 +24,15 @@
 //   Firestarter break, lightning in a drought), burning(s, i), fireTiles(s), fireCount(s),
 //   firesNear(s, i, r) (E's fire emergency: sorted tiles within r), extinguish(s, i, amount) -> bool
 //   when it went out (E's firefighting toil), onBurn(fn).
+//
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.9). At D > 1 flames sit on voxels: a flame spreads to its
+// planar 8-neighbours on its level and to the voxel above (flames rise). Open sky is cover 0 (rain puts
+// those out, the weather's spread applies there), and a voxel with cover >= 3 never catches from one with
+// less (outside fire does not reach deep halls). firesNear and the colonists burnt read the level too. A
+// flame's start or end pushes its voxel into the dirty list so the per-level light pass relights its level.
 
-import { W, H, ROOF } from '../core/grid.js';
+import { W, H, D, PLANE, ROOF } from '../core/grid.js';
+import { coverAt } from './vertical.js';
 import { emit } from '../core/events.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { WORLD } from '../../data/worldgen.js';
@@ -86,8 +93,8 @@ export const fireCount = (s) => worldRec(s).fire.length;
 export const burning = (s, i) => findKey(worldRec(s).fire, i) >= 0;
 /** Burning tiles within Chebyshev r of tile i, sorted. */
 export function firesNear(s, i, r) {
-  const x = i % W, y = (i / W) | 0, out = [];
-  for (const e of worldRec(s).fire) { const j = e[0]; if (Math.max(Math.abs((j % W) - x), Math.abs(((j / W) | 0) - y)) <= r) out.push(j); }
+  const x = i % W, y = ((i % PLANE) / W) | 0, z = (i / PLANE) | 0, out = [];
+  for (const e of worldRec(s).fire) { const j = e[0]; if (((j / PLANE) | 0) === z && Math.max(Math.abs((j % W) - x), Math.abs((((j % PLANE) / W) | 0) - y)) <= r) out.push(j); }
   return out;
 }
 
@@ -101,6 +108,7 @@ export function ignite(s, i, heat = FIRE.startHeat) {
   if (!fuel) return false;
   putKey(w.fire, [i, Math.max(1, Math.min(100, heat | 0)), fuel]);
   s.rt.dirty.light = true;
+  if (D > 1) s.rt.dirty.tiles.push(i);
   emit(s, 'fireStart', { i });
   return true;
 }
@@ -109,6 +117,7 @@ function goOut(s, w, i) {
   if (k < 0) return false;
   w.fire.splice(k, 1);
   s.rt.dirty.light = true;
+  if (D > 1) s.rt.dirty.tiles.push(i);
   return true;
 }
 /** Firefighting (E): take `amount` fuel ticks off the flame at i. Returns true when it went out. */
@@ -143,9 +152,11 @@ export function fireSystem(s) {
     const k = findKey(w.fire, i);
     if (k < 0) continue;                                   // put out earlier this step
     const e = w.fire[k];
-    const x = i % W, y = (i / W) | 0, roof = s.L.roof[i];
+    const x = i % W, y = ((i % PLANE) / W) | 0, base = i - (i % PLANE), roof = s.L.roof[i];
+    const cov = D > 1 ? coverAt(s, i) : 0;
+    const sky = D > 1 ? cov === 0 : roof === ROOF.OPEN;
     // rain on open sky
-    if (out && roof === ROOF.OPEN && hash3(i, s.tick, 0x51) % 1000 < out) { goOut(s, w, i); continue; }
+    if (out && sky && hash3(i, s.tick, 0x51) % 1000 < out) { goOut(s, w, i); continue; }
     // burn what stands here
     const f = fuelAt(s, i);
     if (!f.plant && !f.bld && !f.floor && !f.item) { goOut(s, w, i); continue; }
@@ -154,16 +165,30 @@ export function fireSystem(s) {
       if (f.bld.hp <= 0) removeBuilding(s, f.bld, true);
     }
     const who = [];
-    for (const c of s.col) if (!c.hp.dead && Math.floor(c.x / 32) === x && Math.floor(c.y / 32) === y) who.push(c.id);
+    const z = (i / PLANE) | 0;
+    for (const c of s.col) if (!c.hp.dead && Math.floor(c.x / 32) === x && Math.floor(c.y / 32) === y && (D === 1 || (c.z | 0) === z)) who.push(c.id);
     if (who.length) for (const fn of burnListeners) fn(s, i, who);
     e[2] -= FIRE.every;
     if (e[1] < 100) e[1] = Math.min(100, e[1] + 10);
     // spread to flammable neighbours
-    for (let d = 0; d < 8; d++) {
-      const nx = x + DX[d], ny = y + DY[d];
-      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const j = ny * W + nx;
+    const nbs = D > 1 ? 9 : 8;
+    for (let d = 0; d < nbs; d++) {
+      let j;
+      if (d < 8) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        j = base + ny * W + nx;
+      } else { j = i + PLANE; if (j >= s.L.terrain.length) continue; }   // flames rise (D > 1)
       if (findKey(w.fire, j) >= 0) continue;
+      if (D > 1) {
+        const cj = coverAt(s, j);
+        if (cj >= 3 && cov < 3) continue;                                   // deep halls never catch from outside
+        const p = Math.floor((FIRE.spreadPermille * (cj === 0 ? spread : 100) * heat) / 10000);
+        if (p <= 0 || hash3(i, j, s.tick) % 1000 >= p) continue;
+        if (!canBurn(s, j)) continue;
+        ignite(s, j, Math.max(10, heat >> 1));
+        continue;
+      }
       if (s.L.roof[j] === ROOF.MOUNTAIN && roof !== ROOF.MOUNTAIN) continue;   // a tunnel never catches from outside
       const p = Math.floor((FIRE.spreadPermille * (s.L.roof[j] === ROOF.OPEN ? spread : 100) * heat) / 10000);
       if (p <= 0 || hash3(i, j, s.tick) % 1000 >= p) continue;

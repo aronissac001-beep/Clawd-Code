@@ -14,7 +14,7 @@
 
 import { TICKS_PER_DAY, seasonOf } from '../core/time.js';
 import { nextU32 } from '../core/rand.js';
-import { W } from '../core/grid.js';
+import { W, PLANE, D } from '../core/grid.js';
 import { def } from '../colony/defs.js';
 import { bump } from '../colony/ledger.js';
 import { addChron } from '../colony/chronicle.js';
@@ -87,7 +87,7 @@ export function breedingSystem(s) {
       if (room.used + size > room.cap) continue;
       if (nextU32(s, 'main') % 1000 >= BREED.permille) continue;
       const mom = adults[0], i = animTile(mom);
-      const baby = spawnAnimal(s, k, i % W, (i / W) | 0, { tame: true, pen: z.id, age: 0, st: { mode: 'graze', until: s.tick + 200, target: null } });
+      const baby = spawnAnimal(s, k, i % W, ((i % PLANE) / W) | 0, { ...(D > 1 ? { z: (i / PLANE) | 0 } : {}), tame: true, pen: z.id, age: 0, st: { mode: 'graze', until: s.tick + 200, target: null } });
       if (!baby) continue;
       herdRec(s).born++;
       bump(s, 'born');

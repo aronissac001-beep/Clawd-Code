@@ -26,7 +26,7 @@
 // endRaid folds it into s.st.history. damageFoe() is the single way a foe loses hp (sunlight uses
 // burnFoe, which skips BUS.dmgMult).
 
-import { ctrW, tileOfW, W, H, clamp, TER, DX8, DY8 } from '../core/grid.js';
+import { ctrW, tileOfW, W, H, N, D, PLANE, clamp, TER, DX8, DY8 } from '../core/grid.js';
 import { newRaid, newFoe } from '../core/schema.js';
 import { nextId, colById } from '../core/state.js';
 import { dayOf } from '../core/time.js';
@@ -40,7 +40,7 @@ import { stage2 } from '../people/defs.js';
 import { def, bal } from './defs.js';
 import { incidentDef, logicOf } from './incidents.js';
 import { planRaid } from './raidplan.js';
-import { fieldFor, flowStep, fieldGoalOf, onEdge, smashable, FLOW_UNREACHED } from './flow.js';
+import { fieldFor, flowStep, fieldGoalOf, onEdge, smashable, FLOW_UNREACHED, hfield, hfStep, hfReach } from './flow.js';
 import { rollAftermath } from './aftermath.js';
 import { foeStats, foeSpeed, affixPct, COMBAT } from './stats.js';
 import { makeNemesis, nemesisById, markReturn, escaped, slay, fullName } from './nemesis.js';
@@ -54,7 +54,7 @@ export function raidTuning() { const t = bal('threat'); return { foeSpeed: t.foe
 
 export const raidById = (s, id) => { for (const r of s.raids) if (r.id === id) return r; return null; };
 export const foeById = (s, id) => { for (const f of s.foes) if (f.id === id) return f; return null; };
-export const foeTile = (f) => clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1);
+export const foeTile = (f) => (f.z | 0) * PLANE + clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1);
 const isReaver = (f) => { const d = def('raider', f.kind); return !!d && d.kind === 'reaver'; };
 
 /** The raid entity for a queue entry (created at the omen with stage 'warned'; C12). */
@@ -71,8 +71,8 @@ export function ensureRaid(s, entry) {
 
 /** Spawn tiles for k members: along the edge (n, s: x varies; e, w: y varies), or around a tile ('deep'). */
 function spawnSpot(s, plan, k) {
-  const ex = plan.edge.i % W, ey = (plan.edge.i / W) | 0;
-  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && s.rt.walkCost[y * W + x] !== 0;
+  const ez = (plan.edge.i / PLANE) | 0, p = plan.edge.i - ez * PLANE, ex = p % W, ey = (p / W) | 0, base = ez * PLANE;
+  const open = (x, y) => x >= 0 && y >= 0 && x < W && y < H && s.rt.walkCost[base + y * W + x] !== 0;
   if (plan.edge.side === 'deep') {
     for (let r = 0; r < 6; r++) {
       for (let d = 0; d < 8; d++) { const x = ex + DX8[(d + k) & 7] * r, y = ey + DY8[(d + k) & 7] * r; if (open(x, y) && (r > 0 || k === 0)) return [x, y]; }
@@ -107,7 +107,9 @@ export function addMember(s, r, plan, rid, k = 0, nem = null, at = null) {
   if (lead) { st.lead = true; if (plan.aff && plan.aff.length) st.aff = plan.aff.slice(); }
   if (nem && nem.affixes.length) st.aff = nem.affixes.slice();
   if (stage2()) st.born = s.tick;
-  const f = newFoe(nextId(s, 'foe'), rid, { raid: r.id, x: ctrW(x), y: ctrW(y), hp: { hp: 1, max: 1 }, nem: nem ? nem.id : null, st });
+  const init = { raid: r.id, x: ctrW(x), y: ctrW(y), hp: { hp: 1, max: 1 }, nem: nem ? nem.id : null, st };
+  if (D > 1) init.z = at && at.length > 2 ? at[2] : (plan.edge.i / PLANE) | 0;   // 2.10: the entry's level
+  const f = newFoe(nextId(s, 'foe'), rid, init);
   const hp = Math.max(1, Math.floor(((d ? d.hp : 40) * affixPct(f, 'hpPct')) / 100));
   f.hp = { hp, max: hp };
   s.foes.push(f);
@@ -289,7 +291,8 @@ export function steer(s, e, tx, ty, sp, side = SIDE.HOS) {
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist < 1e-6) return false;
   const k = dist <= sp ? 1 : sp / dist;
-  const open = (x, y) => { const cx = tileOfW(x), cy = tileOfW(y); return cx >= 0 && cy >= 0 && cx < W && cy < H && stepCost(s.rt.walkCost[cy * W + cx], side) !== 0; };
+  const base = (e.z | 0) * PLANE;
+  const open = (x, y) => { const cx = tileOfW(x), cy = tileOfW(y); return cx >= 0 && cy >= 0 && cx < W && cy < H && stepCost(s.rt.walkCost[base + cy * W + cx], side) !== 0; };
   const nx = e.x + dx * k, ny = e.y + dy * k;
   if (open(nx, ny) && open(nx, e.y) && open(e.x, ny)) { e.x = nx; e.y = ny; return true; }
   if (Math.abs(dx) >= Math.abs(dy)) { if (open(nx, e.y)) { e.x = nx; return true; } if (open(e.x, ny)) { e.y = ny; return true; } }
@@ -303,7 +306,7 @@ const TILE_W = 32;
 function canHunt(s, f, c, tiles) {
   if (!ableCol(c)) return false;
   const r = tiles * TILE_W;
-  return d2(f, c) <= r * r && losClear(s, f.x, f.y, c.x, c.y, SIDE.HOS);
+  return (f.z | 0) === (c.z | 0) && d2(f, c) <= r * r && losClear(s, f.x, f.y, c.x, c.y, SIDE.HOS, 0, f.z | 0);
 }
 const huntsPrey = (f) => f.kind === 'gloom_hound' || !!(f.st && f.st.hunt);
 /** The colonist foe f goes for now (keeps its target while it stays within aggro + leash). */
@@ -323,10 +326,10 @@ export function foeTarget(s, f) {
   let best = null, bd = Infinity;
   const r = st.aggro * TILE_W;
   for (const c of s.col) {
-    if (!ableCol(c)) continue;
+    if (!ableCol(c) || (c.z | 0) !== (f.z | 0)) continue;   // combat on the same z (Z1)
     const d = d2(f, c);
     if (d > r * r || d >= bd) continue;
-    if (!losClear(s, f.x, f.y, c.x, c.y, SIDE.HOS)) continue;
+    if (!losClear(s, f.x, f.y, c.x, c.y, SIDE.HOS, 0, f.z | 0)) continue;
     bd = d; best = c;
   }
   f.target = best ? best.id : null;
@@ -335,10 +338,16 @@ export function foeTarget(s, f) {
 
 /** The field a foe walks: its raid's goal field, else the core field, else any live field. */
 function walkField(s, goal) {
+  if (D > 1) return hfield(s, goal) || hfield(s, 'core');
   return fieldFor(s, goal) || fieldFor(s, 'core') || (s.rt.flow.length ? s.rt.flow[0] : null);
 }
 /** Walk toward the map edge (the 'edge' field, else straight at the raid's edge tile). */
 function walkOut(s, f, r, sp, i) {
+  if (D > 1) {
+    const lv = hfield(s, 'edge');
+    if (lv && hfReach(s, lv, i)) { const j = hfStep(s, lv, i); if (j >= 0 && openFor(s, j)) moveTo(s, f, i, j, sp); }
+    return;
+  }
   const fl = fieldFor(s, 'edge');
   if (fl && fl.f[i] !== FLOW_UNREACHED) {
     const j = flowStep(fl.f, i, s);
@@ -350,7 +359,7 @@ function walkOut(s, f, r, sp, i) {
 /** A thief at a goal stack takes it (up to a carry load) and runs. */
 function steal(s, f, i) {
   for (const j of [i, i - W, i + W, i - 1, i + 1]) {
-    if (j < 0 || j >= W * H) continue;
+    if (j < 0 || j >= N) continue;
     const it = stackAt(s, j);
     if (!it || it.k === 'corpse') continue;
     const b = take(s, it.id, Math.min(it.n, 60));
@@ -359,6 +368,21 @@ function steal(s, f, i) {
     return true;
   }
   return false;
+}
+
+/**
+ * D > 1: step foe f from voxel i toward voxel j. A planar step steers at the tile centre; a climb (j on z +- 1:
+ * a stair or ramp, 2.3) walks to the climb point of its tile (16 units north of the centre going up, 15 south
+ * going down, as followPath) at a quarter of its speed, then changes level at the tile centre. No saved state:
+ * the climb's progress is the foe's own x, y.
+ */
+function moveTo(s, f, i, j, sp) {
+  const jz = (j / PLANE) | 0, p = j - jz * PLANE, cx = ctrW(p % W), cy = ctrW((p / W) | 0);
+  if (jz === (f.z | 0)) { steer(s, f, cx, cy, sp); return; }
+  const gy = cy + (jz > (f.z | 0) ? -16 : 15), q = Math.max(1, sp / 4);
+  const dx = cx - f.x, dy = gy - f.y, dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist <= q) { f.z = jz; f.x = cx; f.y = cy; return; }
+  f.x += (dx * q) / dist; f.y += (dy * q) / dist;
 }
 
 /** Tick system (slot 'movement', after B's movers): every foe of an active or retreating raid moves. */
@@ -388,7 +412,7 @@ export function foeMoveSystem(s) {
     }
     const fl = walkField(s, f.st.goal || r.goal);
     if (!fl) continue;
-    const j = flowStep(fl.f, i, s);
+    const j = fl.h ? hfStep(s, fl, i, !!st.dig) : flowStep(fl.f, i, s);
     // a thief grabs what it reaches: the goal stack, or any stack it walks onto
     if (st.steal && (j < 0 || stackAt(s, i)) && steal(s, f, i)) continue;
     if (j < 0) { f.st.bt = null; continue; }
@@ -401,7 +425,8 @@ export function foeMoveSystem(s) {
       continue;
     }
     f.st.bt = null; f.st.dig = null;
-    steer(s, f, ctrW(j % W), ctrW((j / W) | 0), sp);
+    if (D > 1) moveTo(s, f, i, j, sp);
+    else steer(s, f, ctrW(j % W), ctrW((j / W) | 0), sp);
   }
   if (gone) for (const f of gone) escapeFoe(s, f);   // fled over the edge: no death, no kill
 }

@@ -6,11 +6,13 @@
 // cave-in rumbling. (Stage 2.9: no "perk to choose": perks are earned, EMBERCROWN-FORTRESS.md 3.1.)
 // UI only: alerts read state and never write it. Idle is timed on the UI side (a colonist idle for
 // a game hour or more), snoozes are per colony in localStorage ('ec2.snooze.<id>'), in game ticks.
-// A target: { colonist } | { building } | { tile: [x, y] } | { threat } | { animal } | { zone } |
+// A target: { colonist } | { building } | { tile: [x, y] (with levels [x, y, z]) } | { threat } | { animal } | { zone } |
 // { open: 'letters' | 'demand' | 'trade' | 'skills' (with colonist) | 'work' }.
 import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../game/core/time.js';
 import { FIX, NEED_IDS, WORK_IDS } from '../game/core/schema.js';
-import { W } from '../game/core/grid.js';
+import { W, D, PLANE } from '../game/core/grid.js';
+/** A tile target from a voxel index: [x, y] on a D = 1 map, [x, y, z] with levels (the shell jumps to z, 4.3). */
+const tileTarget = (i) => { const p = i % PLANE; return D > 1 ? [p % W, (p / W) | 0, (i / PLANE) | 0] : [i % W, (i / W) | 0]; };
 import { threatChip } from '../game/threat/warnings.js';
 import { foodDays } from '../data/advice.js';
 import { fallClockHours, FALL_HOURS, isFallen } from '../game/colony/fall.js';
@@ -68,7 +70,7 @@ export const ALERT_RULES = Object.freeze([
       const f = s.colony.world && s.colony.world.fire;
       if (!f || !f.length) return null;
       const i = f[0][0];
-      return { text: f.length === 1 ? 'A fire is burning' : `${f.length} tiles on fire`, why: 'Colonists put out fires in the home area by themselves; rain helps. Wood, plants and wooden floors burn; stone does not.', target: { tile: [i % W, (i / W) | 0] } };
+      return { text: f.length === 1 ? 'A fire is burning' : `${f.length} tiles on fire`, why: 'Colonists put out fires in the home area by themselves; rain helps. Wood, plants and wooden floors burn; stone does not.', target: { tile: tileTarget(i) } };
     },
   },
   {
@@ -202,7 +204,7 @@ export const ALERT_RULES = Object.freeze([
       if (!stage2(s)) return null;
       const it = s.items.find((x) => x && x.k === 'corpse');
       if (!it) return null;
-      return { text: 'The dead lie unburied', why: 'Build a grave (Build > Utility): haulers bury the dead. Unburied, they may rise as Husks.', target: { tile: [it.x, it.y] } };
+      return { text: 'The dead lie unburied', why: 'Build a grave (Build > Utility): haulers bury the dead. Unburied, they may rise as Husks.', target: { tile: D > 1 ? [it.x, it.y, it.z | 0] : [it.x, it.y] } };
     },
   },
   {
@@ -241,7 +243,7 @@ export const ALERT_RULES = Object.freeze([
       const q = s.colony.world && s.colony.world.caveQ;
       if (!q || !q.length) return null;
       const i = q[0][0];
-      return { text: 'The rock is rumbling', why: 'A roof lost its support: it will fall. Get clear, then build pillars, props or walls within 4 tiles.', target: { tile: [i % W, (i / W) | 0] } };
+      return { text: 'The rock is rumbling', why: 'A roof lost its support: it will fall. Get clear, then build pillars, props or walls within 4 tiles.', target: { tile: tileTarget(i) } };
     },
   },
 ]);

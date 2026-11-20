@@ -18,7 +18,7 @@
 //   CARE_BENCH   bills at Care workbenches (the apothecary), from the bench-giver factory.
 // Surgery and prisoners wait for H's captives (Stage 3).
 
-import { idx, tx, ty, ctrW, cheb } from '../../core/grid.js';
+import { idx, tx, ty, tz, ctrW, cheb } from '../../core/grid.js';
 import { colById, bldById } from '../../core/state.js';
 import { FIX } from '../../core/schema.js';
 import { TICKS_PER_MIN, TICKS_PER_DAY } from '../../core/time.js';
@@ -47,9 +47,9 @@ const target = (s, col, p) => {
 
 function rescueJob(s, col, p) {
   const bed = bedFor(s, p, colTile(p));
-  if (!bed || !reachableFrom(s, col, idx(bed.x, bed.y))) return null;
+  if (!bed || !reachableFrom(s, col, idx(bed.x, bed.y, bed.z | 0))) return null;
   const pi = colTile(p);
-  const toils = [T.goto(pi, true), { t: 'lift', c: p.id }, { t: 'carryCol', c: p.id, i: idx(bed.x, bed.y) }, { t: 'layDown', c: p.id, b: bed.id }];
+  const toils = [T.goto(pi, true), { t: 'lift', c: p.id }, { t: 'carryCol', c: p.id, i: idx(bed.x, bed.y, bed.z | 0) }, { t: 'layDown', c: p.id, b: bed.id }];
   return { job: makeJob('rescue', keyCol(p.id), toils), claims: [[keyCol(p.id), 0], [keyBld(bed.id), 0]] };
 }
 
@@ -79,7 +79,7 @@ registerToil('lift', (s, col, job, toil) => {
   const p = colById(s, toil.c);
   if (!p || !p.hp.down || p.hp.dead || p.job || !stillOurs(s, col, toil.c)) return END.TARGET_GONE;
   const a = colTile(col), b = colTile(p);
-  if (cheb(tx(a), ty(a), tx(b), ty(b)) > 1) return 'notThere';
+  if (tz(a) !== tz(b) || cheb(tx(a), ty(a), tx(b), ty(b)) > 1) return 'notThere';
   follow(p, col);
   return NEXT;
 });
@@ -110,7 +110,7 @@ registerToil('layDown', (s, col, job, toil) => {
 // ---- Stage 2: tend, talk down, feed, the apothecary ---------------------------------------------------
 export const TEND_MIN = 15, TALK_MIN = 6, FEED_BELOW = 35, TALK_SOCIAL = 8;
 const bedridden = (p) => !!p && !p.hp.dead && (!!p.hp.down || inBed(p));
-const nearCol = (col, p) => { const a = colTile(col), b = colTile(p); return cheb(tx(a), ty(a), tx(b), ty(b)) <= 1; };
+const nearCol = (col, p) => { const a = colTile(col), b = colTile(p); return tz(a) === tz(b) && cheb(tx(a), ty(a), tx(b), ty(b)) <= 1; };
 /** The candidate list shared by the patient givers: colonists passing `want`, nearest first. */
 function patients(s, col, k, want) {
   const out = [];
@@ -130,7 +130,7 @@ function bestMedicine(s, col) {
   let best = null, bv = -1, bd = Infinity;
   for (const f of [{ cat: 'medicine' }, { cat: 'herbs' }]) {
     for (const it of itemCandidates(s, { ...f, holder: col.id, minN: 1 }, from, (i) => reachableFrom(s, col, i), 6)) {
-      const v = medPct(it.k), d = distTo(s, col, idx(it.x, it.y));
+      const v = medPct(it.k), d = distTo(s, col, idx(it.x, it.y, it.z | 0));
       if (v > bv || (v === bv && d < bd)) { bv = v; bd = d; best = it; }
     }
   }
@@ -140,7 +140,7 @@ const wantsTend = (s, col, p) => bedridden(p) && needsTending(p) && (!p.job || p
 function tendJob(s, col, p) {
   const med = bestMedicine(s, col);
   const toils = [], claims = [[keyCol(p.id), 0]];
-  if (med) { toils.push(T.goto(idx(med.x, med.y)), T.pickup(med.id, 1)); claims.push([keyItem(med.id), 1]); }
+  if (med) { toils.push(T.goto(idx(med.x, med.y, med.z | 0)), T.pickup(med.id, 1)); claims.push([keyItem(med.id), 1]); }
   toils.push(T.goto(colTile(p), true), { t: 'tend', c: p.id, n: TEND_MIN * TICKS_PER_MIN, sk: 'medicine' });
   return { job: makeJob('tend', keyCol(p.id), toils), claims };
 }
@@ -223,7 +223,7 @@ function feedJob(s, col, p) {
   }
   if (!it || nutr(it.k) <= 0) return null;
   const n = Math.max(1, Math.min(freeCount(s, it.id, col.id), Math.ceil(((80 * FIX) - p.need[0]) / (nutr(it.k) * FIX))));
-  const toils = [T.goto(idx(it.x, it.y)), T.pickup(it.id, n), T.goto(colTile(p), true), { t: 'feed', c: p.id }];
+  const toils = [T.goto(idx(it.x, it.y, it.z | 0)), T.pickup(it.id, n), T.goto(colTile(p), true), { t: 'feed', c: p.id }];
   return { job: makeJob('feed', keyCol(p.id), toils), claims: [[keyCol(p.id), 0], [keyItem(it.id), n]] };
 }
 export const FEED_GIVER = Object.freeze({

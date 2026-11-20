@@ -27,7 +27,7 @@ export const HAUL_GIVER = Object.freeze({
   keyOf: (t) => t.key,
   fromTarget(s, col, tg) {
     if (!tg) return null;
-    const it = tg.kind === 'item' ? getItem(s, tg.id) : tg.x !== undefined && inB(tg.x, tg.y) ? stackAt(s, idx(tg.x, tg.y)) : null;
+    const it = tg.kind === 'item' ? getItem(s, tg.id) : tg.x !== undefined && inB(tg.x, tg.y) ? stackAt(s, idx(tg.x, tg.y, tg.z | 0)) : null;
     return it ? haulCandidate(s, col, it.id) : null;
   },
 });

@@ -13,7 +13,7 @@ import { TICKS_PER_MIN } from '../../core/time.js';
 import { plantCode } from '../../world/defs.js';
 import { isRipe, harvestPlant, harvestWork, canSow, sowPlant, sowWork } from '../../world/plants.js';
 import { T, makeJob, registerEffect, keyTile, keyId } from '../jobs.js';
-import { spawn } from '../items.js';
+import { spawn, spawnAt } from '../items.js';
 import { def } from '../../core/content.js';
 import { emit } from '../../core/events.js';
 import { collect, standSpot, openTarget, clearDesig } from '../windex.js';
@@ -50,7 +50,7 @@ export const GROW_GIVER = Object.freeze({
   valid(s, col, t) { return !!target(s, col, t.i, growNeed(s, t.i)) && growNeed(s, t.i) === t.what; },
   make(s, col, t) { return growJob(s, col, t); },
   keyOf: (t) => t.key,
-  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; const i = idx(tg.x, tg.y); return target(s, col, i, growNeed(s, i) || (wildRipe(s, i) ? 'harvest' : null)); },
+  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; const i = idx(tg.x, tg.y, tg.z | 0); return target(s, col, i, growNeed(s, i) || (wildRipe(s, i) ? 'harvest' : null)); },
 });
 
 /** A designated wild plant that is ripe (the Harvest designation, any tile). */
@@ -69,7 +69,7 @@ registerEffect('harvest', (s, col, job) => {
   const y = harvestPlant(s, i);
   if (s.L.desig[i] & DESIG.HARVEST) clearDesig(s, i, DESIG.HARVEST);
   if (y && y.n > 0 && def('item', y.item)) {
-    spawn(s, y.item, null, 0, y.n, tx(i), ty(i));
+    spawnAt(s, y.item, null, 0, y.n, i);
     emit(s, 'harvested', { colId: col.id, k: y.item, n: y.n });   // C8: K's ledger and deeds, the grower's deed (3.1 Graft-hand)
   }
   return undefined;

@@ -3,15 +3,21 @@
 // core/apply.js) will place, computed read-only with the same rules (checkPlace, stampDoor, the
 // border order, furniture first-fit, floors around the furniture). The UI draws the plan, lets the
 // player drag the door marker, then sends the one command.
-import { idx, inB, TER } from '../core/grid.js';
+import { idx as gidx, inB, TER, PLANE } from '../core/grid.js';
 import { def, all, structDef, hasFlag, sizeOf, tilesOf } from '../core/content.js';
-import { checkPlace, stampDoor, borderOf, rectN, floorIdOf } from '../core/apply.js';
+import { checkPlace, stampDoor, borderOf, rectN, floorIdOf, atLevelOf } from '../core/apply.js';
 import { sumNeeds } from './place.js';
 
 /** Stamp defs (rooms.js `stamp`), data order. */
 export const stampDefs = () => all('stamp');
 /** Workbenches a Workshop stamp can hold (structures with a workbench, in data order). */
 export const benchDefs = () => all('structure').filter((d) => d.workbench);
+
+// Levels (Stage Z1, EMBERCROWN-FORTRESS.md 4.4; E13 gate fix): with o.rect.z the plan reads that level, through the
+// appliers' own level (atLevelOf), so checkPlace and stampDoor see what the applier will; tile indexes are voxels.
+let PZ = 0;
+const idx = (x, y) => gidx(x, y, PZ);
+const tilesAtZ = (d, x, y, rot) => { const a = tilesOf(d, x, y, rot); if (PZ) for (let k = 0; k < a.length; k++) a[k] += PZ * PLANE; return a; };
 
 const STRUCTS = (flag) => all('structure').filter((d) => hasFlag(d, flag));
 export const wallDefId = () => (STRUCTS('wall').find((d) => !hasFlag(d, 'door')) || { id: 'wall' }).id;
@@ -62,6 +68,13 @@ export function snapDoor(q, x, y) {
  *   wall st: 'new' (a blueprint), 'reuse' (rock or a wall already there), 'blocked' (with why).
  */
 export function stampPlan(s, o) {
+  const z = o && o.rect ? o.rect.z | 0 : 0;
+  if (!z) return planAt(s, o);
+  const keep = PZ;
+  PZ = z;
+  try { return atLevelOf(z, () => planAt(s, o)); } finally { PZ = keep; }
+}
+function planAt(s, o) {
   const sd = def('stamp', o.kind);
   const q = rectN(o.rect);
   const w = q.x1 - q.x0 + 1, h = q.y1 - q.y0 + 1;
@@ -150,7 +163,7 @@ function fitFurniture(s, defId, inner, taken) {
     const [w, h] = sizeOf(d, rot);
     for (let y = inner.y0; y + h - 1 <= inner.y1; y++) {
       for (let x = inner.x0; x + w - 1 <= inner.x1; x++) {
-        const tiles = tilesOf(d, x, y, rot);
+        const tiles = tilesAtZ(d, x, y, rot);
         if (tiles.some((i) => taken.has(i))) continue;
         if (checkPlace(s, defId, x, y, rot)) continue;
         return { x, y, rot, tiles };
@@ -163,6 +176,7 @@ function fitFurniture(s, defId, inner, taken) {
 /** The command for a plan (C3 `stamp`). */
 export function stampCommand(o, plan) {
   const c = { t: 'stamp', kind: o.kind, rect: { x0: plan.q.x0, y0: plan.q.y0, x1: plan.q.x1, y1: plan.q.y1 }, furnish: !!o.furnish };
+  if (o.rect && o.rect.z !== undefined) c.rect.z = o.rect.z;
   if (o.wallMat) c.wallMat = o.wallMat;
   if (o.floorMat) c.floorMat = o.floorMat;
   if (o.door) c.door = { x: o.door.x, y: o.door.y };

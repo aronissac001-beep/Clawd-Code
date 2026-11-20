@@ -12,7 +12,7 @@
 // art px), clamped to the screen border when the edge is off screen so the player knows where to look.
 // Render only: nothing here writes sim state.
 
-import { TILE, W } from '../../game/core/grid.js';
+import { TILE, W, PLANE } from '../../game/core/grid.js';
 import { threatViews } from '../../game/threat/warnings.js';
 import { PAL } from '../art/palette.js';
 
@@ -66,7 +66,9 @@ export class ThreatLayer {
     if (!this.views.length) return;
     const K = ctx.kit, strategic = z < this.cfg.strategicZoom;
     // 1. routes (world transform)
-    for (const t of this.views) {
+    for (const t0 of this.views) {
+      // a D > 1 map (Stage Z1 E6): routes hold voxel indexes; the view level's part draws (4.3)
+      const t = ctx.lvl >= 0 && t0.route ? { stage: t0.stage, route: levelPart(t0.route, ctx.lvl) } : t0;
       if (!t.route || t.route.length < 2 || !ROUTE_STAGES[t.stage]) continue;
       if (!strategic && K && K.pixelPath && K.PATH_ROUTE) { K.pixelPath(g, t.route, W, ctx.reduceMotion ? 0 : ctx.time, K.PATH_ROUTE); continue; }
       const k = 1 / z;
@@ -95,4 +97,11 @@ export class ThreatLayer {
     g.imageSmoothingEnabled = sm;
     g.setTransform(z * dpr, 0, 0, z * dpr, ox * dpr, oy * dpr);
   }
+}
+
+/** The voxels of route on level z, as plane indexes (render only). */
+function levelPart(route, z) {
+  const o = [];
+  for (const i of route) if (((i / PLANE) | 0) === z) o.push(i % PLANE);
+  return o;
 }

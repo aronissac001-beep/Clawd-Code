@@ -8,8 +8,10 @@
 // peekContent(ctx, sel) -> { head, acts: [[label, fn, act, disabled?]] } | null (subject gone).
 // contextItems(ctx, sel, target) -> [[label, fn, act]] for the long-press menu (with a colonist
 // selected and a target under the finger: "Prioritise: Mine here").
+// Stage Z1 (EMBERCROWN-FORTRESS.md 4.2, 4.3): with levels the colonist line names the level ("Mining granite ·
+// Level -5") and a stair or ramp tile offers Go up / Go down (the view follows).
 import { h, icon } from './kit.js';
-import { W, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
+import { W, PLANE, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
 import { def, all, structDef, hasFlag } from '../game/core/content.js';
 import { FIX, WORK_IDS } from '../game/core/schema.js';
 import { isTreeCode } from '../game/world/defs.js';
@@ -25,6 +27,7 @@ import { threatPeek, draftAll } from './threatui.js';
 import { roomInfo } from '../game/world/rooms.js';
 import { gateMode, mechState, linksOf } from '../game/world/mechanisms.js';
 import { WORK_IDS as WIDS } from '../game/core/schema.js';
+import { levelText, stairDirs } from '../game/tools/levels.js';
 
 /** "Bedroom, Fine" for the room at tile i (B's roomInfo), or null. */
 export function roomWord(s, i) {
@@ -106,7 +109,7 @@ export function peekContent(ctx, sel) {
     const head = h('div.ec-peek-head', null, ctx.portrait(c),
       h('div.ec-peek-txt', null,
         h('div.ec-peek-name', null, h('b', { text: c.name }), chip),
-        h('div.ec-peek-sub', { text: jobText(c) }),
+        h('div.ec-peek-sub', { text: ctx.deep ? `${jobText(c)} · Level ${levelText(c.z | 0)}` : jobText(c) }),
         h('div.ec-moodbar', { role: 'meter', 'aria-label': 'Mood', 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
     if (c.drafted) {
       // drafted (9.5, 10.2): tap the ground to move, a hostile to attack; Hold strikes what comes
@@ -126,7 +129,7 @@ export function peekContent(ctx, sel) {
     const b = s.bld[sel.id];
     if (!b) return null;
     const d = structDef(b.def) || { name: b.def };
-    const rid = roomAt(s, idx(b.x, b.y));
+    const rid = roomAt(s, idx(b.x, b.y, b.z | 0));
     let sub = buildingStatus(s, b);
     if (b.st === 'done' && hasFlag(d, 'door') && (hasFlag(d, 'lockable') || b.link !== null)) { try { sub = `${GATE_WORD[gateMode(s, b)] || 'Closed'}${b.link !== null && b.link !== undefined ? ' · linked to a lever' : ''}`; } catch (_) { /* before Stage 2 */ } }
     if (b.st === 'done' && (hasFlag(d, 'lever') || hasFlag(d, 'plate'))) { try { const n = linksOf(s, b.id).length; const m = mechState(s, b.id); sub = `${n} linked${hasFlag(d, 'lever') ? ` · holds them ${(GATE_WORD[m] || 'closed').toLowerCase()}` : ''}`; } catch (_) { /* before Stage 2 */ } }
@@ -205,7 +208,13 @@ export function peekContent(ctx, sel) {
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(rock ? 'stone' : tree ? 'axe' : 'region') }),
     h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: name })), h('div.ec-peek-sub', { text: sub.length ? sub.join(' · ') : `Tile ${sel.x}, ${sel.y}` })));
   const one = { x0: sel.x, y0: sel.y, x1: sel.x, y1: sel.y };
+  if (ctx.deep) one.z = ctx.z();
   const acts = [];
+  if (ctx.deep) {   // a stair or ramp: Go up / Go down, and the view follows (4.2)
+    const dirs = stairDirs(s, i), z0 = ctx.z();
+    if (dirs.up) acts.push(['Go up', () => ctx.setLevel(z0 + 1), 'go-up']);
+    if (dirs.down) acts.push(['Go down', () => ctx.setLevel(z0 - 1), 'go-down']);
+  }
   if (rock) {
     const marked = (s.L.desig[i] & DESIG.MINE) !== 0;
     acts.push([marked ? 'Unmark' : 'Mine', () => ctx.send({ t: 'designate', kind: 'mine', rect: one, add: !marked }, marked ? 'Mining mark removed.' : 'Marked for mining.'), 'mine']);
@@ -273,7 +282,7 @@ export function contextItems(ctx, target, colSel) {
     const d = structDef(b.def);
     if (b.st !== 'done') prio('Build', 'build', { id: b.id, kind: 'bld' });
     else if (d && d.workbench) prio('Craft', 'craft', { id: b.id, kind: 'bld' });
-    const rid = roomAt(s, idx(b.x, b.y));
+    const rid = roomAt(s, idx(b.x, b.y, b.z | 0));
     out.push(['Copy room', () => copyRoom(ctx, rid), 'ctx-copy']);
     if (d && d.workbench && b.st === 'done') out.push(['Bills', () => openSubjectSheet(ctx, { kind: 'building', id: b.id }, 'Bills'), 'ctx-bills']);
     if (d && d.levels) out.push(['Upgrade', () => ctx.toast(`${d.levels[0].name} needs ${(def('tier', d.levels[0].tier) || { name: d.levels[0].tier }).name}.`), 'ctx-upgrade']);
@@ -291,7 +300,7 @@ export function contextItems(ctx, target, colSel) {
   const i = target.tile;
   if (col && TER_MINEABLE[s.L.terrain[i]]) prio('Mine', 'mine', { x: target.x, y: target.y });
   if (col && isTreeCode(s.L.plant[i])) prio('Chop', 'chop', { x: target.x, y: target.y });
-  if (!col && TER_MINEABLE[s.L.terrain[i]]) out.push(['Mine', () => ctx.send({ t: 'designate', kind: 'mine', rect: { x0: target.x, y0: target.y, x1: target.x, y1: target.y }, add: true }, 'Marked for mining.'), 'ctx-mine']);
+  if (!col && TER_MINEABLE[s.L.terrain[i]]) out.push(['Mine', () => ctx.send({ t: 'designate', kind: 'mine', rect: { x0: target.x, y0: target.y, x1: target.x, y1: target.y, z: (i / PLANE) | 0 }, add: true }, 'Marked for mining.'), 'ctx-mine']);
   const rid = roomAt(s, i);
   if (rid) out.push(['Copy room', () => copyRoom(ctx, rid), 'ctx-copy']);
   return out;

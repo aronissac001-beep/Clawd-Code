@@ -105,10 +105,10 @@ export function beginJob(s, col, job, claims = []) {
 
 /** The colonist's tile coordinates (clamped to the map). */
 export function colTileXY(col) {
-  return [clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1)];
+  return [clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1), col.z | 0];
 }
-/** The colonist's tile index (clamped to the map; no allocation). */
-export const colTile = (col) => idx(clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1));
+/** The colonist's voxel index (clamped to the map; its level col.z, 0 at D = 1; no allocation). */
+export const colTile = (col) => idx(clamp(tileOfW(col.x), 0, W - 1), clamp(tileOfW(col.y), 0, H - 1), col.z | 0);
 
 /**
  * THE single exit of every job (5.4). Releases every claim, drops any carry (and the bundles a
@@ -127,9 +127,9 @@ export function endJob(s, col, reason = END.INTERRUPT) {
   const held = job.held || null;
   job.held = null;
   if ((b && b.n > 0) || (held && held.length)) {
-    const [x, y] = colTileXY(col);
-    if (b && b.n > 0) put(s, b, x, y);
-    if (held) for (const h of held) if (h && h.n > 0) put(s, h, x, y);
+    const [x, y, z] = colTileXY(col);
+    if (b && b.n > 0) put(s, b, x, y, { z });
+    if (held) for (const h of held) if (h && h.n > 0) put(s, h, x, y, { z });
   }
   const m = getMover();
   if (m) m.stop(s, col); else col.path = null;

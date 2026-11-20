@@ -27,7 +27,7 @@
 // Determinism: integer maths only; buckets are id-sorted arrays; placement scans rings in a
 // fixed order; nothing iterates object keys or s.rt.res.
 
-import { idx, tx, ty, inB, N, CW, CH, clusterOf, TER_PASSABLE } from '../core/grid.js';
+import { idx, tx, ty, tz, inB, N, CLUSTERS, clusterOf, TER_PASSABLE } from '../core/grid.js';
 import { newStack } from '../core/schema.js';
 import { zoneById, bldById } from '../core/state.js';
 import { structDef } from '../core/content.js';
@@ -60,6 +60,8 @@ export const stackLimit = (k) => Math.max(1, itemDef(k).stack | 0);
 export const categoryOf = (k) => itemDef(k).cat;
 
 // ---- Read side ----------------------------------------------------------------------------
+/** Z1: the voxel index of a stack (or anything with x, y in tiles and an integer z; z 0 at D = 1). */
+export const stackTile = (it) => idx(it.x, it.y, it.z | 0);
 /** Stack by id, or null. */
 export const getItem = (s, id) => (Number.isInteger(id) && id >= 0 && id < s.items.length ? s.items[id] : null);
 /** Stack on tile index i (the lowest id when a storage tile holds several), or null. */
@@ -154,7 +156,7 @@ export function inStockpile(s, i) {
   if (z) { const zone = zoneById(s, z); if (zone && zone.type === 'stockpile') return true; }
   return s.rt.occ[i] >= 0 && !!storeBldAt(s, i);
 }
-const counts = (s, it) => !it.f && inStockpile(s, idx(it.x, it.y));
+const counts = (s, it) => !it.f && inStockpile(s, stackTile(it));
 function stockAdd(s, k, d) {
   if (!d) return;
   const st = s.rt.stock, v = (st[k] || 0) + d;
@@ -198,7 +200,7 @@ function addStack(s, k, m, q, n, x, y, extra) {
   const id = allocId(s);
   const it = newStack(id, k, m, q, n, x, y, extra);
   s.items[id] = it;
-  const ti = idx(x, y);
+  const ti = stackTile(it);
   slotAdd(s, ti, id);
   bucketAdd(s, k, id); bucketAdd(s, '@' + categoryOf(k), id); clusterAdd(s, ti, id);
   if (counts(s, it)) stockAdd(s, k, n);
@@ -207,7 +209,7 @@ function addStack(s, k, m, q, n, x, y, extra) {
 }
 function removeStack(s, it, notify) {
   if (counts(s, it)) stockAdd(s, it.k, -it.n);
-  const ti = idx(it.x, it.y);
+  const ti = stackTile(it);
   slotDel(s, ti, it.id);
   bucketDel(s, it.k, it.id); bucketDel(s, '@' + categoryOf(it.k), it.id); clusterDel(s, ti, it.id);
   freeId(s, it.id);
@@ -224,14 +226,14 @@ export function canHold(s, i) { return capAt(s, i) > 0; }
 /** Would `b` merge into stack `it`? (same kind, material, quality, forbid state; not unique; room left) */
 const mergeable = (it, b, f) => it.k === b.k && it.m === b.m && it.q === b.q && it.f === f && !it.name && !b.name && it.n < stackLimit(it.k);
 
-/** Visit tiles in Chebyshev rings around (x, y), fixed order, up to radius R: fn(i) -> true stops. */
-function rings(x, y, R, fn) {
-  if (inB(x, y) && fn(idx(x, y))) return;
+/** Visit tiles of level z in Chebyshev rings around (x, y), fixed order, up to radius R: fn(i) -> true stops. */
+function rings(x, y, z, R, fn) {
+  if (inB(x, y, z) && fn(idx(x, y, z))) return;
   for (let r = 1; r <= R; r++) {
-    for (let k = -r; k <= r; k++) if (inB(x + k, y - r) && fn(idx(x + k, y - r))) return;          // top, left to right
-    for (let k = -r + 1; k <= r; k++) if (inB(x + r, y + k) && fn(idx(x + r, y + k))) return;      // right, top to bottom
-    for (let k = r - 1; k >= -r; k--) if (inB(x + k, y + r) && fn(idx(x + k, y + r))) return;      // bottom, right to left
-    for (let k = r - 1; k >= -r + 1; k--) if (inB(x - r, y + k) && fn(idx(x - r, y + k))) return;  // left, bottom to top
+    for (let k = -r; k <= r; k++) if (inB(x + k, y - r, z) && fn(idx(x + k, y - r, z))) return;          // top, left to right
+    for (let k = -r + 1; k <= r; k++) if (inB(x + r, y + k, z) && fn(idx(x + r, y + k, z))) return;      // right, top to bottom
+    for (let k = r - 1; k >= -r; k--) if (inB(x + k, y + r, z) && fn(idx(x + k, y + r, z))) return;      // bottom, right to left
+    for (let k = r - 1; k >= -r + 1; k--) if (inB(x - r, y + k, z) && fn(idx(x - r, y + k, z))) return;  // left, bottom to top
   }
 }
 
@@ -243,15 +245,17 @@ function rings(x, y, R, fn) {
 export const makeBundle = (k, m = null, q = 0, n = 1, extra = {}) => ({ k, m, q, n, hp: 100, age: 0, name: null, maker: null, ...extra });
 
 /**
- * Put a bundle on the ground at (x, y): merge into a matching stack with room, else start a new
- * stack, spilling outward in rings (WORK.spillRadius) over tiles that can hold items.
- * `b.n` is reduced by what was placed (> 0 afterwards only if no room was found).
+ * Put a bundle on the ground at (x, y) of level z (opts.z, default 0: the D = 1 level): merge into a
+ * matching stack with room, else start a new stack, spilling outward in rings (WORK.spillRadius) over
+ * tiles of that level that can hold items. `b.n` is reduced by what was placed (> 0 afterwards only if
+ * no room was found).
  * @returns {number} id of the first stack that received items, or -1
  */
-export function put(s, b, x, y, { f = false } = {}) {
+export function put(s, b, x, y, { f = false, z = 0 } = {}) {
   let first = -1;
   const lim = stackLimit(b.k);
-  rings(x, y, WORK.spillRadius, (i) => {
+  z |= 0;
+  rings(x, y, z, WORK.spillRadius, (i) => {
     const cap = capAt(s, i);
     if (cap <= 0) return false;
     const ids = stacksOn(s, i);
@@ -269,7 +273,7 @@ export function put(s, b, x, y, { f = false } = {}) {
     // new stacks while the tile has room (a ground tile: one, when it is empty)
     while (b.n > 0 && countOn(s, i) < cap) {
       const add = Math.min(b.n, lim);
-      const it = addStack(s, b.k, b.m, b.q, add, tx(i), ty(i), { hp: b.hp, age: b.age, f, name: b.name, maker: b.maker });
+      const it = addStack(s, b.k, b.m, b.q, add, tx(i), ty(i), { hp: b.hp, age: b.age, f, name: b.name, maker: b.maker, z });
       b.n -= add;
       if (first < 0) first = it.id;
     }
@@ -288,8 +292,12 @@ export function put(s, b, x, y, { f = false } = {}) {
 export function spawn(s, k, m, q, n, x, y, opts = {}) {
   if (!(n > 0) || !Number.isInteger(n)) throw new Error(`items.spawn: bad count ${n}`);
   const b = makeBundle(k, m, q, n, { hp: opts.hp ?? 100, age: opts.age ?? 0, name: opts.name ?? null, maker: opts.maker ?? null });
-  return put(s, b, x, y, { f: !!opts.f });
+  return put(s, b, x, y, { f: !!opts.f, z: opts.z | 0 });
 }
+/** put() at voxel index i (Z1: the level is the voxel's). */
+export const putAt = (s, b, i, opts = {}) => put(s, b, tx(i), ty(i), { ...opts, z: tz(i) });
+/** spawn() at voxel index i (Z1: the level is the voxel's). */
+export const spawnAt = (s, k, m, q, n, i, opts = {}) => spawn(s, k, m, q, n, tx(i), ty(i), { ...opts, z: tz(i) });
 
 /**
  * Take up to n units off stack `id` (never more than are free of other holders' claims when
@@ -321,10 +329,10 @@ export function destroy(s, id) { const it = getItem(s, id); if (it) removeStack(
  * radius had room).
  * @returns {number} id of the first stack that received items, or -1
  */
-export function drop(s, col, x, y) {
+export function drop(s, col, x, y, z = col.z | 0) {
   const b = carried(col);
   if (!b) return -1;
-  const id = put(s, b, x, y);
+  const id = put(s, b, x, y, { z });
   if (b.n <= 0) col.job.carry = null;
   return id;
 }
@@ -389,13 +397,13 @@ function matches(s, it, f, region) {
     if (free < (f.minN || 1)) return false;
   }
   if (region !== null && region !== undefined) {
-    const i = idx(it.x, it.y);
+    const i = stackTile(it);
     if (typeof region === 'function' ? !region(i) : s.rt.region[i] !== region) return false;
   }
   return !f.pred || f.pred(it);
 }
-/** from: a tile index; distance: squared straight distance in tiles; ties: lower id. */
-const d2 = (fx, fy, it) => (it.x - fx) * (it.x - fx) + (it.y - fy) * (it.y - fy);
+/** from: a tile index; distance: squared straight distance in tiles (a level counts as 2 tiles, PATH.VERT); ties: lower id. */
+const d2 = (fx, fy, it, fz = 0) => (it.x - fx) * (it.x - fx) + (it.y - fy) * (it.y - fy) + 4 * ((it.z | 0) - fz) * ((it.z | 0) - fz);
 
 /**
  * Nearest matching stack to tile `from`. `region`: null (anywhere), a colonist region label
@@ -406,11 +414,11 @@ const d2 = (fx, fy, it) => (it.x - fx) * (it.x - fx) + (it.y - fy) * (it.y - fy)
 export function findNearest(s, filter, from, region = null) {
   const a = bucketFor(s, filter);
   if (!a) return null;
-  const fx = tx(from), fy = ty(from);
+  const fx = tx(from), fy = ty(from), fz = tz(from);
   let best = null, bd = Infinity;
   for (let j = 0; j < a.length; j++) {
     const it = s.items[a[j]];
-    const d = d2(fx, fy, it);
+    const d = d2(fx, fy, it, fz);
     if (d < bd && matches(s, it, filter, region)) { best = it; bd = d; }
   }
   return best;
@@ -420,11 +428,11 @@ export function findNearest(s, filter, from, region = null) {
 export function candidates(s, filter, from, region = null, k = WORK.candidatesK) {
   const a = bucketFor(s, filter);
   if (!a) return [];
-  const fx = tx(from), fy = ty(from);
+  const fx = tx(from), fy = ty(from), fz = tz(from);
   const out = [];
   for (let j = 0; j < a.length; j++) {
     const it = s.items[a[j]];
-    if (matches(s, it, filter, region)) out.push([d2(fx, fy, it), it.id]);
+    if (matches(s, it, filter, region)) out.push([d2(fx, fy, it, fz), it.id]);
   }
   out.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   const res = [];
@@ -435,13 +443,13 @@ export function candidates(s, filter, from, region = null, k = WORK.candidatesK)
 // ---- Rebuilds (C13: initRuntime at load; the gate's check (e)) -------------------------------
 export function rebuildItemAt(s) {
   const a = new Int32Array(N).fill(-1);
-  for (const it of s.items) if (it) { const i = idx(it.x, it.y); if (a[i] < 0) a[i] = it.id; }   // the lowest id
+  for (const it of s.items) if (it) { const i = stackTile(it); if (a[i] < 0) a[i] = it.id; }   // the lowest id
   return a;
 }
 /** rt.idx.slots from scratch: tiles holding 2 or more stacks -> ids ascending. */
 export function rebuildSlots(s) {
   const per = new Map();
-  for (const it of s.items) if (it) { const i = idx(it.x, it.y); const a = per.get(i); if (a) a.push(it.id); else per.set(i, [it.id]); }
+  for (const it of s.items) if (it) { const i = stackTile(it); const a = per.get(i); if (a) a.push(it.id); else per.set(i, [it.id]); }
   const out = {};
   for (const [i, a] of per) if (a.length > 1) out[i] = a;
   return out;
@@ -454,11 +462,11 @@ export function rebuildItemFree(s) {
 export function rebuildItemIndex(s) {
   const items = {};
   const itemsC = [];
-  for (let c = 0; c < CW * CH; c++) itemsC.push([]);
+  for (let c = 0; c < CLUSTERS; c++) itemsC.push([]);   // Z1: 16 x 16 x 1 clusters on every level
   for (const it of s.items) {
     if (!it) continue;
     for (const name of [it.k, '@' + categoryOf(it.k)]) (items[name] || (items[name] = [])).push(it.id);
-    itemsC[clusterOf(idx(it.x, it.y))].push(it.id);
+    itemsC[clusterOf(stackTile(it))].push(it.id);
   }
   // The other parts (designations, frames, bills, ...) come from their owners (jobs.registerIdxPart);
   // parts nobody registered yet stay empty, as in Stage 0.
@@ -482,11 +490,29 @@ export function checkItems(s) {
     if (!it) continue;
     if (it.id !== i) return `items[${i}].id ${it.id}`;
     if (!(it.n >= 1 && it.n <= stackLimit(it.k))) return `items[${i}] count ${it.n} (limit ${stackLimit(it.k)})`;
-    if (!inB(it.x, it.y) || !stacksOn(s, idx(it.x, it.y)).includes(i)) return `items[${i}] not indexed at its tile`;
+    if (!inB(it.x, it.y, it.z | 0) || !stacksOn(s, stackTile(it)).includes(i)) return `items[${i}] not indexed at its tile`;
   }
   if (s.items.length && s.items[s.items.length - 1] === null) return 'trailing free slot not trimmed';
   return null;
 }
+
+// ---- Falling (Z1, 2.3): B's onFall hook hands every stack in a voxel that lost its floor ----------
+/**
+ * Stack `id` falls to voxel `to`, losing `hpPct` percent points of hp (25 per level). It is taken whole
+ * (jobs claiming it end with 'targetGone') and put down at `to` (merging and spilling there as put does);
+ * at hp 0 or below it is destroyed. Returns the id of the first stack that received it, or -1.
+ */
+export function fallStack(s, id, to, hpPct = 0) {
+  const it = getItem(s, id);
+  if (!it) return -1;
+  const b = take(s, id, it.n);
+  if (!b) return -1;
+  b.hp = (b.hp | 0) - (hpPct | 0);
+  if (b.hp <= 0) return -1;
+  return putAt(s, b, to, { f: it.f });
+}
+/** The onFall hook (installWork registers it with B's terrain API). */
+export function onItemFall(s, f) { if (f.kind === 'item' && f.ent) fallStack(s, f.ent.id, f.to, f.hp); }
 
 registerRebuild('itemAt', rebuildItemAt);
 registerRebuild('itemFree', rebuildItemFree);

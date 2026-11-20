@@ -35,7 +35,7 @@ export function rotSystem(s) {
     if (!it) continue;
     const life = shelfTicks(it.k);
     if (!life) continue;
-    const p = rotPct(s, idx(it.x, it.y));
+    const p = rotPct(s, idx(it.x, it.y, it.z | 0));
     if (!p) continue;
     it.age += Math.floor((ROT.every * p) / 100);
     if (it.age >= life) spoil.push(it.id);

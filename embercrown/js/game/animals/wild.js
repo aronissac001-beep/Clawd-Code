@@ -13,7 +13,7 @@
 // itself. penGuard (slot 'path', right after A*) drops a fresh path that would take a penned animal
 // out of its pen before movement takes a step on it.
 
-import { W, H, idx, TER_WATER } from '../core/grid.js';
+import { W, H, idx, TER_WATER, tz } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { bldById } from '../core/state.js';
 import { compOf } from '../world/terrain.js';
@@ -32,12 +32,12 @@ function nearTile(s, x, y, r, from) {
   for (let k = 0; k < 6; k++) {
     const nx = x + roll(s, 2 * r + 1) - r, ny = y + roll(s, 2 * r + 1) - r;
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-    const i = idx(nx, ny);
+    const i = idx(nx, ny, tz(from));
     if (open(s, i) && compOf(s, i, 0) === comp) return i;
   }
   return -1;
 }
-const hearthTile = (s) => { const h = s.colony.hearth; const b = h && h.id !== null ? bldById(s, h.id) : null; return b ? idx(b.x + 1, b.y + 1) : -1; };
+const hearthTile = (s) => { const h = s.colony.hearth; const b = h && h.id !== null ? bldById(s, h.id) : null; return b ? idx(b.x + 1, b.y + 1, b.z | 0) : -1; };
 
 /** Where an animal wants to go next, or -1 (stay). */
 function goalFor(s, a) {

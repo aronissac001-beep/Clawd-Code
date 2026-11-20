@@ -12,33 +12,34 @@
 // works forward, so piles fill up (tested: 2,300 hall tiles make about 135 stacks per 1,500 tiles,
 // 2-wide tunnels about 175), and the miner's own tunnel stays clear. The miner's tile is the fallback.
 
-import { W, N, idx, tx, ty, inB, TER_MINEABLE, TER, DESIG } from '../../core/grid.js';
+import { W, H, PLANE, idx, tx, ty, tz, inB, TER_MINEABLE, TER, DESIG } from '../../core/grid.js';
 import { nextU32 } from '../../core/rand.js';
 import { TICKS_PER_MIN } from '../../core/time.js';
 import { mineTile } from '../../world/terrain.js';
 import { mineAllowed } from '../../world/support.js';
 import { layerOfStone, layerOfDepth, depositDef, stoneName } from '../../world/defs.js';
 import { WORK, T, makeJob, registerEffect, keyTile, keyId } from '../jobs.js';
-import { spawn, stackAt, stackLimit, canHold } from '../items.js';
+import { spawn, spawnAt, stackAt, stackLimit, canHold } from '../items.js';
 import { colTile } from '../reserve.js';
 import { collect, standSpot, openTarget, clearDesig } from '../windex.js';
 import { placePlannedSupport } from '../construct.js';
 import { workplaceGiver } from './craft.js';
+import { setMineTicks, setMineYield } from '../vdig.js';
 
 /** Mining work of tile i in ticks at speed 1.0 (3.2 rock layer x ore multiplier; rubble is quick). */
 export function mineTicks(s, i) {
   const t = s.L.terrain[i];
   if (t === TER.RUBBLE) return WORK.rubbleMin * TICKS_PER_MIN;
-  const layer = layerOfStone(s.L.mat[i]) || layerOfDepth(s.rt.depth[i]);
+  const layer = layerOfStone(s.L.mat[i]) || layerOfDepth(s.rt.depth ? s.rt.depth[i] : 0);
   let min = layer ? layer.work : 20;
   if (s.L.ore[i]) min = Math.floor((min * WORK.oreWorkPct) / 100);
   return Math.max(1, min) * TICKS_PER_MIN;
 }
 
-/** Cheap test first: a mineable tile with at least one walkable 4-neighbour (on the open face). */
+/** Cheap test first: a mineable tile with at least one walkable 4-neighbour on its own level (on the open face). */
 function onFace(s, i) {
-  const w = s.rt.walkCost, x = i % W;
-  return (i >= W && w[i - W] !== 0) || (i + W < N && w[i + W] !== 0) || (x > 0 && w[i - 1] !== 0) || (x < W - 1 && w[i + 1] !== 0);
+  const w = s.rt.walkCost, x = i % W, y = ((i % PLANE) / W) | 0;
+  return (y > 0 && w[i - W] !== 0) || (y < H - 1 && w[i + W] !== 0) || (x > 0 && w[i - 1] !== 0) || (x < W - 1 && w[i + 1] !== 0);
 }
 const target = (s, col, i) => {
   if (!onFace(s, i) || !TER_MINEABLE[s.L.terrain[i]] || !(s.L.desig[i] & DESIG.MINE) || (s.L.desig[i] & DESIG.FORBID)) return null;
@@ -56,24 +57,37 @@ export const MINE_GIVER = Object.freeze({
     return { job: makeJob('mine', key, [T.goto(t.stand), T.work(mineTicks(s, t.i), { sk: 'mining', fx: 'mine', key })]), claims: [[key, 0]] };
   },
   keyOf: (t) => t.key,
-  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; return target(s, col, idx(tg.x, tg.y)); },
+  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; return target(s, col, idx(tg.x, tg.y, tg.z | 0)); },
 });
 
 /** Drop one rough stone of material m near the miner, who just mined tile `mined` (3.4). */
 export function dropStone(s, col, m, mined = -1) {
-  const ci = colTile(col), cx = tx(ci), cy = ty(ci), lim = stackLimit('stone'), R = WORK.stonePileR;
+  const ci = colTile(col), cx = tx(ci), cy = ty(ci), cz = tz(ci), lim = stackLimit('stone'), R = WORK.stonePileR;
   for (let r = 0; r <= R; r++) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = cx + dx, y = cy + dy;
       if (!inB(x, y)) continue;
-      const o = stackAt(s, idx(x, y));
-      if (o && o.k === 'stone' && o.m === m && !o.f && o.q === 0 && o.n < lim) return spawn(s, 'stone', m, 0, 1, x, y);
+      const o = stackAt(s, idx(x, y, cz));
+      if (o && o.k === 'stone' && o.m === m && !o.f && o.q === 0 && o.n < lim) return spawn(s, 'stone', m, 0, 1, x, y, { z: cz });
     }
   }
-  if (mined >= 0 && canHold(s, mined) && !stackAt(s, mined)) return spawn(s, 'stone', m, 0, 1, tx(mined), ty(mined));
-  return spawn(s, 'stone', m, 0, 1, cx, cy);
+  if (mined >= 0 && canHold(s, mined) && !stackAt(s, mined)) return spawnAt(s, 'stone', m, 0, 1, mined);
+  return spawn(s, 'stone', m, 0, 1, cx, cy, { z: cz });
 }
+
+/** What mining voxel i gave (r from B's mine write): the deposit at the miner, else rough stone on WORK.stoneYieldPct. */
+function mineYield(s, col, r, i) {
+  if (r.ore) {
+    const dep = depositDef(r.ore);
+    if (dep && dep.yield > 0) spawnAt(s, dep.item, dep.mat || null, 0, dep.yield, colTile(col));
+    return;
+  }
+  if (nextU32(s, 'main') % 100 < WORK.stoneYieldPct) { const m = stoneName(r.mat); if (m) dropStone(s, col, m, i); }
+}
+// Z1 (E5): the Stairs, Ramp and Channel jobs (vdig.js) cut stone with the same work and yield
+setMineTicks(mineTicks);
+setMineYield(mineYield);
 
 registerEffect('mine', (s, col, job) => {
   const i = keyId(job.target);
@@ -85,7 +99,7 @@ registerEffect('mine', (s, col, job) => {
   if (r.rubble) return undefined;
   if (r.ore) {
     const dep = depositDef(r.ore);
-    if (dep && dep.yield > 0) { const ci = colTile(col); spawn(s, dep.item, dep.mat || null, 0, dep.yield, tx(ci), ty(ci)); }
+    if (dep && dep.yield > 0) { const ci = colTile(col); spawnAt(s, dep.item, dep.mat || null, 0, dep.yield, ci); }
     return undefined;
   }
   if (nextU32(s, 'main') % 100 < WORK.stoneYieldPct) { const m = stoneName(r.mat); if (m) dropStone(s, col, m, i); }
@@ -100,7 +114,7 @@ function faceStone(s, b) {
   let best = null, bd = Infinity;
   for (let y = b.y - 3; y <= b.y + 5; y++) for (let x = b.x - 3; x <= b.x + 5; x++) {
     if (!inB(x, y)) continue;
-    const i = idx(x, y);
+    const i = idx(x, y, b.z | 0);
     if (s.L.terrain[i] !== TER.ROCK) continue;
     const d = (x - b.x - 1) * (x - b.x - 1) + (y - b.y - 1) * (y - b.y - 1);
     if (d < bd) { const m = stoneName(s.L.mat[i]); if (m) { bd = d; best = m; } }

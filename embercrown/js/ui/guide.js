@@ -10,7 +10,8 @@
 // ('ec2.guide.<colony id>'), so it survives a reload without touching the save or the state hash.
 import { h, onTap, icon, clear } from './kit.js';
 import { openSubjectSheet } from './sheet.js';
-import { DESIG } from '../game/core/grid.js';
+import { DESIG, D, zS, PLANE, TER } from '../game/core/grid.js';
+import { vdigList, VD } from '../game/work/vdig.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../game/core/time.js';
 
 const warned = (s) => s.st.queue.some((e) => e.stage !== 'queued') || s.raids.length > 0 || s.st.history.some((x) => x.cat === 'major');
@@ -45,6 +46,32 @@ export const GUIDE_STEPS = Object.freeze([
   { id: 'draft', title: 'Draft, then hold by the Hearth', how: 'Tap a portrait, then Draft (or Draft all). Then tap the ground between the Hearth and the horde: they hold there and fight.',
     when: close, done: (s) => s.col.some((c) => c.drafted) || s.st.history.some((x) => x.cat === 'major'), go: { draft: true } },
 ]);
+/**
+ * Stage Z1 (EMBERCROWN-FORTRESS.md 4.6): three steps after the first room on a map with levels. Pacing stays
+ * the 10.9 target (the first room and the first warning within about 15 minutes).
+ */
+export const LEVEL_STEPS = Object.freeze([
+  { id: 'stairs', title: 'Dig a stair down 2 levels', how: 'Orders > Stairs, Down 2, then tap the ground and Done. Stairs join the levels.',
+    done: (s) => vdigList(s).some((e) => e[1] === VD.STAIR) || stairDug(s), go: { tool: { kind: 'vert', id: 'stairs' } } },
+  { id: 'levels', title: 'Switch levels', how: 'Tap the down arrow under the level chip, or drag the chip up and down. Tap the chip for the depth ruler.',
+    done: (s, ui) => !!(ui && ui.levelSeen) },
+  { id: 'store', title: 'Build a store near the stairs', how: 'Go down a level, then Zones > Stockpile and drag an area by the stairs: haulers carry stone up and down.',
+    done: (s) => stockBelow(s), go: { tool: { kind: 'zone', op: 'new', preset: 'all' } } },
+]);
+/** The steps for this map: the level steps follow the bedroom on a map with levels. */
+export const stepsFor = (deep) => {
+  if (!deep) return GUIDE_STEPS;
+  const k = GUIDE_STEPS.findIndex((g) => g.id === 'bedroom') + 1;
+  return Object.freeze([...GUIDE_STEPS.slice(0, k), ...LEVEL_STEPS, ...GUIDE_STEPS.slice(k)]);
+};
+function stairDug(s) { const t = s.L.terrain, b = zS * PLANE; for (let p = 0; p < PLANE; p++) if (t[b + p] === TER.STAIR_D || t[b + p] === TER.STAIR_UD) return true; return false; }
+function stockBelow(s) {
+  const ids = new Set(s.zones.filter((z) => z.type === 'stockpile').map((z) => z.id));
+  if (!ids.size) return false;
+  const zl = s.L.zone;
+  for (let i = 0, e = zS * PLANE; i < e; i++) if (zl[i] && ids.has(zl[i])) return true;
+  return false;
+}
 const END = { title: 'Your hold has begun', how: 'Dig deeper for coal and iron, keep the Hearth fed, and watch the chip at the top for the next omen.' };
 const WAIT = { title: 'Keep building', how: 'The coach returns when the first omen comes (day 2, at dusk). Dig, build and stock wood until then.' };
 // after the omen (play-test: the card still promised an omen that had already come)
@@ -69,6 +96,7 @@ function save(s, st) { try { localStorage.setItem(KEY(s), JSON.stringify(st)); }
  */
 export function mountGuide(root, ctx) {
   const s = ctx.s;
+  const GUIDE_STEPS = stepsFor(D > 1);   // this colony's steps (shadows the module list)
   const st = load(s);
   const el = h('aside.ec-guide', { 'aria-label': 'Getting started', hidden: true });
   root.append(el);

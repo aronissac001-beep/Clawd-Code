@@ -18,6 +18,7 @@ export function shotTargets(s, hb, lv) {
   const r = lv.light ? lv.light.r : 8;
   const c = [];
   for (const f of s.foes) {
+    if ((f.z | 0) !== (hb.z | 0)) continue;   // on the Hearth's own level (Z1)
     const d = cheb(tileOfW(f.x), tileOfW(f.y), hb.x, hb.y);
     if (d <= r) c.push([d, f.id, f]);
   }

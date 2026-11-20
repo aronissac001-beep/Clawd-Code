@@ -1,6 +1,6 @@
 // System intros (owner I, written by X in the Stage 2 play-test; doc 10.9 "each system introduced the
 // first time it matters"). After the coach's opening, each Stage 2 system gets one short card the first
-// time it matters in this hold: research, rooms, animals, the first trader, the Grey Taint, the
+// time it matters in this hold: depth (a migrated Stage 2 hold, E13), research, rooms, animals, the first trader, the Grey Taint, the
 // Ember-touched, illness, breaks, fire, a nemesis, the first tier-up and the turn of the seasons.
 // A card says what is going on and what to do (two or three lines), with a button that goes there and
 // "Got it". Rules: one card at a time, never over a sheet, a panel, a tool, the ledger or a letter; at
@@ -20,6 +20,12 @@ const firstCol = (s, f) => living(s).find(f) || null;
 
 /** The intros, in priority order: id, title, how, when(s), urgent?, go: { colony | panel | tool | fn(ctx, s) }. */
 export const INTROS = Object.freeze([
+  // the returning-player card (EMBERCROWN-FORTRESS.md 4.6, 5.4 step 10): a Stage 2 hold migrated at the fortress
+  // switch (its Chronicle has the depth line); it links to the coach's level steps (guide.js LEVEL_STEPS)
+  { id: 'depth', urgent: true, title: 'Your hold now has depth',
+    how: 'The old mountain is real rock above you, and there is a world below. Tap the down arrow under the level chip to look.',
+    when: (s) => (s.d || 1) > 1 && Array.isArray(s.chron) && s.chron.some((e) => e && e[2] === 'chron_depth'),
+    go: { label: 'Dig a stair', tool: { kind: 'vert', id: 'stairs' } } },
   { id: 'taint', urgent: true, title: 'The Grey Taint',
     how: (s) => `${(firstCol(s, (c) => (c.hp.taint | 0) > 0) || { name: 'Someone' }).name} took a Hollow wound and the grey is in their veins. It grows while they are up and fades in bed, faster near a Banked Hearth. At full taint they turn.`,
     when: (s) => living(s).some((c) => (c.hp.taint | 0) > 0),

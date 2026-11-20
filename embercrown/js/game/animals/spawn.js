@@ -18,7 +18,7 @@
 
 import { newAnimal } from '../core/schema.js';
 import { nextId } from '../core/state.js';
-import { ctrW, idx, W, H, TER_PASSABLE, TER_WATER, TILE, ROOF } from '../core/grid.js';
+import { ctrW, idx, W, H, TER_PASSABLE, TER_WATER, TILE, ROOF, D, PLANE } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
 import { def, bal } from '../colony/defs.js';
@@ -96,7 +96,7 @@ export function edgeTile(s) {
         for (let inset = 0; inset < 3; inset++) {
           const x = side < 2 ? t : side === 2 ? inset : W - 1 - inset;
           const y = side === 0 ? inset : side === 1 ? H - 1 - inset : t;
-          const i = idx(x, y), tr = s.L.terrain[i];
+          const i = idx(x, y, D > 1 && s.rt.skyZ ? Math.min(D - 1, s.rt.skyZ[y * W + x]) : 0), tr = s.L.terrain[i];   // Z1: the open ground of the column
           if (TER_PASSABLE[tr] && !TER_WATER[tr] && s.L.roof[i] === ROOF.OPEN && s.rt.occ[i] < 0) return i;
         }
       }
@@ -121,7 +121,7 @@ export function wildGroup(s, kind = null) {
   const [lo, hi] = ANIMALS.group[k] || [1, 2];
   const n = rint(s, lo, hi), out = [];
   for (let j = 0; j < n && !atCap(s) && wildAnimals(s).length < ANIMALS.wildMax; j++) {
-    const a = spawnAnimal(s, k, at % W, (at / W) | 0, { age: 2 * TICKS_PER_DAY });
+    const a = spawnAnimal(s, k, at % W, ((at % PLANE) / W) | 0, { age: 2 * TICKS_PER_DAY, ...(D > 1 ? { z: (at / PLANE) | 0 } : {}) });
     if (a) { a.x += (j % 3) * 6 - 6; a.y += ((j / 3) | 0) * 6; out.push(a); }
   }
   return out;

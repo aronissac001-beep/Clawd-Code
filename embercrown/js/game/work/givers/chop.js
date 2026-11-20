@@ -7,7 +7,7 @@ import { TICKS_PER_MIN } from '../../core/time.js';
 import { isTreeCode, plantDef } from '../../world/defs.js';
 import { fellPlant, chopWork } from '../../world/plants.js';
 import { T, makeJob, registerEffect, keyTile, keyId } from '../jobs.js';
-import { spawn } from '../items.js';
+import { spawn, spawnAt } from '../items.js';
 import { def } from '../../core/content.js';
 import { collect, standSpot, openTarget, clearDesig } from '../windex.js';
 
@@ -28,7 +28,7 @@ export const CHOP_GIVER = Object.freeze({
     return { job: makeJob('chop', key, [T.goto(t.stand), T.work(n, { sk: 'growing', fx: 'chop', key })]), claims: [[key, 0]] };
   },
   keyOf: (t) => t.key,
-  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; return target(s, col, idx(tg.x, tg.y)); },
+  fromTarget(s, col, tg) { if (!tg || tg.x === undefined || !inB(tg.x, tg.y)) return null; return target(s, col, idx(tg.x, tg.y, tg.z | 0)); },
 });
 
 /** Material of a plant's yield: the plant's own material, else 'wood' for wood items. */
@@ -39,6 +39,6 @@ registerEffect('chop', (s, col, job) => {
   const p = plantDef(s.L.plant[i]);
   const y = isTreeCode(s.L.plant[i]) ? fellPlant(s, i) : null;
   clearDesig(s, i, DESIG.CHOP);
-  if (y && y.n > 0 && def('item', y.item)) spawn(s, y.item, yieldMat(p, y.item), 0, y.n, tx(i), ty(i));
+  if (y && y.n > 0 && def('item', y.item)) spawnAt(s, y.item, yieldMat(p, y.item), 0, y.n, i);
   return undefined;
 });

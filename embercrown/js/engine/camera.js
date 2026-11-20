@@ -7,7 +7,10 @@
 // snaps to the nearest step where that is a whole number (dpr 2: 0.5, 0.75, 1, 1.25 ... 2); below it
 // (the strategic view) the zoom is continuous and chunks scale smoothly. Pinch and wheel move a
 // continuous target (zt), so slow gestures still step; `zoom` is always the snapped value.
-import { TILE, W as MW, H as MH } from '../game/core/grid.js';
+// The view level (Stage Z1 E6, doc 4.4 `cam.z`; named `level` here because `z` is the snapped zoom): UI
+// memory, never sim state. Unset (null) until the UI picks one; the renderer then shows the surface and
+// follows `level` once set (render/index.js). setLevel(z) clamps to the map and counts as motion.
+import { TILE, D as MD, W as MW, H as MH } from '../game/core/grid.js';
 import { RENDER_DEFAULTS } from './render/config.js';
 
 const worldW = () => MW * TILE, worldH = () => MH * TILE;
@@ -22,6 +25,14 @@ export class Camera {
     this.vx = 0; this.vy = 0;          // inertia velocity (world units / s)
     this.focus = null;                  // {x,y,t} smooth pan target
     this.shake = 0; this.sx = 0; this.sy = 0;
+    this.level = null;                  // the view level on a D > 1 map (null: the renderer's default, the surface)
+  }
+  /** Set the view level (clamped to 0..D-1). Returns true when it changed. */
+  setLevel(z) {
+    z = Math.max(0, Math.min(MD - 1, z | 0));
+    if (z === this.level) return false;
+    this.level = z; this.moving = true;
+    return true;
   }
   resize(w, h, dpr) { this.vw = w; this.vh = h; this.dpr = dpr; this.z = this.snap(this.zt); this.clamp(); }
   get scale() { return this.zoom; }

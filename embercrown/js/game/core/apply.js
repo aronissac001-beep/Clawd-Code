@@ -15,8 +15,9 @@
 //
 // Results: { ok: true, ...detail } or { ok: false, reason } (a player-readable toast).
 
-import { W, H, N, idx, tx, ty, inB, TER, TER_MINEABLE, TER_BUILDABLE, TER_PASSABLE, TER_WATER, TER_FERTILE,
-  DESIG, DESIG_KINDS, ZONE_MAX, getBit } from './grid.js';
+import {
+  W, H, N, idx as gidx, tx, ty, inB, TER, TER_MINEABLE, TER_BUILDABLE, TER_PASSABLE, TER_WATER, TER_FERTILE, DESIG, DESIG_KINDS, ZONE_MAX, getBit, PLANE, tz,
+} from './grid.js';
 import { newBuilding, newZone, newBill, WORK_IDS } from './schema.js';
 import { BUS, first as firstHook } from './bus.js';
 import { registerApplier } from './commands.js';
@@ -33,6 +34,15 @@ const MAX_TEMPLATES = 8;
 const MAX_PLANS = 16;
 
 const fail = (reason) => ({ ok: false, reason });
+// Levels (C3 v3, EMBERCROWN-FORTRESS.md 7.4): every applier works on ONE level, the command's (its rect's z, or its
+// z for place and paste, or its first path voxel's for placeLine); AZ holds it while the applier runs and idx(x, y)
+// and the footprints below read that level. 0 on a D = 1 map, so nothing changes there.
+let AZ = 0;
+const idx = (x, y, z = AZ) => gidx(x, y, z);
+const tilesAt = (d, x, y, rot = 0) => { const a = tilesOf(d, x, y, rot); if (AZ) for (let k = 0; k < a.length; k++) a[k] += AZ * PLANE; return a; };
+const levelOfCmd = (c) => (c.rect && Number.isInteger(c.rect.z) ? c.rect.z : Number.isInteger(c.z) ? c.z : Array.isArray(c.path) && c.path[0] && Number.isInteger(c.path[0][2]) ? c.path[0][2] : 0);
+/** Run fn with the applier level z (restored after). */
+function atLevel(z, fn) { const keep = AZ; AZ = z | 0; try { return fn(); } finally { AZ = keep; } }
 function rectN(r) {
   return { x0: Math.min(r.x0, r.x1), y0: Math.min(r.y0, r.y1), x1: Math.max(r.x0, r.x1), y1: Math.max(r.y0, r.y1) };
 }
@@ -95,7 +105,8 @@ export function needOf(d, mat) {
  * Why `defId` cannot be planned with its top-left at (x, y), or null when it can.
  * opts.reuse: tiles already holding a wall or rock count as fine for walls (stamps).
  */
-export function checkPlace(s, defId, x, y, rot = 0) {
+export function checkPlace(s, defId, x, y, rot = 0, z = null) {
+  if (z !== null && z !== undefined && (z | 0) !== AZ) return atLevel(z, () => checkPlace(s, defId, x, y, rot));
   const d = structDef(defId);
   if (!d) return `unknown structure ${defId}`;
   if (d.kind === 'zone') return 'paint it with the Zones tool';
@@ -105,7 +116,7 @@ export function checkPlace(s, defId, x, y, rot = 0) {
   if (liveBuildings(s) >= CAP_BUILDINGS()) return 'too many buildings';
   if (hasFlag(d, 'unique') && s.bld.some((b) => b && b.def === defId)) return `there is already a ${d.name}`;
   const isFloor = hasFlag(d, 'floor');
-  for (const i of tilesOf(d, x, y, rot)) {
+  for (const i of tilesAt(d, x, y, rot)) {
     const t = s.L.terrain[i];
     if (!TER_BUILDABLE[t]) return t === TER.ROCK || t === TER.RUBBLE ? 'solid rock: mine it first' : TER_WATER[t] ? 'water' : 'cannot build there';
     if (!explored(s, i)) return 'unexplored ground';
@@ -122,7 +133,7 @@ export function addBuilding(s, defId, x, y, rot = 0, mat = null, init = {}) {
   const id = allocBld(s);
   const st = init.st || 'bp';
   const b = newBuilding(id, defId, x, y, rot, mat, {
-    need: st === 'done' ? {} : needOf(d, mat), hp: (d && d.hp) || 100, st, ...init,
+    need: st === 'done' ? {} : needOf(d, mat), hp: (d && d.hp) || 100, st, ...(AZ ? { z: AZ } : {}), ...init,
   });
   if (d && d.workbench && d.workbench.autoBills && !init.bills) {
     b.bills = d.workbench.autoBills.map((a) => newBill(a.recipe, { mode: a.mode, n: a.n, ...(a.perCol ? { perCol: true } : {}) }));
@@ -139,7 +150,7 @@ export function removeBuilding(s, b, destroyed = false) {
   if (b.st !== 'done' && b.got) {
     for (const k of Object.keys(b.got).sort()) {
       const n = b.got[k] | 0;
-      if (n > 0 && def('item', k)) spawnItem(s, k, b.mat, 0, n, b.x, b.y);
+      if (n > 0 && def('item', k)) spawnItem(s, k, b.mat, 0, n, b.x, b.y, { z: b.z | 0 });
     }
   }
   for (const fn of BUS.removed) fn(s, b, destroyed);
@@ -195,7 +206,7 @@ function designate(s, c) {
 function buildingsIn(s, r, pred) {
   const q = rectN(r), out = [];
   for (const b of s.bld) {
-    if (!b || !pred(b)) continue;
+    if (!b || !pred(b) || (b.z | 0) !== AZ) continue;
     const d = structDef(b.def), [w, h] = sizeOf(d, b.rot);
     if (b.x <= q.x1 && b.x + w - 1 >= q.x0 && b.y <= q.y1 && b.y + h - 1 >= q.y0) out.push(b);
   }
@@ -292,7 +303,7 @@ function fitFurniture(s, defId, inner, taken) {
     const [w, h] = sizeOf(d, rot);
     for (let y = inner.y0; y + h - 1 <= inner.y1; y++) {
       for (let x = inner.x0; x + w - 1 <= inner.x1; x++) {
-        const tiles = tilesOf(d, x, y, rot);
+        const tiles = tilesAt(d, x, y, rot);
         if (tiles.some((i) => taken.has(i))) continue;
         if (checkPlace(s, defId, x, y, rot)) continue;
         return { x, y, rot, tiles };
@@ -457,6 +468,7 @@ function copyRoom(s, c) {
   const tiles = [];
   for (let i = 0; i < N; i++) if (rt.room[i] === c.roomId) tiles.push(i);
   if (!tiles.length) return fail('no such room');
+  AZ = tz(tiles[0]);   // the room's level (restored by the wrapper in installCommands)
   let x0 = W, y0 = H, x1 = 0, y1 = 0;
   for (const i of tiles) { const x = tx(i), y = ty(i); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(W - 1, x1 + 1); y1 = Math.min(H - 1, y1 + 1);
@@ -668,10 +680,14 @@ function prioritise(s, c) {
   return r ? { ok: true } : fail(`nothing for ${c.work} there`);
 }
 
-export const SLICE_APPLIERS = Object.freeze({
+// the appliers that act on a level run with AZ set to the command's level (owners who wrap them, as E's
+// designateWithLevels does, get the levelled version)
+const LEVELLED = new Set(['designate', 'cancelRect', 'place', 'placeLine', 'stamp', 'carve', 'copyRoom', 'paste', 'deconstruct', 'zone', 'forbid']);
+const levelled = (o) => Object.fromEntries(Object.entries(o).map(([k, f]) => [k, LEVELLED.has(k) ? (s, c) => atLevel(levelOfCmd(c), () => f(s, c)) : f]));
+export const SLICE_APPLIERS = Object.freeze(levelled({
   designate, cancelRect, place, placeLine, stamp, carve, copyRoom, paste, deconstruct,
   zone, zoneCfg, bill, prio, sched, forbid, prioritise, assign,
-});
+}));
 
 /** Register the slice appliers (idempotent). Owners may replace any of them afterwards. */
 export function installCommands() {
@@ -680,3 +696,5 @@ export function installCommands() {
 
 // exported for tests and the UI previews (ghost footprints, stamp and carve previews)
 export { rectN, borderOf };
+/** Run fn with the appliers' level set to z (planners that share the appliers' rules: tools/stamp.js). */
+export function atLevelOf(z, fn) { return atLevel(z, fn); }

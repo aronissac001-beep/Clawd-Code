@@ -2,8 +2,9 @@
 // Carve hall preview: which tiles `carve {rect, pattern, smooth}` (C3; A's core/apply.js) will mark
 // for mining, which rock it leaves standing as natural pillars and where built pillars or props go.
 // The pillar points come from the applier's own pillarPlan, so preview and command agree.
-// Read-only; no DOM.
-import { idx, inB, TER, TER_MINEABLE, DESIG } from '../core/grid.js';
+// Read-only; no DOM. Stage Z1 (EMBERCROWN-FORTRESS.md 4.4): with o.rect.z the plan reads that level (tiles are
+// voxel indexes on it), and o.levels / o.dir (the Levels chip) go into the command.
+import { idx, inB, TER, TER_MINEABLE, DESIG, PLANE } from '../core/grid.js';
 import { pillarPlan, rectN, borderOf } from '../core/apply.js';
 
 /** Pillar patterns in chip order, with the player-facing names (10.11). */
@@ -20,13 +21,13 @@ export const CARVE_PATTERNS = Object.freeze([
  *   standing); built: pillar or prop spots; smooth: faces to smooth (with smooth on).
  */
 export function carvePlan(s, o) {
-  const q = rectN(o.rect);
-  const pillars = pillarPlan(s, q);
+  const q = rectN(o.rect), z = o.rect.z | 0, zb = z * PLANE;
+  const pillars = zb ? pillarPlan(s, q).map((i) => i + zb) : pillarPlan(s, q);
   const pset = new Set(pillars);
   const natural = o.pattern === 'natural';
   const plan = { ok: false, why: null, q, mine: [], keep: [], built: [], smooth: [], rock: 0, already: 0 };
   for (let y = q.y0; y <= q.y1; y++) for (let x = q.x0; x <= q.x1; x++) {
-    const i = idx(x, y), t = s.L.terrain[i];
+    const i = idx(x, y, z), t = s.L.terrain[i];
     if (TER_MINEABLE[t]) plan.rock++;
     if (pset.has(i) && natural && t === TER.ROCK) { plan.keep.push(i); continue; }
     if (TER_MINEABLE[t]) { plan.mine.push(i); if (s.L.desig[i] & DESIG.MINE) plan.already++; }
@@ -34,7 +35,7 @@ export function carvePlan(s, o) {
   for (const i of pillars) if (!plan.keep.includes(i)) plan.built.push(i);
   if (o.smooth) {
     const ring = { x0: q.x0 - 1, y0: q.y0 - 1, x1: q.x1 + 1, y1: q.y1 + 1 };
-    for (const [x, y] of borderOf(ring)) if (inB(x, y) && s.L.terrain[idx(x, y)] === TER.ROCK) plan.smooth.push(idx(x, y));
+    for (const [x, y] of borderOf(ring)) if (inB(x, y, z) && s.L.terrain[idx(x, y, z)] === TER.ROCK) plan.smooth.push(idx(x, y, z));
     for (const i of plan.keep) plan.smooth.push(i);
   }
   if (!plan.rock) plan.why = 'carve a hall into rock';
@@ -45,7 +46,10 @@ export function carvePlan(s, o) {
 /** The command for a plan (C3 `carve`). */
 export function carveCommand(o) {
   const q = rectN(o.rect);
-  return { t: 'carve', rect: { x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1 }, pattern: o.pattern, smooth: !!o.smooth };
+  const c = { t: 'carve', rect: { x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1 }, pattern: o.pattern, smooth: !!o.smooth };
+  if (o.rect.z !== undefined) c.rect.z = o.rect.z;
+  if (o.levels > 1) { c.levels = o.levels; c.dir = o.dir === 'up' ? 'up' : 'down'; }
+  return c;
 }
 
 /** "Hall 9 x 9: 80 to mine, 1 natural pillar" for the hint and the loupe. */

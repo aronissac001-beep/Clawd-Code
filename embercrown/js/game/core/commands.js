@@ -4,16 +4,17 @@
 // dropped with a reason (the UI shows it as a toast). The determinism tool records [tick, cmd]
 // logs. Speed is not a command (it is not sim state).
 //
-// Shared payload shapes
-//   rect   { x0, y0, x1, y1 }  inclusive tile corners, any order, inside the map
-//   tile   { x, y }            tile coordinates inside the map
+// Shared payload shapes (C3 v3, EMBERCROWN-FORTRESS.md 7.4: every rect and point carries a level z,
+// 0 <= z < D; it is optional and reads as 0 when absent, which is the only level of a D = 1 map)
+//   rect   { x0, y0, x1, y1, z? }  inclusive tile corners on one level, any order, inside the map
+//   tile   { x, y, z? }            tile coordinates inside the map
 //   target { x, y } | { id, kind }   kind: 'col' | 'anim' | 'foe' | 'bld' | 'item'
 //   goods  [{ k, m?, q?, n }]  item kind, material, quality, count
 //
 // Appliers are owned by the systems that implement them and plug in with registerApplier(name, fn).
 // Until then each command has a stub applier that validates and changes nothing.
 
-import { W, H, N, cheb, DESIG_KINDS, ZONE_MAX } from './grid.js';
+import { W, H, D, N, cheb, DESIG_KINDS, ZONE_MAX } from './grid.js';
 import { WORK_IDS } from './schema.js';
 import { colById, bldById, zoneById } from './state.js';
 
@@ -33,13 +34,25 @@ const oneOf = (list) => (v) => (list.includes(v) ? null : `must be one of ${list
 const opt = (f) => (v, s, c) => (v === undefined || v === null ? null : f(v, s, c));
 const text = (max) => (v) => (typeof v === 'string' && v.length <= max ? null : `must be text up to ${max} characters`);
 function tileXY(x, y) { return isInt(x) && isInt(y) && x >= 0 && y >= 0 && x < W && y < H; }
+/** A level: absent (level 0) or an integer 0..D-1. */
+const zOk = (z) => z === undefined || (isInt(z) && z >= 0 && z < D);
+/** The level of a payload (rect, tile, command): its z, or 0. */
+export const zOf = (v) => (v && isInt(v.z) ? v.z : 0);
+const level = (v) => (zOk(v) ? null : `must be a level 0-${D - 1}`);
 const rect = (v) => {
   if (!v || typeof v !== 'object') return 'must be a rectangle';
   for (const k of ['x0', 'y0', 'x1', 'y1']) if (!isInt(v[k])) return 'rectangle corners must be integers';
   if (!tileXY(v.x0, v.y0) || !tileXY(v.x1, v.y1)) return 'rectangle is off the map';
+  if (!zOk(v.z)) return 'rectangle level is off the map';
   return null;
 };
-const tile = (v) => (v && tileXY(v.x, v.y) ? null : 'must be a tile on the map');
+const tile = (v) => (v && tileXY(v.x, v.y) && zOk(v.z) ? null : 'must be a tile on the map');
+/** `levels` (1-10) from the rect's level in `dir` ('down' default) must stay inside the map. */
+const levelsIn = (c) => {
+  if (c.levels === undefined) return null;
+  const z = zOf(c.rect), n = c.levels;
+  return (c.dir === 'up' ? z + n - 1 < D : z - n + 1 >= 0) ? null : 'those levels run off the map';
+};
 const TARGET_KINDS = ['col', 'anim', 'foe', 'bld', 'item'];
 const target = (v) => {
   if (!v || typeof v !== 'object') return 'must be a target';
@@ -72,14 +85,17 @@ const linePath = (v) => {
   if (!Array.isArray(v) || v.length === 0 || v.length > 512) return 'must be a line of 1-512 tiles';
   for (let i = 0; i < v.length; i++) {
     const p = v[i];
-    if (!Array.isArray(p) || !tileXY(p[0], p[1])) return 'line tile off the map';
+    if (!Array.isArray(p) || !tileXY(p[0], p[1]) || !zOk(p[2])) return 'line tile off the map';
+    if (i && zOf({ z: p[2] }) !== zOf({ z: v[0][2] })) return 'line tiles must be on one level';
     if (i && cheb(p[0], p[1], v[i - 1][0], v[i - 1][1]) !== 1) return 'line tiles must touch';
   }
   return null;
 };
 const exactlyOne = (a, b) => (c) => ((c[a] !== undefined) !== (c[b] !== undefined) ? null : `needs ${a} or ${b}`);
 
-export const DESIG_NAMES = Object.freeze(Object.keys(DESIG_KINDS));
+/** The vertical designation kinds (EMBERCROWN-FORTRESS.md 2.3, 4.4; E's vdig.js applies them): only on a map with levels. */
+export const VERT_DESIG_NAMES = Object.freeze(['stairs', 'ramp', 'channel', 'floor', 'bstairs']);
+export const DESIG_NAMES = Object.freeze([...Object.keys(DESIG_KINDS), ...VERT_DESIG_NAMES]);
 export const CANCEL_KINDS = Object.freeze([...DESIG_NAMES, 'bp', 'zone', 'bill']);
 export const ZONE_TYPES = Object.freeze(['stockpile', 'grow', 'pen', 'burial', 'home', 'area', 'dump']);
 export const ZONE_OPS = Object.freeze(['new', 'expand', 'shrink', 'delete']);
@@ -136,14 +152,14 @@ const hours = (v) => (Array.isArray(v) && v.length === 24 && v.every((h) => isIn
  * perks are earned by what the hold does, and great beasts come only when a cause holds.
  */
 export const COMMANDS = Object.freeze({
-  designate: { fields: { kind: oneOf(DESIG_NAMES), rect, add: bool } },
+  designate: { fields: { kind: oneOf(DESIG_NAMES), rect, add: bool, levels: opt(int(1, 10)), dir: opt(oneOf(['down', 'up'])) }, rule: (c) => (D === 1 && VERT_DESIG_NAMES.includes(c.kind) ? 'this map has no levels' : levelsIn(c)) },
   cancelRect: { fields: { rect, kinds: (v) => (Array.isArray(v) && v.length && v.every((k) => CANCEL_KINDS.includes(k)) ? null : `kinds must be from ${CANCEL_KINDS.join(', ')}`) } },
-  place: { fields: { def: id('structure'), x: int(0, 65535), y: int(0, 65535), rot: oneOf(ROTS), mat: opt(id('material')) }, rule: (c) => (tileXY(c.x, c.y) ? null : 'off the map') },
+  place: { fields: { def: id('structure'), x: int(0, 65535), y: int(0, 65535), z: level, rot: oneOf(ROTS), mat: opt(id('material')) }, rule: (c) => (tileXY(c.x, c.y) ? null : 'off the map') },
   placeLine: { fields: { def: id('structure'), path: linePath, mat: opt(id('material')) } },
   stamp: { fields: { kind: id('stamp'), rect, wallMat: opt(id('material')), floorMat: opt(id('material')), door: opt(tile), furnish: bool, bench: opt(id('structure')) } },
-  carve: { fields: { rect, pattern: oneOf(CARVE_PATTERNS), smooth: bool } },
+  carve: { fields: { rect, pattern: oneOf(CARVE_PATTERNS), smooth: bool, levels: opt(int(1, 10)), dir: opt(oneOf(['down', 'up'])) }, rule: levelsIn },
   copyRoom: { fields: { roomId: int(1, 65535) } },
-  paste: { fields: { templateId: nonNegId, x: int(0, 65535), y: int(0, 65535), rot: oneOf(ROTS) }, rule: (c) => (tileXY(c.x, c.y) ? null : 'off the map') },
+  paste: { fields: { templateId: nonNegId, x: int(0, 65535), y: int(0, 65535), z: level, rot: oneOf(ROTS) }, rule: (c) => (tileXY(c.x, c.y) ? null : 'off the map') },
   deconstruct: { fields: { ids: opt(ids), rect: opt(rect) }, rule: exactlyOne('ids', 'rect') },
   zone: {
     fields: { op: oneOf(ZONE_OPS), type: opt(oneOf(ZONE_TYPES)), rect: opt(rect), zoneId: opt(zoneId), preset: opt(id('zonePreset')) },

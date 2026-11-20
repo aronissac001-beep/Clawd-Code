@@ -16,8 +16,17 @@
 //             rebuild from saved state always gives the same ids (C13).
 //   The endOfTick 'rooms' pass rebuilds both when rt.dirty.rooms is set (walls, doors, rock or roofs
 //   changed). A full rebuild is about 0.3 ms at 128 x 128 (under the 1 ms budget), and exact.
+//
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.4, 6.2). At D > 1 rooms are planar, one level at a time
+// (walls are opaque voxels and doors on that level; the levels above and below never join a room). Records
+// gain `z`; ids stay canonical (index-scan order, so level by level from z = 0 up). `sky` counts the room's
+// voxels open to the sky (z >= skyZ), `under` is a majority with cover >= 1, and auto-roofing puts a built
+// roof on the sky-open voxels of built rooms. The pass relabels only the dirty levels (pass.addDirtyLevels
+// over rt.dirty.tiles) and renumbers the clean levels after them in place, so it equals a full rebuild.
 
-import { W, H, N, ROOF } from '../core/grid.js';
+import { W, H, N, D, PLANE, ROOF } from '../core/grid.js';
+import { addDirtyLevels } from './pass.js';
+import { skyZRebuild } from './vertical.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick } from '../core/bus.js';
 import { isOpaque, WALK_DOOR, occRebuild, walkRebuild, footprint } from './pass.js';
@@ -35,6 +44,11 @@ function wallMask(s, occ, walk) {
 
 /** { room, rooms } from scratch. occ and walk default to the live caches (the pass) or rebuilt ones. */
 export function roomsBuild(s, occ = s.rt.occ, walk = s.rt.walkCost) {
+  if (D > 1) {
+    const room = new Uint16Array(N), rooms = [null], skyZ = skyZRebuild(s);
+    for (let z = 0; z < D; z++) floodLevel(s, z, occ, walk, room, rooms, skyZ);
+    return { room, rooms };
+  }
   const wall = wallMask(s, occ, walk);
   const room = new Uint16Array(N), seen = new Uint8Array(N), q = new Int32Array(N);
   const rooms = [null];
@@ -80,6 +94,79 @@ export function roomsBuild(s, occ = s.rt.occ, walk = s.rt.walkCost) {
   return { room, rooms };
 }
 
+// ---- Levels (D > 1) ----------------------------------------------------------------------------------------
+let wl = null, sn = null, qq = null;
+/** Label the rooms of level z into `room` (its plane must be clear), appending records to `rooms` with the next ids. */
+function floodLevel(s, z, occ, walk, room, rooms, skyZ) {
+  if (!wl || wl.length !== PLANE) { wl = new Uint8Array(PLANE); sn = new Uint8Array(PLANE); qq = new Int32Array(PLANE); }
+  const b0 = z * PLANE, L = s.L;
+  let open = 0;
+  for (let c = 0; c < PLANE; c++) { const i = b0 + c; const w = walk[i] === WALK_DOOR || isOpaque(s, i, occ) ? 1 : 0; wl[c] = w; if (!w) open++; }
+  if (!open) return;
+  sn.fill(0);
+  for (let start = 0; start < PLANE; start++) {
+    if (wl[start] || sn[start]) continue;
+    let h = 0, t = 0, edge = false, sky = 0, under = 0;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    qq[t++] = start; sn[start] = 1;
+    while (h < t) {
+      const c = qq[h++], x = c % W, y = (c / W) | 0;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true;
+      if (z >= skyZ[c]) sky++; else under++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (x > 0 && !wl[c - 1] && !sn[c - 1]) { sn[c - 1] = 1; qq[t++] = c - 1; }
+      if (x < W - 1 && !wl[c + 1] && !sn[c + 1]) { sn[c + 1] = 1; qq[t++] = c + 1; }
+      if (y > 0 && !wl[c - W] && !sn[c - W]) { sn[c - W] = 1; qq[t++] = c - W; }
+      if (y < H - 1 && !wl[c + W] && !sn[c + W]) { sn[c + W] = 1; qq[t++] = c + W; }
+      if (t > ROOM.maxTiles) edge = true;     // keep flooding (marks the area seen) but it is outdoors
+    }
+    if (edge || t > ROOM.maxTiles) continue;
+    const id = rooms.length;
+    if (id > 65535) break;
+    for (let k = 0; k < t; k++) room[b0 + qq[k]] = id;
+    let doors = 0, built = 0;
+    const dseen = new Set();
+    for (let k = 0; k < t; k++) {
+      const c = qq[k], x = c % W, y = (c / W) | 0;
+      const nb = [x > 0 ? c - 1 : -1, x < W - 1 ? c + 1 : -1, y > 0 ? c - W : -1, y < H - 1 ? c + W : -1];
+      for (const j of nb) {
+        if (j < 0 || !wl[j] || dseen.has(j)) continue;
+        dseen.add(j);
+        if (walk[b0 + j] === WALK_DOOR) doors++;
+        if (occ[b0 + j] >= 0) built++;
+      }
+    }
+    rooms.push({ id, z, n: t, x0, y0, x1, y1, first: b0 + start, doors, built, sky, under: under * 2 > t, roofed: sky === 0 });
+  }
+  void L;
+}
+/** D > 1 rooms pass: relabel the dirty levels, renumber the clean ones after them. */
+function roomsPass3(s, levels) {
+  const rt = s.rt, occ = rt.occ, walk = rt.walkCost;
+  const skyZ = rt.skyZ && rt.skyZ.length === PLANE ? rt.skyZ : skyZRebuild(s);
+  const old = rt.rooms || [null], room = rt.room instanceof Uint16Array && rt.room.length === N ? rt.room : new Uint16Array(N);
+  const byLevel = Array.from({ length: D }, () => []);
+  for (let id = 1; id < old.length; id++) { const r = old[id]; if (r) byLevel[r.z | 0].push(r); }
+  const rooms = [null];
+  for (let z = 0; z < D; z++) {
+    const b0 = z * PLANE;
+    if (levels.has(z)) { room.fill(0, b0, b0 + PLANE); floodLevel(s, z, occ, walk, room, rooms, skyZ); continue; }
+    const recs = byLevel[z];
+    if (!recs.length) continue;
+    const delta = rooms.length - recs[0].id;
+    if (delta !== 0) {
+      const ord = delta > 0 ? recs.slice().reverse() : recs;
+      for (const r of ord) {
+        const nid = r.id + delta;
+        for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) { const i = b0 + y * W + x; if (room[i] === r.id) room[i] = nid; }
+      }
+    }
+    for (const r of recs) rooms.push(delta ? { ...r, id: r.id + delta } : r);
+  }
+  rt.room = room; rt.rooms = rooms;
+  return rooms;
+}
+
 let setRoofFn = null;
 /** terrain.js hands its setRoof over (avoids an import cycle). */
 export function bindRoof(fn) { setRoofFn = fn; }
@@ -89,12 +176,14 @@ function autoRoof(s, r) {
   if (!setRoofFn) return 0;
   let n = 0;
   const sup = s.rt.support;
+  const skyZ = D > 1 ? (s.rt.skyZ && s.rt.skyZ.length === PLANE ? s.rt.skyZ : skyZRebuild(s)) : null;
   for (let id = 1; id < r.rooms.length; id++) {
     const rec = r.rooms[id];
     if (!rec.sky || !rec.built) continue;
+    const b0 = (rec.z | 0) * PLANE;
     for (let y = rec.y0; y <= rec.y1; y++) for (let x = rec.x0; x <= rec.x1; x++) {
-      const i = y * W + x;
-      if (r.room[i] === id && s.L.roof[i] === ROOF.OPEN && sup[i] <= ROOM.roofReach) { setRoofFn(s, i, ROOF.BUILT); n++; }
+      const i = b0 + y * W + x;
+      if (r.room[i] === id && s.L.roof[i] === ROOF.OPEN && sup[i] <= ROOM.roofReach && (!skyZ || (rec.z | 0) >= skyZ[y * W + x])) { setRoofFn(s, i, ROOF.BUILT); n++; }
     }
   }
   return n;
@@ -102,6 +191,20 @@ function autoRoof(s, r) {
 
 /** The endOfTick 'rooms' pass. */
 export function roomsPass(s) {
+  if (D > 1) {
+    const d = s.rt.dirty, levels = new Set();
+    const skyZ = s.rt.skyZ && s.rt.skyZ.length === PLANE ? s.rt.skyZ : null;
+    if (!s.rt.rooms || !s.rt.rooms.length || !d.tiles.length) for (let z = 0; z < D; z++) levels.add(z);
+    else for (let k = 0; k < d.tiles.length; k++) addDirtyLevels(s, d.tiles[k], levels, skyZ);
+    const r = { room: null, rooms: roomsPass3(s, levels) };
+    r.room = s.rt.room;
+    const n0 = d.tiles.length;
+    if (autoRoof(s, r)) {
+      for (let k = n0; k < d.tiles.length; k++) addDirtyLevels(s, d.tiles[k], levels, s.rt.skyZ && s.rt.skyZ.length === PLANE ? s.rt.skyZ : null);
+      roomsPass3(s, levels);
+    }
+    return;
+  }
   let r = roomsBuild(s);
   if (autoRoof(s, r)) r = roomsBuild(s);
   s.rt.room = r.room;
@@ -115,7 +218,8 @@ export function roomTiles(s, id) {
   const out = [], a = s.rt.room;
   const r = roomById(s, id);
   if (!r) return out;
-  for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) if (a[y * W + x] === id) out.push(y * W + x);
+  const b0 = (r.z | 0) * PLANE;
+  for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) if (a[b0 + y * W + x] === id) out.push(b0 + y * W + x);
   return out;
 }
 
@@ -151,9 +255,9 @@ export function roomContents(s, id) {
   const r = roomById(s, id);
   if (!r) return [];
   const seen = new Set(), out = [];
-  const a = s.rt.room, occ = s.rt.occ;
+  const a = s.rt.room, occ = s.rt.occ, b0 = (r.z | 0) * PLANE;
   for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
-    const i = y * W + x;
+    const i = b0 + y * W + x;
     if (a[i] !== id || occ[i] < 0 || seen.has(occ[i])) continue;
     seen.add(occ[i]);
     const b = s.bld[occ[i]];
@@ -202,8 +306,9 @@ export function roomInfo(s, id) {
   const contents = roomContents(s, id);
   const L = s.L, a = s.rt.room, light = s.rt.light, itemAt = s.rt.itemAt;
   let n = 0, beauty = 0, lightSum = 0, corpses = 0, blight = 0, stock = 0, wealth10 = 0, blocked = 0;
+  const b0 = (rec.z | 0) * PLANE;
   for (let y = rec.y0; y <= rec.y1; y++) for (let x = rec.x0; x <= rec.x1; x++) {
-    const i = y * W + x;
+    const i = b0 + y * W + x;
     if (a[i] !== id) continue;
     n++;
     const fd = floorDefById(L.floor[i]);

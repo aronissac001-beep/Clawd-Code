@@ -23,7 +23,7 @@
 //   lost_cache      a crate of goods by an edge road; starfall: a lumenite-bright crater with gems
 
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
-import { W, H, N, TER, ROOF } from '../core/grid.js';
+import { W, H, N, TER, ROOF, PLANE, D } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { colById } from '../core/state.js';
 import { toPlain, fromPlain } from '../core/schema.js';
@@ -219,7 +219,7 @@ const HERD = L({
     const i = edgeTile(s, ['n', 'e', 's', 'w'][nextU32(s, 'story') % 4]);
     if (i === null) return null;
     const n = roll(s, 6, 12);
-    for (let k = 0; k < n; k++) spawnAnimal(s, 'deer', Math.min(W - 1, Math.max(0, (i % W) + (k % 3) - 1)), Math.min(H - 1, Math.max(0, ((i / W) | 0) + ((k / 3) | 0) - 1)));
+    for (let k = 0; k < n; k++) spawnAnimal(s, 'deer', Math.min(W - 1, Math.max(0, (i % W) + (k % 3) - 1)), Math.min(H - 1, Math.max(0, (((i % PLANE) / W) | 0) + ((k / 3) | 0) - 1)), D > 1 ? { z: (i / PLANE) | 0 } : {});
     note(s, 'herd_passing', {}, 'minor');
     return null;
   },

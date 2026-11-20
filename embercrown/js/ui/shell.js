@@ -27,11 +27,18 @@
 // viewer: no Build, Orders, Zones or speed; every command is refused; nothing ticks (tick() is a no-op
 // for a fallen colony). The camera, the peek cards and the subject sheets stay, and the bottom bar holds
 // Annals, The end, Export and Leave. A colony that has already fallen (View the ruin) opens this way.
+// Stage Z1 (EMBERCROWN-FORTRESS.md 4.1-4.5; step E7): on a map with D > 1 the shell mounts the level controls
+// (levels.js) and works on the view level (the camera's `level`, UI memory): taps pick on that level only,
+// tools send their rectangles with its z, the rail and the alerts carry level badges and jump to the level,
+// Follow follows a colonist across levels, the alert stack sits above the capsule and the map button moves to
+// the top right (portrait). Long-press Orders reopens the last Orders tool (Recent). A D = 1 colony is unchanged.
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets } from './layout.js';
 import { SpeedButton } from './speed.js';
 import { Loupe } from './loupe.js';
-import { TILE, W, H } from '../game/core/grid.js';
+import { TILE, W, H, D, zS, PLANE } from '../game/core/grid.js';
+import { mountLevels, levelWord } from './levels.js';
+import { levelText } from '../game/tools/levels.js';
 import { dayOf, seasonOf, clockText, SEASONS, SEASON_NAMES, TPS } from '../game/core/time.js';
 import { step } from '../game/core/sim.js';
 import { dispatch, on as onEvent } from '../game/core/events.js';
@@ -85,6 +92,7 @@ const SKIN = ['#f1d2b0', '#e2b98f', '#c99a6e', '#a8774f', '#7e5536', '#5a3b26'];
 
 export function mountShell(root, api) {
   const s = api.state;
+  const deep = D > 1;   // Stage Z1: a world with levels (EMBERCROWN-FORTRESS.md 4)
   const doc = document, body = doc.body;
   body.classList.add('ec-game');
   clear(root);
@@ -109,13 +117,14 @@ export function mountShell(root, api) {
   const strip = h('div.ec-stockstrip', { hidden: true, role: 'status' });
   const alerts = h('div.ec-alerts', { 'aria-label': 'Alerts' });
   const mapBtn = h('button.ec-ibtn.ec-mapbtn', { type: 'button', 'data-act': 'map', 'aria-label': 'Map', html: icon('map') });
-  const mini = h('div.ec-minimap', { hidden: true }, h('canvas.ec-minimap-cv'));
+  const mini = h('div.ec-minimap', { hidden: true }, h('canvas.ec-minimap-cv'), D > 1 ? h('canvas.ec-zstrip-cv', { 'aria-label': 'Levels' }) : null);
   const hint = h('div.ec-hint', { hidden: true, role: 'status' });
   const pausedTag = h('div.ec-paused-tag', { text: 'Paused', 'aria-hidden': 'true' });
   const frame = h('div.ec-paused-frame', { 'aria-hidden': 'true' }, pausedTag);
   const speedHost = h('div.ec-speed-host');
   const tabs = h('nav.ec-tabs', { 'aria-label': 'Menus' });
   const toolbar = h('div.ec-toolbar', { hidden: true, role: 'toolbar', 'aria-label': 'Tool' });
+  const lvrow = h('div.ec-lvrow', { hidden: true, role: 'group', 'aria-label': 'Levels' });   // the Levels and depth chips (4.4)
   const bottom = h('footer.ec-bottom', null, speedHost, tabs, toolbar);
   const peek = h('section.ec-peek', { hidden: true, 'aria-label': 'Selection' });
   const panel = h('section.ec-panel', { hidden: true });
@@ -123,7 +132,7 @@ export function mountShell(root, api) {
   const ctxMenu = h('div.ec-ctxmenu', { hidden: true, role: 'menu' });
   const ctxScrim = h('div.ec-ctx-scrim', { hidden: true });
   const toasts = h('div.ec-toasts', { 'aria-live': 'polite' });
-  root.append(frame, top, rail, strip, alerts, mapBtn, mini, hint, peek, panel, sheet, bottom, ctxScrim, ctxMenu, toasts);
+  root.append(frame, top, rail, strip, alerts, mapBtn, mini, hint, peek, panel, sheet, lvrow, bottom, ctxScrim, ctxMenu, toasts);
   const loupe = new Loupe(root);
   const toast = new Toaster(toasts);
 
@@ -132,6 +141,19 @@ export function mountShell(root, api) {
   r.setState(s);
   const cam = new Camera();
   cam.zoom = 1;
+  /** The view level (4.4: every tool and pick works on it); 0 on a D = 1 map. */
+  const viewZ = () => (deep ? (cam.level === null || cam.level === undefined ? zS : cam.level) : 0);
+  if (deep) { const c0 = s.col.find((c) => c && !(c.hp && c.hp.dead)); cam.setLevel(c0 ? c0.z | 0 : zS); }
+  let levels = null;   // the level controls (mounted below, D > 1 only)
+  /** Set the view level (the capsule, the ruler, the rail, alerts, Follow). */
+  function setZ(z, why = 'ui') {
+    if (!deep || !cam.setLevel(z)) return false;
+    if (why !== 'follow' && ui.follow !== null && (s.col.find((c) => c.id === ui.follow) || {}).z !== z) ui.follow = null;
+    ui.levelSeen = true;
+    if (ui.tool) showHint();
+    dirtyChrome = true; loop.poke();
+    return true;
+  }
   const flags = { covered: false, saver: false, paused: false, combat: false, moving: true, fast: false };
   let lastMinute = -1, dirtyChrome = true, peekT = 0;
   // Settings that reach the renderer and the loop (A's save/settings.js; the CSS reads data-ec-*)
@@ -156,6 +178,7 @@ export function mountShell(root, api) {
       if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) { renderStock(); renderThreat(); } }
       if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); }
       if (ui.map) drawMini();
+      if (levels) levels.frame();
       peekT += dt;
       if (peekT > 1 && ui.peek && !ui.sheet) { peekT = 0; renderPeek(true); }
     },
@@ -273,16 +296,20 @@ export function mountShell(root, api) {
   }
   let railKey = null;
   function renderRail() {
-    const key = s.col.map((c) => `${c.id}:${c.name}:${c.drafted ? 1 : 0}:${Math.round(c.mood / FIX / 10)}`).join('|') + (ui.sel && ui.sel.kind === 'colonist' ? ':' + ui.sel.id : '');
+    const vz = viewZ();
+    const key = s.col.map((c) => `${c.id}:${c.name}:${c.drafted ? 1 : 0}:${Math.round(c.mood / FIX / 10)}:${deep && (c.z | 0) !== vz ? c.z | 0 : ''}`).join('|') + (ui.sel && ui.sel.kind === 'colonist' ? ':' + ui.sel.id : '');
     if (key === railKey) return;
     railKey = key;
     clear(rail);
     if (!s.col.length) { rail.append(h('p.ec-rail-empty', { text: 'No colonists.' })); return; }
     for (const c of s.col) {
-      const b = h('button.ec-rail-btn', { type: 'button', role: 'listitem', 'data-act': 'colonist', 'data-col': String(c.id), 'aria-label': c.name }, portrait(c));
+      const away = deep && (c.z | 0) !== vz;
+      const b = h('button.ec-rail-btn', { type: 'button', role: 'listitem', 'data-act': 'colonist', 'data-col': String(c.id), 'aria-label': away ? `${c.name}, ${levelWord(c.z | 0)}` : c.name }, portrait(c),
+        away ? h('span.ec-lvbadge', { text: levelText(c.z | 0), 'aria-hidden': 'true' }) : null);
       if (ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id) b.classList.add('sel');
       onTap(b, () => {
         const again = ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id;
+        if (deep) setZ(c.z | 0, 'rail');   // 4.3: the view level follows the portrait
         select({ kind: 'colonist', id: c.id }, again);
         centerOn(c.x, c.y);
       }, {
@@ -300,9 +327,22 @@ export function mountShell(root, api) {
   const tracker = alertTracker(s, { get letters() { return letters; } });
   let alertKey = null;
   /** Jump to an alert's subject (10.6): a colonist, a building, a tile or the threat. */
+  /** The level of an alert's subject (4.3), or null (no subject, or a D = 1 map). */
+  function alertZ(a) {
+    if (!deep) return null;
+    const t = a.target || {};
+    if (t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); return c ? c.z | 0 : null; }
+    if (t.building !== undefined && s.bld[t.building]) return s.bld[t.building].z | 0;
+    if (t.animal !== undefined) { const x = s.anim.find((q) => q.id === t.animal); return x ? x.z | 0 : null; }
+    if (t.tile) return t.tile.length > 2 ? t.tile[2] | 0 : t.z !== undefined ? t.z | 0 : zS;
+    if (t.threat) return zS;
+    return null;
+  }
   function alertGo(a) {
     const t = a.target || {};
-    if (!t.open) toast.show(a.text + '.');
+    const az = alertZ(a);
+    if (az !== null) setZ(az, 'alert');
+    if (!t.open) toast.show(a.text + (az !== null ? ` · ${levelWord(az)}` : '') + '.');
     if (t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); } }
     else if (t.building !== undefined && s.bld[t.building]) { const b = s.bld[t.building]; centerOn((b.x + 1) * TILE, (b.y + 1) * TILE); select({ kind: 'building', id: b.id, x: b.x, y: b.y }); }
     else if (t.threat) { const v = chipView(s); if (v) { jumpToEdge(ctx, v.view); select({ kind: 'raid', id: v.view.id }); } }
@@ -312,8 +352,8 @@ export function mountShell(root, api) {
     else if (t.tile) {
       // a tile subject (a fire, a rumbling roof, an unburied body): centre on it and show its card
       centerOn((t.tile[0] + 0.5) * TILE, (t.tile[1] + 0.5) * TILE);
-      const i = t.tile[1] * W + t.tile[0];
-      select({ kind: 'tile', id: i, tile: i, x: t.tile[0], y: t.tile[1] });
+      const i = t.tile[1] * W + t.tile[0] + (az !== null ? az * PLANE : 0);
+      select({ kind: 'tile', id: i, tile: i, x: t.tile[0], y: t.tile[1], z: az !== null ? az : undefined });
     }
   }
   /** Alert targets that open a sheet (10.6 "jump to its subject"). */
@@ -331,17 +371,21 @@ export function mountShell(root, api) {
   }
   function renderAlerts(force = true) {
     const list = ruin.on ? [] : (api.demo && api.demo.alerts) || tracker.list();
-    const key = list.map((a) => `${a.id || a.icon}:${a.tone}:${a.text}`).join('|');
+    const key = list.map((a) => `${a.id || a.icon}:${a.tone}:${a.text}:${deep ? alertZ(a) : ''}`).join('|') + (deep ? `|${viewZ()}|${ui.peek ? 1 : 0}|${ui.landscape ? 1 : 0}` : '');
     if (!force && key === alertKey) return;
     alertKey = key;
     clear(alerts);
-    const vis = list.slice(0, SIZES.alertsVisible);
+    // with levels the stack sits above the capsule: 3 (2 with the peek card, 2 in landscape) plus "+N" (4.1)
+    const vis = list.slice(0, deep ? (ui.landscape || ui.peek ? 2 : 3) : SIZES.alertsVisible);
+    const vz = viewZ();
     for (const a of vis) {
-      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'data-alert': a.id || a.icon, 'aria-label': a.text, html: icon(a.icon) });
-      // long-press: explain and "snooze 1 day" (10.6)
+      const az = alertZ(a);
+      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'data-alert': a.id || a.icon, 'aria-label': a.text + (az !== null ? `, ${levelWord(az)}` : ''), html: icon(a.icon) });
+      if (az !== null && az !== vz) b.append(h('span.ec-lvbadge', { text: levelText(az), 'aria-hidden': 'true' }));
+      // long-press: explain and "snooze 1 day" (10.6); the explanation names the level (4.3)
       onTap(b, () => alertGo(a), { longpress: () => {
         const rc = b.getBoundingClientRect(), cv = canvas.getBoundingClientRect();
-        toast.show(`${a.text}. ${a.why || ''}`.trim());
+        toast.show(`${a.text}${az !== null ? ' · ' + levelWord(az) : ''}. ${a.why || ''}`.trim());
         if (a.id) showCtx({ x: rc.left - cv.left, y: rc.top - cv.top + rc.height + 40 }, [['Snooze 1 day', () => { tracker.snooze(a.id); renderAlerts(); }, 'alert-snooze'], ['Show me', () => alertGo(a), 'alert-go']]);
       } });
       alerts.append(b);
@@ -358,7 +402,9 @@ export function mountShell(root, api) {
     clear(tabs);
     for (const t of ruin.on ? RUIN_TABS : TABS) {
       const b = h('button.ec-tab', { type: 'button', 'data-act': ruin.on ? 'ruin-' + t.id : 'tab', 'data-tab': t.id, 'aria-label': t.label }, h('span', { html: icon(t.icon) }), h('span.ec-tab-l', { text: t.label }));
-      onTap(b, () => (ruin.on ? ruinTab(t.id) : t.id === 'colony' ? openColony(ctx, 'People') : togglePanel(t.id)));
+      // long-press Orders: Recent, the last Orders tool with its settings (4.4 tap budgets)
+      onTap(b, () => (ruin.on ? ruinTab(t.id) : t.id === 'colony' ? openColony(ctx, 'People') : togglePanel(t.id)),
+        !ruin.on && t.id === 'orders' ? { longpress: () => { if (ui.recentOrder) startTool(ui.recentOrder); else togglePanel('orders'); } } : undefined);
       tabs.append(b);
     }
   }
@@ -543,6 +589,7 @@ export function mountShell(root, api) {
     body.classList.toggle('has-panel', !!ui.panel);
     body.classList.toggle('has-sheet', !!ui.sheet);
     if (covered) { ui.stockOpen = false; strip.hidden = true; }
+    if (deep) renderAlerts(false);   // the stack above the capsule shows 2 with the peek card (4.1)
     updateSelOverlay();
     loop.poke();
   }
@@ -559,6 +606,7 @@ export function mountShell(root, api) {
     else if (okText) toast.show(okText);
     dirtyChrome = true; loop.poke();
     if (ui.sel && !ui.sheet) renderPeek();
+    if (levels && res && res.ok) levels.renderGhost(true);
     return res || { ok: false };
   }
   function centerOn(x, y) { ui.follow = null; cam.centerOn(x, y); loop.poke(); }
@@ -566,6 +614,7 @@ export function mountShell(root, api) {
     if (ui.follow === null) return;
     const c = s.col.find((x) => x.id === ui.follow);
     if (!c) { ui.follow = null; return; }
+    if (deep && (c.z | 0) !== viewZ()) setZ(c.z | 0, 'follow');   // 4.3: Follow takes the stairs with them
     cam.centerOn(c.x, c.y);
   }
 
@@ -591,8 +640,11 @@ export function mountShell(root, api) {
 
   // ---- tools (10.2, 10.3, 10.11) -----------------------------------------------------------------------
   let drawHook = null;
+  const GHOST_KIND = (sp) => (sp.kind === 'carve' ? 'carve' : sp.kind === 'vert' ? sp.id : sp.kind === 'rect' && sp.id === 'mine' ? 'mine' : null);
   function startTool(spec) {
+    if (ui.panel === 'orders' || (ui.recentOrder && ui.recentOrder === spec)) ui.recentOrder = spec;
     if (ui.tool) endTool();
+    if (levels) levels.closeRuler();
     closePanel(false); closePeek(false); closeSheet(false);
     ui.follow = null;
     ui.tool = createTool(spec, ctx);
@@ -602,6 +654,7 @@ export function mountShell(root, api) {
     renderBar(); showHint();
     drawHook = (g, st, view) => { if (ui.tool && ui.tool.draw) ui.tool.draw(g, view); };
     BUS.draw.overlay.push(drawHook);
+    if (levels) levels.setGhost(GHOST_KIND(spec));
     syncChrome();
     return ui.tool;
   }
@@ -611,7 +664,8 @@ export function mountShell(root, api) {
     ui.tool = null; ui.stroke = null; loupe.hide();
     if (drawHook) { const k = BUS.draw.overlay.indexOf(drawHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); drawHook = null; }
     body.classList.remove('tooling');
-    tabs.hidden = false; toolbar.hidden = true; hint.hidden = true;
+    if (levels) levels.setGhost(null);   // the ghost column stays 3 s after Done (4.4)
+    tabs.hidden = false; toolbar.hidden = true; hint.hidden = true; lvrow.hidden = true; body.classList.remove('has-lvrow');
     r.setOverlay('preview', null); r.setOverlay('stripes', null);
     syncChrome();
   }
@@ -621,8 +675,20 @@ export function mountShell(root, api) {
   function renderBar() {
     const t = ui.tool;
     if (barDown) { setTimeout(renderBar, 120); return; }   // never rebuild a button under a finger
-    clear(toolbar);
+    clear(toolbar); clear(lvrow);
+    lvrow.hidden = true; body.classList.remove('has-lvrow');
     if (!t) return;
+    const row = t.row ? t.row() : [];
+    if (row.length) {
+      for (const c of row) {
+        const b = h('button.ec-lvchip' + (c.on ? '.on' : '') + (c.wide ? '.wide' : ''), { type: 'button', 'data-act': 'lv-' + c.id, 'aria-pressed': c.on ? 'true' : 'false', text: c.label });
+        onTap(b, () => { c.act(); showHint(); loop.poke(); });
+        lvrow.append(b);
+      }
+      lvrow.hidden = false; body.classList.add('has-lvrow');
+      const on = lvrow.querySelector('.on');
+      if (on && on.scrollIntoView && on.offsetLeft + on.offsetWidth > lvrow.clientWidth) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
     const chips = h('div.ec-tchips');
     for (const c of t.chips()) {
       const b = h('button.ec-tchip' + (c.on ? '.on' : ''), { type: 'button', 'data-act': 'chip-' + c.id, 'aria-label': c.label }, c.icon ? h('span', { html: icon(c.icon) }) : null, h('span.ec-tchip-l', { text: c.label }));
@@ -633,6 +699,7 @@ export function mountShell(root, api) {
     onTap(undo, () => { t.doUndo(); showHint(); });
     const done = h('button.ec-tdone', { type: 'button', 'data-act': 'done', text: t.pending ? 'Build' : 'Done' });
     if (t.pending && t.kind === 'carve') done.textContent = 'Carve';
+    if (t.kind === 'vert') done.textContent = 'Done';
     onTap(done, () => endTool(true));
     toolbar.append(chips, undo, done);
     // a chip row wider than its slot fades at the edge (it scrolls); the fade goes once at the end
@@ -648,11 +715,13 @@ export function mountShell(root, api) {
     if (t.overlay === 'zones') r.setOverlay('zones', true);
   }
   const worldAt = (p) => cam.screenToWorld(p.x, p.y);
+  /** The tile under a world point; with levels it carries the view level as z (4.4). */
+  const tileZ = (wx, wy) => { const t = tileAt(wx, wy); if (deep) t.z = viewZ(); return t; };
   function strokeTo(p) {
     const st = ui.stroke;
     st.p = p;
     const wpt = worldAt(p);
-    const b = tileAt(wpt.x, wpt.y);
+    const b = tileZ(wpt.x, wpt.y);
     if (!st.last || st.last.x !== b.x || st.last.y !== b.y) { st.last = b; ui.tool.strokeMove(b); showHint(); }
     loupe.show();
     loop.poke();
@@ -683,13 +752,15 @@ export function mountShell(root, api) {
   // ---- world gestures ------------------------------------------------------------------------------
   let pressAt = null, held = false;
   const input = new GestureInput(canvas, {
-    press: (p) => { pressAt = p; held = false; },
+    press: (p) => { pressAt = p; held = false; if (deep) body.classList.add('wgest'); },
+    // the capsule locks while a world gesture owns a pointer (4.1)
+    release: () => { if (deep) setTimeout(() => { if (!input.pts || !input.pts.size) body.classList.remove('wgest'); }, 0); },
     longpress: (p) => {
       held = true;
       if (ui.tool) return;   // in a tool: the next drag erases (10.2)
       const wpt = worldAt(p);
       const prevCol = ui.sel && ui.sel.kind === 'colonist' ? ui.sel.id : null;
-      const target = pickAt(s, wpt.x, wpt.y, cam.zoom, null);
+      const target = pickAt(s, wpt.x, wpt.y, cam.zoom, null, undefined, deep ? viewZ() : null);
       if (!target) return;
       // with a colonist selected, a job under the finger offers "Prioritise: <work> here"
       const items = contextItems(ctx, target, target.kind !== 'colonist' ? prevCol : null);
@@ -699,20 +770,22 @@ export function mountShell(root, api) {
       if (speed.isOpen) { speed.close(); return; }
       if (!ctxMenu.hidden) { hideCtx(); return; }
       const wpt = worldAt(p);
-      if (ui.tool) { ui.tool.tap(tileAt(wpt.x, wpt.y)); showHint(); renderBar(); loop.poke(); return; }
+      if (ui.tool) { ui.tool.tap(tileZ(wpt.x, wpt.y)); showHint(); renderBar(); loop.poke(); return; }
+      if (levels && levels.rulerOpen) { levels.closeRuler(); return; }
       if (ui.panel) { closePanel(); return; }
       if (ui.sheet) { closeSheet(); return; }
       const prev = ui.sel;
       // drafted orders (9.5, 10.2): with drafted colonists selected, a tap on a hostile attacks it and a
       // tap on the ground moves them there (a tap on a colonist still selects)
       const orderIds = prev && prev.kind === 'drafted' ? draftedIds(s) : prev && prev.kind === 'colonist' && (s.col.find((c) => c.id === prev.id) || {}).drafted ? [prev.id] : [];
-      const foe = foeAt(s, wpt.x, wpt.y, cam.zoom);
+      const foe0 = foeAt(s, wpt.x, wpt.y, cam.zoom);
+      const foe = foe0 && (!deep || (foe0.z | 0) === viewZ()) ? foe0 : null;   // pick by z (4.4)
       if (orderIds.length) {
-        const hit = pickAt(s, wpt.x, wpt.y, cam.zoom, null);
+        const hit = pickAt(s, wpt.x, wpt.y, cam.zoom, null, undefined, deep ? viewZ() : null);
         if (!(hit && hit.kind === 'colonist')) { const tl = tileAt(wpt.x, wpt.y); orderDrafted(ctx, orderIds, foe ? { foe } : { x: tl.x, y: tl.y }); return; }
       }
       if (foe) { const raid = s.raids.find((r) => r.members.includes(foe.id)); select({ kind: 'raid', id: raid ? raid.id : null }); return; }
-      const sel = pickAt(s, wpt.x, wpt.y, cam.zoom, prev);
+      const sel = pickAt(s, wpt.x, wpt.y, cam.zoom, prev, undefined, deep ? viewZ() : null);
       if (!sel) { closePeek(); return; }
       const again = sel.kind === 'colonist' ? sel.again : false;
       select(sel, again);
@@ -720,7 +793,7 @@ export function mountShell(root, api) {
     dragstart: (p) => {
       ui.follow = null;
       if (ui.tool && ui.tool.kind !== 'pick') {
-        const w0 = worldAt(pressAt || p); const a = tileAt(w0.x, w0.y);
+        const w0 = worldAt(pressAt || p); const a = tileZ(w0.x, w0.y);
         ui.stroke = { a, last: a, p };
         ui.tool.strokeStart(a, held);
         strokeTo(p);
@@ -748,13 +821,16 @@ export function mountShell(root, api) {
   // ---- minimap ---------------------------------------------------------------------------------------
   const miniCv = mini.querySelector('canvas');
   onTap(mapBtn, () => { ui.map = !ui.map; mini.hidden = !ui.map; mapBtn.classList.toggle('on', ui.map); loop.poke(); });
+  const zCv = mini.querySelector('.ec-zstrip-cv');
   mini.addEventListener('pointerdown', (e) => {
+    if (zCv && e.target === zCv) { if (levels) levels.openRuler(); return; }   // the z-strip opens the depth ruler (4.5)
     const rc = miniCv.getBoundingClientRect();
     centerOn(((e.clientX - rc.left) / rc.width) * W * TILE, ((e.clientY - rc.top) / rc.height) * H * TILE);
   });
   function drawMini() {
     const sz = 160, dpr = Math.min(2, devicePixelRatio || 1);
     if (miniCv.width !== sz * dpr) { miniCv.width = miniCv.height = sz * dpr; }
+    if (zCv && r.drawZStrip) { const zw = 16, zh = D * 4; if (zCv.width !== zw * dpr) { zCv.width = zw * dpr; zCv.height = zh * dpr; } r.drawZStrip(zCv, {}); }
     if (r.drawMinimap) { r.drawMinimap(miniCv, {}); return; }
     const g = miniCv.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -779,6 +855,8 @@ export function mountShell(root, api) {
     follow: (id) => { ui.follow = id; if (id !== null) toast.show('Following. Pan the map to stop.'); loop.poke(); },
     following: () => ui.follow,
     isLand: () => ui.landscape,
+    /** The view level (4.4) and its setter; levels: the level controls (null on a D = 1 map). */
+    z: viewZ, setLevel: (z) => setZ(z, 'ctx'), get levels() { return levels; }, deep,
     quit: () => { shell.destroy(); api.quit(); },
     get prevColonist() { return ui.prevColonist; },
     openColony: (tab) => openColony(ctx, tab),
@@ -791,6 +869,16 @@ export function mountShell(root, api) {
     openDemand: () => openDemand(ctx, letterHooks),
     get letters() { return letters; },
   };
+
+  // ---- the level controls (4.1-4.5; D > 1 only) ----------------------------------------------------------
+  if (deep) {
+    levels = mountLevels(root, ctx, {
+      getZ: viewZ, setZ: (z, why) => setZ(z, why),
+      showCtx: (p, items) => { const cv = canvas.getBoundingClientRect(); showCtx({ x: p.x - cv.left, y: p.y - cv.top }, items); },
+      centerTile: (x, y) => centerOn((x + 0.5) * TILE, (y + 0.5) * TILE),
+      alertLevels: () => tracker.list().map(alertZ).filter((z) => z !== null),
+    });
+  }
 
   // ---- the coach (10.9), the Dawn Ledger (10.10), alerts and threats (10.6): checked once a second ----
   const guide = mountGuide(root, ctx);
@@ -920,6 +1008,7 @@ export function mountShell(root, api) {
     if (!ruin.on && isFallen(s)) { try { checkFall(); } catch (_) { /* Node */ } if (!ruin.on) enterRuin(true); }
     if (ruin.on) { renderClock(); return; }
     perkToasts();
+    if (levels) levels.tick();
     guide.check();
     tracker.update(); renderAlerts(false);
     for (const ev of watch.poll()) onThreat(ev);
@@ -965,6 +1054,7 @@ export function mountShell(root, api) {
 
   const shell = {
     state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker, letters,
+    get levels() { return levels; }, viewZ, setLevel: (z) => setZ(z, 'test'),
     alertGo: (id) => { const a = tracker.list().find((x) => x.id === id); if (a) alertGo(a); return !!a; },
     get ruin() { return ruin.on; }, showEnd: () => showEnd(), openAnnals: () => openAnnals(false),
     setSpeed: (v) => { setSpeed(v); speed.render(); }, resume: () => onResume(), uiSecond: () => uiSecond(),
@@ -978,6 +1068,7 @@ export function mountShell(root, api) {
     destroy() {
       loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
+      if (levels) levels.destroy();
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);
       window.removeEventListener('ec2:fallen', onFallen);
@@ -988,7 +1079,7 @@ export function mountShell(root, api) {
       if (window.visualViewport) visualViewport.removeEventListener('resize', layout);
       speed.close(); speed.fan.remove(); speed.scrim.remove();
       toast.clear(); clear(root); root.classList.add('hidden');
-      body.classList.remove('ec-game', 'ec-ruin', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling', 'has-ledger', 'has-prompt');
+      body.classList.remove('ec-game', 'ec-ruin', 'land', 'narrow', 'paused', 'rail-hidden', 'has-peek', 'has-panel', 'has-sheet', 'tooling', 'has-ledger', 'has-prompt', 'wgest', 'has-lvrow');
       // a fresh canvas drops the gesture listeners and the 2D context with the old one
       const fresh = canvas.cloneNode(false); fresh.classList.remove('ec-world'); fresh.width = fresh.height = 0;
       canvas.replaceWith(fresh);

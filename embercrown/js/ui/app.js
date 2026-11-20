@@ -10,7 +10,8 @@
 // `?debug=1&safe=t,r,b,l` emulates safe-area insets (layout.js).
 import { app, continueColony, saveNow, backupColony, skipBackup, moveToApp, pasteColonyFromSafari, importColonyFile, isStandalone, storageInfo, readSettings, writeSettings, colonyRoom } from '../main.js';
 import { listColonies, exportBlob, importBlob } from '../game/save/slots.js';
-import { installSim, foundColony } from '../game/core/setup.js';
+import { installSim, foundColony, FORTRESS_D } from '../game/core/setup.js';
+import { fortressRequested } from '../game/core/flags.js';
 import { randomSeedText } from '../engine/rng.js';
 import { STAGE } from './stage.js';
 import { applyCommand } from '../game/core/commands.js';
@@ -33,7 +34,8 @@ export function foundNew(seed = randomSeedText(), opts = {}) {
   useStage();
   const room = colonyRoom ? colonyRoom() : null;
   if (room) throw new Error(room);
-  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null });
+  const d = fortressRequested(typeof location !== 'undefined' ? location.search : '') ? FORTRESS_D : 1;   // Stage Z1: ?fortress=1 (flags.js)
+  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d });
   app.s = s; app.log = [];
   saveNow('new').catch(() => null);
   return s;

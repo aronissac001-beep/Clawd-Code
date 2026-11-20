@@ -151,14 +151,25 @@ export const ORDERS = Object.freeze([
   { id: 'forbid', label: 'Forbid / Allow', icon: 'lock', tool: { kind: 'rect', id: 'forbid' } },
   { id: 'cancel', label: 'Cancel', icon: 'x', tool: { kind: 'rect', id: 'cancel' } },
 ]);
-const ORDER_SUB = { mine: 'Drag over rock', carve: 'A hall with its pillars', chop: 'Drag over trees', harvest: 'Ripe crops and wild plants', haul: 'Tap a stack: carried next',
+/** Stage Z1 (EMBERCROWN-FORTRESS.md 4.4): the level orders, next to Mine and Carve hall on a map with levels. */
+export const LEVEL_ORDERS = Object.freeze([
+  { id: 'stairs', label: 'Stairs', icon: 'up', tool: { kind: 'vert', id: 'stairs' } },
+  { id: 'ramp', label: 'Ramp', icon: 'region', tool: { kind: 'vert', id: 'ramp' } },
+  { id: 'channel', label: 'Channel', icon: 'pick', tool: { kind: 'vert', id: 'channel' } },
+]);
+/** The Orders list for this colony: with levels, Stairs beside Mine (first row, both orientations), then Carve hall, Channel, Ramp. */
+export const ordersFor = (deep) => (deep ? [ORDERS[0], LEVEL_ORDERS[0], ORDERS[1], LEVEL_ORDERS[2], LEVEL_ORDERS[1], ...ORDERS.slice(2)] : ORDERS);
+const ORDER_SUB = { stairs: 'Tap: a stair down or up', ramp: 'Joins a level to the one above', channel: 'Opens a floor to below', mine: 'Drag over rock', carve: 'A hall with its pillars', chop: 'Drag over trees', harvest: 'Ripe crops and wild plants', haul: 'Tap a stack: carried next',
   hunt: 'Tap an animal: meat and hide', tame: 'Tap an animal: into a pen', smooth: 'Smooth stone walls and floors', cancel: 'Clear marks and plans',
   deconstruct: 'Take structures down', forbid: 'Keep items untouched' };
 const ORDER_LATER = { harvest: 'Comes with farming', hunt: 'Comes with animals', tame: 'Comes with animals', smooth: 'Comes with stoneworking' };
 export function ordersPanel(el, ctx) {
   const grid = h('div.ec-grid');
   grid.append(h('p.ec-note.ec-span.ec-help-line', { text: 'Orders mark work: colonists whose roles cover it do it. Long-press then drag removes marks.' }));
-  for (const o of ORDERS) {
+  // Recent (4.4 tap budgets): the last Orders tool, with its settings (long-press Orders opens it too)
+  const rec = ctx.ui && ctx.ui.recentOrder ? ordersFor(!!ctx.deep).find((o) => o.tool && o.tool.kind === ctx.ui.recentOrder.kind && o.tool.id === ctx.ui.recentOrder.id) : null;
+  if (rec) grid.append(card(`Again: ${rec.label}`, rec.icon, { sub: 'The last order', act: 'order-recent', toast: ctx.toast, onPick: () => ctx.startTool(ctx.ui.recentOrder) }));
+  for (const o of ordersFor(!!ctx.deep)) {
     const later = o.stage && !availableIn(o, STAGE) ? ORDER_LATER[o.id] || 'Comes later' : null;
     grid.append(card(o.label, o.icon, { sub: ORDER_SUB[o.id], locked: o.locked || later, act: 'order-' + o.id, toast: ctx.toast, onPick: () => ctx.startTool(o.tool) }));
   }

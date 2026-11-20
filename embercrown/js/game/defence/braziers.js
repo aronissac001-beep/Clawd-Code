@@ -13,10 +13,10 @@ export const DEFENCE = { litHollowPct: 125, litMinLevel: 2 };
 
 const isFoe = (e) => !!e && 'raid' in e && 'kind' in e;
 export const isHollow = (foe) => { const d = def('raider', foe.kind); return !!(d && (d.kind === 'hollow' || (d.tags || []).includes('hollow'))); };
-export const litAt = (s, wx, wy) => s.rt.light[clamp(tileOfW(wy), 0, H - 1) * W + clamp(tileOfW(wx), 0, W - 1)] >= DEFENCE.litMinLevel;
+export const litAt = (s, wx, wy, z = 0) => s.rt.light[(z | 0) * W * H + clamp(tileOfW(wy), 0, H - 1) * W + clamp(tileOfW(wx), 0, W - 1)] >= DEFENCE.litMinLevel;
 
 /** BUS.dmgMult handler. */
 export function litBonus(s, attacker, target) {
   if (!isFoe(target) || !isHollow(target)) return 1;
-  return litAt(s, target.x, target.y) ? DEFENCE.litHollowPct / 100 : 1;
+  return litAt(s, target.x, target.y, target.z) ? DEFENCE.litHollowPct / 100 : 1;
 }

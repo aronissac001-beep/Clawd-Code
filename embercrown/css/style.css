@@ -760,3 +760,119 @@ body.land .ec-card-sub { grid-column: 1; }
   :root[data-ec-text="130"] body:not(.land) .ec-card-ic { grid-row: auto; }
   :root[data-ec-text="130"] body:not(.land) .ec-card-sub, :root[data-ec-text="130"] body:not(.land) .ec-card-why { grid-column: 1; }
 }
+
+/* ---------- Stage Z1 E7: levels (EMBERCROWN-FORTRESS.md 4.1-4.5; only on a map with D > 1: body.has-levels) ---------- */
+/* the capsule (portrait: bottom right, 8 pt above the bottom bar, sliding with the peek card; landscape: bottom left) */
+.ec-levels {
+  position: fixed; z-index: 9; right: calc(var(--sa-r) + 8px); bottom: calc(var(--sa-b) + var(--bar) + 8px);
+  display: flex; flex-direction: row; align-items: flex-end; gap: 8px; transition: bottom 180ms ease; pointer-events: none;
+}
+.ec-levels > * { pointer-events: auto; }
+#hud > .ec-levels, #hud > .ec-lv-bubble { pointer-events: none; }   /* only the controls take touches, never the empty box */
+body.has-peek:not(.land) .ec-levels { bottom: calc(var(--sa-b) + var(--bar) + var(--peek) + 8px); }
+body.has-panel:not(.land) .ec-levels, body.has-sheet:not(.land) .ec-levels, body.has-sheet.land .ec-levels { display: none; }
+body.land .ec-levels { right: auto; left: calc(var(--sa-l) + 8px); bottom: calc(var(--sa-b) + 8px); flex-direction: row-reverse; }
+body.wgest .ec-levels, body.wgest .ec-levels * { pointer-events: none !important; }   /* the capsule locks during world gestures */
+.ec-lv-capsule {
+  display: flex; flex-direction: column; gap: 4px; width: 44px; padding: 0; border-radius: 22px;
+  background: rgba(28, 23, 26, 0.72); box-shadow: 0 0 0 1.5px var(--line);
+}
+.ec-lv-btn, .ec-lv-chip { position: relative; width: 44px; display: grid; place-items: center; color: var(--text); border-radius: 22px; background: rgba(46, 36, 32, 0.92); }
+.ec-lv-btn { height: 44px; }
+.ec-lv-btn svg { width: 20px; height: 20px; }
+.ec-lv-btn.end { color: var(--faint); }
+.ec-lv-chip { height: 52px; border-radius: 12px; align-content: center; gap: 2px; background: #3a2c22; border: 1.5px solid var(--brass); }
+.ec-lv-n { font-size: calc(17px * var(--ts)); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.ec-lv-glyph { display: block; width: 14px; height: 14px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 240, 210, 0.6); }
+.ec-lv-badge {
+  position: absolute; top: -6px; right: -8px; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  background: #2a2026; border: 1px solid var(--line); font-size: calc(14px * var(--ts)); line-height: 1; color: var(--text);
+}
+.ec-lv-badge[hidden], .ec-lv-red[hidden] { display: none; }
+.ec-lv-badge b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ec-lv-red { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); display: inline-block; }
+/* the band plate beside the chip (left of it in portrait, right in landscape) */
+.ec-lv-plate {
+  max-width: 120px; margin-bottom: 61px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(28, 23, 26, 0.7); color: var(--text); font-size: calc(14px * var(--ts)); line-height: 1.3; pointer-events: none !important;
+}
+/* the ghost column: one tappable tick per level holding the open tool's designations */
+.ec-lv-ghost { display: flex; flex-direction: column; gap: 4px; max-height: 236px; overflow-y: auto; touch-action: pan-y; }
+.ec-lv-ghost[hidden] { display: none; }
+.ec-lv-tick {
+  position: relative; width: 44px; height: 44px; flex: none; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(46, 36, 32, 0.9); border: 1.5px solid rgba(240, 168, 48, 0.7); color: var(--text); font-size: calc(14px * var(--ts)); font-variant-numeric: tabular-nums;
+}
+.ec-lv-tick i { position: absolute; left: 4px; top: 8px; bottom: 8px; width: 4px; border-radius: 2px; background: var(--amber); }
+.ec-lv-tick.on { background: #5a4026; border-color: var(--brass-hi); }
+/* the change toast, the scrub label and the "unexplored below" bubble, beside the capsule */
+.ec-lv-bubble {
+  position: fixed; z-index: 14; right: calc(var(--sa-r) + 60px); bottom: calc(var(--sa-b) + var(--bar) + 100px); max-width: min(260px, calc(100% - 80px));
+  padding: 6px 10px; border-radius: 10px; background: var(--panel); border: 1.5px solid var(--line); color: var(--text); font-size: calc(14px * var(--ts)); line-height: 1.3; pointer-events: none;
+}
+.ec-lv-bubble[hidden] { display: none; }
+.ec-lv-bubble.snap { border-color: var(--brass-hi); background: #3a2c22; }
+body.has-peek:not(.land) .ec-lv-bubble { bottom: calc(var(--sa-b) + var(--bar) + var(--peek) + 100px); }
+body.land .ec-lv-bubble { right: auto; left: calc(var(--sa-l) + 60px); bottom: calc(var(--sa-b) + 102px); }
+/* the alert stack sits above the capsule after a 12 pt gap (portrait); the map button goes to the top right */
+body.has-levels:not(.land) .ec-alerts { top: auto; bottom: calc(var(--sa-b) + var(--bar) + 8px + 148px + 12px); flex-direction: column-reverse; transition: bottom 180ms ease; }
+body.has-levels.has-peek:not(.land) .ec-alerts { bottom: calc(var(--sa-b) + var(--bar) + var(--peek) + 8px + 148px + 12px); }
+body.has-levels:not(.land) .ec-mapbtn { left: auto; right: calc(var(--sa-r) + 8px); bottom: auto; top: calc(var(--sa-t) + var(--top) + var(--rail) + 8px); }
+body.has-levels:not(.land) .ec-minimap { left: auto; right: calc(var(--sa-r) + 8px); bottom: auto; top: calc(var(--sa-t) + var(--top) + var(--rail) + 60px); }
+body.has-levels.land .ec-mapbtn { left: auto; right: calc(var(--sa-r) + var(--side) + 8px); bottom: calc(var(--sa-b) + 8px); }
+body.has-levels.land .ec-minimap { left: auto; right: calc(var(--sa-r) + var(--side) + 8px); bottom: calc(var(--sa-b) + 60px); }
+body.has-levels.land.has-peek .ec-mapbtn, body.has-levels.land.has-panel .ec-mapbtn, body.has-levels.land.has-peek .ec-minimap, body.has-levels.land.has-panel .ec-minimap { right: calc(var(--sa-r) + var(--side) + var(--panelw) + 8px); }
+body.has-levels .ec-minimap { display: flex; gap: 4px; align-items: flex-start; }
+body.has-levels .ec-minimap[hidden] { display: none; }
+.ec-zstrip-cv { width: 16px; height: 80px; display: block; border-radius: 3px; image-rendering: pixelated; }
+/* level badges on rail portraits and alerts (the subject is on another level) */
+.ec-rail-btn, .ec-alert { position: relative; }
+.ec-lvbadge {
+  position: absolute; right: -6px; bottom: -6px; min-width: 22px; padding: 0 3px; border-radius: 7px; background: #2a2026; border: 1px solid var(--brass);
+  color: var(--text); font-size: calc(14px * var(--ts)); font-weight: 700; line-height: 18px; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+/* the Levels row of a tool (counts, Down | Up, the Stairs depths), clear of the capsule and the ghost column */
+.ec-lvrow {
+  position: fixed; z-index: 12; left: calc(var(--sa-l) + 8px); right: calc(var(--sa-r) + 112px); bottom: calc(var(--sa-b) + var(--bar) + 8px);
+  display: flex; gap: 4px; overflow-x: auto; touch-action: pan-x; scrollbar-width: none;
+}
+.ec-lvrow[hidden] { display: none; }
+.ec-lvrow::-webkit-scrollbar { display: none; }
+body.land .ec-lvrow { left: calc(var(--sa-l) + 112px); right: calc(var(--sa-r) + var(--side) + 8px); bottom: calc(var(--sa-b) + 8px); }
+.ec-lvchip {
+  flex: none; min-width: 64px; height: 44px; padding: 0 8px; border-radius: 22px; border: 1.5px solid var(--line); background: rgba(46, 36, 32, 0.94);
+  color: var(--dim); font-size: calc(15px * var(--ts)); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.ec-lvchip.on { background: #5a4026; color: var(--text); border-color: var(--brass-hi); }
+.ec-lvchip.wide { padding: 0 12px; }
+/* the depth ruler: a 132 pt panel at full world height (right in portrait, left in landscape) */
+.ec-ruler-scrim { position: fixed; inset: 0; z-index: 19; }
+.ec-ruler-scrim[hidden], .ec-ruler[hidden] { display: none; }
+.ec-ruler {
+  position: fixed; z-index: 20; width: 132px; right: var(--sa-r); top: calc(var(--sa-t) + var(--top) + var(--rail)); bottom: calc(var(--sa-b) + var(--bar));
+  display: flex; flex-direction: column; background: #1c171a; border-left: 1.5px solid var(--line); color: var(--text);
+}
+body.rail-hidden:not(.land) .ec-ruler { top: calc(var(--sa-t) + var(--top)); }
+body.has-peek:not(.land) .ec-ruler { bottom: calc(var(--sa-b) + var(--bar) + var(--peek)); }
+body.land .ec-ruler { right: auto; left: var(--sa-l); top: calc(var(--sa-t) + var(--top)); bottom: var(--sa-b); border-left: 0; border-right: 1.5px solid var(--line); }
+.ec-ruler-head { padding: 4px 8px; font-size: calc(14px * var(--ts)); line-height: 1.3; color: var(--dim); border-bottom: 1px solid var(--line); }
+.ec-ruler-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.ec-ruler-row {
+  position: relative; display: block; width: 100%; min-height: 44px; padding: 3px 8px 3px 12px; text-align: left; border-bottom: 1px solid rgba(201, 151, 62, 0.2);
+  font-size: calc(14px * var(--ts)); line-height: 1.25; color: var(--text); background: transparent;
+}
+.ec-ruler-row::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 5px; border-radius: 0 3px 3px 0; background: var(--tint, #555); }
+.ec-ruler-row.on { background: #5a4026; }
+.ec-ruler-t { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 22px; }
+.ec-ruler-sub { display: block; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ec-ruler-dots { position: absolute; right: 6px; top: 8px; display: flex; gap: 3px; }
+.ec-ruler-dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.ec-ruler-dots i.red { background: var(--bad); }
+.ec-ruler-dots i.amber { background: var(--amber); }
+.ec-ruler-fold { min-height: 32px; padding: 6px 8px; font-size: calc(14px * var(--ts)); color: var(--faint); border-bottom: 1px solid rgba(201, 151, 62, 0.2); font-style: italic; }
+.ec-ruler-near { flex: none; height: 44px; margin: 4px; border-radius: 10px; font-size: calc(14px * var(--ts)); background: rgba(46, 36, 32, 0.94); border: 1.5px solid var(--line); color: var(--text); }
+/* landscape: the coach card sits right of the capsule (bottom left), never over its up arrow */
+body.has-levels.land .ec-guide { left: calc(var(--sa-l) + 60px); }
+/* the level controls and the opened minimap draw over the coach card; in landscape the card stops above them */
+body.has-levels .ec-levels, body.has-levels .ec-minimap { z-index: 10; }
+body.has-levels.land .ec-guide { max-height: calc(100% - var(--sa-t) - var(--top) - var(--sa-b) - 112px); overflow-y: auto; }

@@ -23,7 +23,13 @@
 //   record keeps the season index it froze for, so a save in Deepcold does not freeze twice.
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY, DAYS_PER_YEAR, DAYS_PER_SEASON, dayOf, hourOf, seasonOf } from '../core/time.js';
-import { N, TER, ROOF } from '../core/grid.js';
+import { N, D, PLANE, TER, ROOF } from '../core/grid.js';
+import { skyZAt } from './vertical.js';
+
+// Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.9): at D > 1 weather touches open-sky voxels only (z >= skyZ
+// of the column): lightning picks a sky-exposed mature plant, and freezing takes sky-exposed shallow water.
+/** Open to the sky: roof OPEN at D = 1; z >= skyZ at D > 1. */
+export const skyOpen = (s, i) => (D > 1 ? ((i / PLANE) | 0) >= skyZAt(s, i) : s.L.roof[i] === ROOF.OPEN);
 import { registerSystem, tickSystems } from '../core/bus.js';
 import { WORLD } from '../../data/worldgen.js';
 import { worldRec, ensureWorld, worldStage2, hash3, emitIf } from './worldrec.js';
@@ -104,7 +110,7 @@ export function weatherSystem(s) {
     const h = s.colony.hearth, hb = h && h.id !== null ? s.bld[h.id] : null;
     for (let k = 0; k < 40; k++) {
       const i = hash3(s.seed >>> 0, day, 0x20 + k) % N;
-      if (s.L.plant[i] && s.L.growth[i] === 255 && s.L.roof[i] === ROOF.OPEN && (!hb || Math.max(Math.abs((i % s.w) - hb.x), Math.abs(((i / s.w) | 0) - hb.y)) > WX.lightningFar) && lightningFn(s, i)) break;
+      if (s.L.plant[i] && s.L.growth[i] === 255 && skyOpen(s, i) && (!hb || Math.max(Math.abs((i % s.w) - hb.x), Math.abs((((i % PLANE) / s.w) | 0) - hb.y)) > WX.lightningFar) && lightningFn(s, i)) break;
     }
   }
 }
@@ -126,7 +132,7 @@ export function freezeWater(s) {
   if (season === WX.freezeSeason) {
     if (w.frozen === key) return 0;
     w.frozen = key;
-    for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.SHALLOW && s.L.roof[i] === ROOF.OPEN) { setTerrainFn(s, i, TER.ICE); n++; }
+    for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.SHALLOW && skyOpen(s, i)) { setTerrainFn(s, i, TER.ICE); n++; }
   } else if (season === 0 && w.frozen >= 0 && w.frozen !== -2) {
     w.frozen = -2;   // thawed
     for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.ICE) { setTerrainFn(s, i, TER.SHALLOW); n++; }

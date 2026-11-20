@@ -11,8 +11,11 @@
 //   'stripes' [i...] | null (support plan: orange stripes on tiles whose mining would leave a roof unsupported)
 //   'path'    [i...] | null (order line / route preview)
 //   'chunks'  true | false (debug: chunk borders of the active band)
+// On a D > 1 map (Stage Z1 E6) s is the view level's level view (levelview.js): zones, designations and rooms
+// are that level's; the index lists ('preview' tiles, 'stripes', 'path') hold VOXEL indexes (C3 v3) and only
+// those on the view level draw; a preview rect with a `z` draws only on its level; blueprints filter by b.z.
 
-import { TILE, W, H, DESIG } from '../../game/core/grid.js';
+import { TILE, W, H, PLANE, DESIG } from '../../game/core/grid.js';
 import * as SP from '../sprites.js';
 import { PAL } from '../art/palette.js';
 import { roomInfo } from '../../game/world/rooms.js';
@@ -73,6 +76,8 @@ export class OverlayLayer {
 
   draw(g, s, view, ctx) {
     const L = s.L, st = this.state;
+    const lz = s.__lvl === undefined ? 0 : s.__lvl, onLv = (i) => ((i / PLANE) | 0) === lz;
+    const lvList = (a) => { if (!a || !a.length || (lz === 0 && s.__lvl === undefined)) return a; const o = []; for (const i of a) if (onLv(i)) o.push(i % PLANE); return o; };
     const tx0 = Math.max(0, Math.floor(view.x0 / T)), tx1 = Math.min(W - 1, Math.floor(view.x1 / T));
     const ty0 = Math.max(0, Math.floor(view.y0 / T)), ty1 = Math.min(H - 1, Math.floor(view.y1 / T));
     const k = 1 / view.z;
@@ -117,7 +122,7 @@ export class OverlayLayer {
     g.globalAlpha = 1;
     // Blueprints: a translucent ghost of the footprint.
     for (const b of s.bld) {
-      if (!b || b.st !== 'bp') continue;
+      if (!b || b.st !== 'bp' || (s.__lvl !== undefined && (b.z | 0) !== lz)) continue;
       const f = ctx.footOf ? ctx.footOf(b) : null, bw = f ? f[0] : ctx.sizeOf(b), bh = f ? f[1] : bw;
       if ((b.x + bw) * T < view.x0 || b.x * T > view.x1 || (b.y + bh) * T < view.y0 || b.y * T > view.y1) continue;
       if (K && K.ghostSprite) { const sp = K.ghostSprite(bw, bh); g.drawImage(sp.c, b.x * T, b.y * T, sp.w, sp.h); continue; }
@@ -146,13 +151,14 @@ export class OverlayLayer {
       g.globalAlpha = 1;
     }
     // Support-plan stripes.
-    if (st.stripes && st.stripes.length && K && K.stripeSprite) {
+    const stripes = lvList(st.stripes);
+    if (stripes && st.stripes.length && K && K.stripeSprite) {
       const sp = K.stripeSprite();
-      for (const i of st.stripes) g.drawImage(sp.c, (i % W) * T, ((i / W) | 0) * T, sp.w, sp.h);
-    } else if (st.stripes && st.stripes.length) {
+      for (const i of stripes) g.drawImage(sp.c, (i % W) * T, ((i / W) | 0) * T, sp.w, sp.h);
+    } else if (stripes && stripes.length) {
       g.save();
       g.strokeStyle = 'rgba(255,150,40,0.85)'; g.lineWidth = 2;
-      for (const i of st.stripes) {
+      for (const i of stripes) {
         const x = (i % W) * T, y = ((i / W) | 0) * T;
         g.save(); g.beginPath(); g.rect(x, y, T, T); g.clip();
         g.beginPath(); for (let d = -T; d < T; d += 8) { g.moveTo(x + d, y + T); g.lineTo(x + d + T, y); } g.stroke();
@@ -162,22 +168,23 @@ export class OverlayLayer {
     }
     // Previews (stamp, carve, place).
     const pv = st.preview;
-    if (pv) {
+    if (pv && !(pv.rect && pv.rect.z !== undefined && s.__lvl !== undefined && pv.rect.z !== lz)) {
       const tile = (i, ok) => {
         const x = (i % W) * T, y = ((i / W) | 0) * T;
         if (K && K.previewSprite) { const sp = K.previewSprite(ok); g.drawImage(sp.c, x, y, sp.w, sp.h); return; }
         g.fillStyle = ok ? 'rgba(120,230,120,0.30)' : 'rgba(240,80,70,0.36)'; g.fillRect(x, y, T, T);
         g.strokeStyle = ok ? 'rgba(160,255,160,0.9)' : 'rgba(255,120,110,0.9)'; g.lineWidth = 1.5 * k; g.strokeRect(x + 1, y + 1, T - 2, T - 2);
       };
-      if (pv.tiles) for (let j = 0; j < pv.tiles.length; j++) tile(pv.tiles[j], pv.ok ? pv.ok[j] !== false : true);
+      if (pv.tiles) for (let j = 0; j < pv.tiles.length; j++) { const i = pv.tiles[j]; if (s.__lvl === undefined) tile(i, pv.ok ? pv.ok[j] !== false : true); else if (onLv(i)) tile(i % PLANE, pv.ok ? pv.ok[j] !== false : true); }
       else if (pv.rect) for (let y = pv.rect.y0; y <= pv.rect.y1; y++) for (let x = pv.rect.x0; x <= pv.rect.x1; x++) tile(y * W + x, pv.ok !== false);
     }
     // Route / order line.
-    if (st.path && st.path.length > 1 && K && K.pixelPath) K.pixelPath(g, st.path, W, ctx.time);
-    else if (st.path && st.path.length > 1) {
+    const path = lvList(st.path);
+    if (path && path.length > 1 && K && K.pixelPath) K.pixelPath(g, path, W, ctx.time);
+    else if (path && path.length > 1) {
       g.lineJoin = 'round'; g.lineCap = 'round';
       g.beginPath();
-      for (let j = 0; j < st.path.length; j++) { const i = st.path[j], x = (i % W + 0.5) * T, y = ((i / W | 0) + 0.5) * T; if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+      for (let j = 0; j < path.length; j++) { const i = path[j], x = (i % W + 0.5) * T, y = ((i / W | 0) + 0.5) * T; if (j) g.lineTo(x, y); else g.moveTo(x, y); }
       g.strokeStyle = 'rgba(10,8,6,0.55)'; g.lineWidth = 5 * k; g.stroke();
       g.strokeStyle = 'rgba(255,230,160,0.95)'; g.lineWidth = 2.5 * k; g.setLineDash([7 * k, 6 * k]); g.lineDashOffset = -ctx.time * 26 * k; g.stroke();
       g.setLineDash([]); g.lineDashOffset = 0;

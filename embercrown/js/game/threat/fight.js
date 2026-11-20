@@ -33,7 +33,7 @@
 //        tower mans it: +3 tiles of range (the def's dmg.range), ranged hits on them halved, and a
 //        bowless colonist shoots the tower's own bow.
 
-import { W, tileOfW, cheb } from '../core/grid.js';
+import { W, PLANE, tileOfW, cheb } from '../core/grid.js';
 import { colById } from '../core/state.js';
 import { nextU32 } from '../core/rand.js';
 import { removeBuilding } from '../core/apply.js';
@@ -53,7 +53,9 @@ import { closeRift } from './raids2.js';
 
 const TW = 32;
 const d2 = (a, b) => (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
-const inReach = (s, a, b, reach) => d2(a, b) <= reach * reach && losClear(s, a.x, a.y, b.x, b.y, SIDE.HOS);
+/** Line of sight on one level: combat happens on the same z (Z1; archers firing down through open air are Z3). */
+const losZ = (s, a, b, side) => (a.z | 0) === (b.z | 0) && losClear(s, a.x, a.y, b.x, b.y, side, 0, a.z | 0);
+const inReach = (s, a, b, reach) => d2(a, b) <= reach * reach && losZ(s, a, b, SIDE.HOS);
 const roll100 = (s) => nextU32(s, 'combat') % 100;
 
 const KIND_OF = Object.freeze({ club: 'blunt', maul: 'blunt', spear: 'stab', dagger: 'stab', shortbow: 'stab', longbow: 'stab', crossbow: 'stab', halberd: 'cut', axe: 'cut', sword: 'cut' });
@@ -133,7 +135,7 @@ function strikeBuilding(s, f, st) {
   if (!b) { if (f.st) f.st.bt = null; return; }
   const fx = tileOfW(f.x), fy = tileOfW(f.y);
   let near = false;
-  for (const i of footprint(s, b)) if (cheb(fx, fy, i % W, (i / W) | 0) <= 1) { near = true; break; }
+  for (const i of footprint(s, b)) if (((i / PLANE) | 0) === (f.z | 0) && cheb(fx, fy, i % W, ((i % PLANE) / W) | 0) <= 1) { near = true; break; }
   if (!near) return;
   const dmg = Math.max(1, Math.floor((st.dmg * (s.colony.hearth.fuel > 0 ? 100 : COMBAT.coldHearthPct) * affixPct(f, 'dmgPct')) / 10000));
   if (s.colony.hearth.id === b.id) { b.hp = Math.max(COMBAT.hearthMinHp, b.hp - dmg); return; }
@@ -175,7 +177,7 @@ function nearestFoe(s, col, from, tiles, reach = 0) {
     if (!foeActive(s, f)) continue;
     const dd = d2(from, f);
     if (dd > r * r || dd >= bd) continue;
-    if (!losClear(s, col.x, col.y, f.x, f.y, SIDE.HOS)) continue;
+    if (!losZ(s, col, f, SIDE.HOS)) continue;
     bd = dd; best = f;
   }
   return best;
@@ -210,7 +212,7 @@ function colonistFights(s, col) {
     if (!f || !foeActive(s, f)) { holdHere(s, col); return; }
     if (f.kind === 'rift' && stage2() && channel(s, col, f)) return;
     if (inReach(s, col, f, w.reach)) { if (swingNow) swing(s, col, f, w); return; }
-    const near = d2(col, f) <= (COMBAT.chaseTiles * TW) ** 2 && losClear(s, col.x, col.y, f.x, f.y, SIDE.HOS);
+    const near = d2(col, f) <= (COMBAT.chaseTiles * TW) ** 2 && losZ(s, col, f, SIDE.HOS);
     if (near) {
       if (!standing(col)) startOrder(s, col, 'attack', { id: f.id, kind: 'foe' }, true);
       steer(s, col, f.x, f.y, COMBAT.colSpeed, SIDE.COL);
@@ -236,7 +238,7 @@ function colonistFights(s, col) {
     if (d2(col, spot) > leash * leash) { col.x = before.x; col.y = before.y; }
     return;
   }
-  if (d2(col, spot) > 4 && losClear(s, col.x, col.y, spot.x, spot.y, SIDE.COL)) steer(s, col, spot.x, spot.y, COMBAT.colSpeed, SIDE.COL);
+  if (d2(col, spot) > 4 && losClear(s, col.x, col.y, spot.x, spot.y, SIDE.COL, 0, col.z | 0)) steer(s, col, spot.x, spot.y, COMBAT.colSpeed, SIDE.COL);
 }
 
 /** Tick system (slot 'engage'). */

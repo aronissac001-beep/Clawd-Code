@@ -2,10 +2,12 @@
 // over database `ec2` version 1 with stores `slots` and `meta`. Nothing is opened at import.
 // The whole module is a no-op where IndexedDB is missing (Node, some private modes): callers
 // check idbAvailable() and use the localStorage fallback in slots.js.
+// Version 2 (EMBERCROWN-FORTRESS.md 5.5, Stage Z1 step E8) adds the store `pristine` (key: colony id): the
+// upgrade only creates missing stores, so a version 1 database keeps every slot and card.
 
 export const DB_NAME = 'ec2';
-export const DB_VERSION = 1;
-export const STORES = Object.freeze(['slots', 'meta']);
+export const DB_VERSION = 2;
+export const STORES = Object.freeze(['slots', 'meta', 'pristine']);
 
 let dbPromise = null;
 let factory = null;   // injectable for tests (an IDBFactory)

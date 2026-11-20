@@ -23,12 +23,20 @@
 //   r.weather                       weather.js (Stage 2): fire and smoke on burning tiles, rain and snow, the
 //                                   cold snap and drought cast; the season palette is painted into the chunks
 //                                   (terrain.js setSeason, from the calendar)
+//   r.setViewLevel(z)               the one level drawn on a D > 1 map (Stage Z1 E6; doc 6.3): the terrain, light,
+//                                   entities, weather, overlays and minimap all show level z. The camera's
+//                                   `level` (UI memory, js/engine/camera.js) is followed each frame, so the UI may
+//                                   set cam.setLevel(z) instead. A D = 1 map is always level 0.
+//   r.viewZ                         the view level; r.levelInfo() { z, rel, band, ready } for the UI (E7)
+//   r.drawZStrip(canvas, opts)      the minimap's z-strip (4.5): one row per level, the view level lit, warm
+//                                   ticks for colonists and red for hostiles on each level
+//   r.settings.batterySaver         set by the UI from the setting: no idle pre-bake (6.3)
 // Layer order: terrain chunks (season palette) > entities (y-sorted) > BUS.draw.world > fire and smoke > particles > light texture >
 // Hollow rims > over-dark bars > rain, snow and weather cast > pips and raid blobs (strategic) > overlays > threat warnings (edge marker,
 // route preview) > BUS.draw.overlay > additive particles > screen feedback.
 // Render only: nothing here writes sim state; js/game/ never imports this folder (check-imports).
 
-import { TILE, W, H } from '../../game/core/grid.js';
+import { TILE, W, H, D, PLANE, zS } from '../../game/core/grid.js';
 import { BUS } from '../../game/core/bus.js';
 import { structDef, sizeOf as defSize } from '../../game/core/content.js';
 import { onRenderDirty } from '../../game/world/terrain.js';
@@ -39,6 +47,8 @@ import * as SP from '../sprites.js';
 import { renderConfig } from './config.js';
 import { TerrainLayer, bandFor, registerTileArt, setGroundArt } from './terrain.js';
 import { Minimap } from './minimap.js';
+import { LevelViews } from './levelview.js';
+import { bandOfLevel } from '../art/vertical.js';
 import { LightLayer, ambientOf } from './light.js';
 import { EntityLayer } from './entities.js';
 import { OverlayLayer } from './overlays.js';
@@ -142,7 +152,11 @@ export class Renderer {
     this.particles = new Particles();
     this.time = 0;
     this.w = 1; this.h = 1; this.dpr = 1;
-    this.settings = { reduceMotion: false, colorblind: false, lightSmoothing: this.cfg.pixelLight ? false : this.cfg.lightSmoothing };
+    this.settings = { reduceMotion: false, colorblind: false, batterySaver: false, lightSmoothing: this.cfg.pixelLight ? false : this.cfg.lightSmoothing };
+    // levels (D > 1): the view level, its views, the stillness clock of the idle pre-bake
+    this.levels = new LevelViews(); this.d3 = false; this.viewZ = 0; this.levelT = -1e9;
+    this.lights = new Map();   // D > 1: light textures of the view level and the pre-built z +- 1 (6.3)
+    this.still = 0; this.lastCam = [NaN, NaN, NaN]; this.lastTick = -1; this.tickStill = 0;
     this.lod = null; this.lodFns = [];
     this.unsub = null;
     this.frames = 0; this.frameMs = 0; this.frameMax = 0;
@@ -166,22 +180,98 @@ export class Renderer {
     her = opts.heraldry || s.heraldry || DEFAULT_HER;
     oldEntries.clear(); FOOT.clear();
     this.ctx.pal = this.pal; this.ctx.her = her;
-    this.terrain.setState(s, this.pal, seasonOf(s.tick));
-    this.weather.setState(s);
-    this.light.setState(s, { ppt: opts.lightPxPerTile });
+    this.d3 = D > 1;
+    this.levels.setState(s);
+    this.viewZ = this.d3 ? Math.max(0, Math.min(D - 1, opts.level !== undefined ? opts.level | 0 : zS)) : 0;
+    const vs = this.d3 ? this.levels.get(this.viewZ) : s;
+    this.terrain.setState(s, this.pal, seasonOf(s.tick), this.d3 ? this.levels : null, this.viewZ);
+    this.weather.setState(vs);
+    this.light.setState(vs, { ppt: opts.lightPxPerTile });
+    for (const l of this.lights.values()) if (l !== this.light) freeLight(l);
+    this.lights.clear();
+    if (this.d3) this.lights.set(this.viewZ, this.light);
     this.entities.setState(s);
     this.threat.setState(s);
     this.mini.setState(s);
     if (opts.sounds !== false) installColonySounds(this);
     this.particles.clear();
     if (this.unsub) this.unsub();
-    this.unsub = onRenderDirty((i) => this.markDirty(i % W, (i / W) | 0));
+    this.unsub = onRenderDirty(this.d3 ? (i) => this.markVoxel(i) : (i) => this.markDirty(i % W, (i / W) | 0));
     this.lod = null;
   }
   dispose() { if (this.unsub) this.unsub(); this.unsub = null; kitUsers.delete(this); }
   /** New art installed: held chunks rebake with it (the placeholder covers them meanwhile). */
   onArt() { this.terrain.rebakeAll(); }
 
+  /** D > 1: a write at voxel i (the terrain API sink): patches z and its neighbours; light and weather if on the view level. */
+  markVoxel(i) {
+    this.levels.touch(i);
+    this.terrain.markVoxel(i);
+    const p = i - this.viewZ * PLANE;
+    if (p >= 0 && p < PLANE) { this.light.markTile(p); this.weather.markTile(p); }
+  }
+  /**
+   * Show level z (D > 1; clamped). The terrain switches at once (held chunks, else the level's placeholder),
+   * the light texture rebuilds for the level, and the change counts as motion for 0.5 s (6.3 Battery).
+   */
+  setViewLevel(z) {
+    if (!this.d3) return false;
+    z = Math.max(0, Math.min(D - 1, z | 0));
+    if (z === this.viewZ) return false;
+    const t0 = performance.now();
+    this.viewZ = z;
+    this.terrain.setLevel(z);
+    const t1 = performance.now();
+    const vs = this.levels.get(z);
+    const t2 = performance.now();
+    // the light texture: the one pre-built for z (it catches up by its own per-tick diff), else rebuilt
+    const amb = this.light.ambOverride;
+    let lt = this.lights.get(z);
+    if (lt) { this.lights.delete(z); this.lights.set(z, lt); }
+    else { lt = this.spareLight(z); lt.setState(vs, { ppt: this.light.ppt }); this.lights.set(z, lt); }
+    if (lt.ambOverride !== amb) lt.setAmbient(amb);
+    this.light = lt;
+    this.trimLights();
+    this.weather.setState(vs);
+    this.mini.setState(this.state);
+    this.levelT = performance.now();
+    const sw = this.switchMs || (this.switchMs = { n: 0, terrain: 0, view: 0, rest: 0, max: 0 });
+    sw.n++; sw.terrain += t1 - t0; sw.view += t2 - t1; sw.rest += this.levelT - t2; if (this.levelT - t0 > sw.max) sw.max = this.levelT - t0;
+    this.still = 0;
+    return true;
+  }
+  /** A light layer for level z: one no longer next to the view level, else a new one. */
+  spareLight(z) {
+    for (const [k, l] of this.lights) if (Math.abs(k - z) > 1 && Math.abs(k - this.viewZ) > 1 && l !== this.light) { this.lights.delete(k); return l; }
+    return new LightLayer(this.cfg);
+  }
+  /** Keep the light textures of z - 1, z and z + 1 only (each W x H x 64 px: 4 MB of canvas plus its pixels). */
+  trimLights() {
+    for (const [k, l] of this.lights) if (Math.abs(k - this.viewZ) > 1) { freeLight(l); this.lights.delete(k); }
+  }
+  /** Idle pre-build of the light texture of z - 1 or z + 1 (one per still frame, after the chunk pre-bake did nothing this frame). */
+  preBuildLight(s) {
+    for (const zz of [this.viewZ - 1, this.viewZ + 1]) {
+      if (zz < 0 || zz >= D || this.lights.has(zz)) continue;
+      const v = this.levels.get(zz), lt = this.spareLight(zz);
+      lt.setState(v, { ppt: this.light.ppt });
+      if (this.light.ambOverride !== null) lt.setAmbient(this.light.ambOverride);
+      lt.update(v);
+      this.lights.set(zz, lt);
+      this.lightPrebuilds = (this.lightPrebuilds || 0) + 1;
+      return true;
+    }
+    return false;
+  }
+  /** Bytes of the held light textures (canvas plus its image data). */
+  lightBytes() { let n = 0; for (const l of (this.d3 ? this.lights.values() : [this.light])) if (l.c) n += l.c.width * l.c.height * 8; return n; }
+  /** For the UI (E7): the view level, its relative level, its band row and whether its visible chunks are all held. */
+  levelInfo() {
+    const z = this.viewZ, rel = z - zS;
+    return { z, rel: this.d3 ? rel : 0, band: this.d3 ? bandOfLevel(rel) : null, ready: this.view ? this.terrain.readyAt(z, this.view) : false };
+  }
+  /** The z-strip beside the minimap (4.5): see Minimap.drawZStrip. */
+  drawZStrip(canvas, opts) { return this.mini.drawZStrip(canvas, this.state, this.viewZ, this.time, opts); }
   /** C9: queue a terrain patch (3 x 3) and the light texture refresh of the tile. */
   markDirty(tx, ty) {
     this.terrain.markDirty(tx, ty);
@@ -192,7 +282,7 @@ export class Renderer {
   onLod(fn) { this.lodFns.push(fn); return () => { const k = this.lodFns.indexOf(fn); if (k >= 0) this.lodFns.splice(k, 1); }; }
   get minimap() { return this.terrain.minimap; }
   /** Draw the minimap into canvas (its own pixel size): tiles, fog, colonists every 2 s, the view rect. opts: { view: true, force: false }. */
-  drawMinimap(canvas, opts) { return this.mini.draw(canvas, this.state, this.view, this.time, opts, this.threat.edges); }
+  drawMinimap(canvas, opts) { return this.mini.draw(canvas, this.d3 ? this.levels.get(this.viewZ) : this.state, this.view, this.time, opts, this.d3 && this.viewZ !== zS ? null : this.threat.edges); }
   /** Strategic view hit test (screen CSS px): { kind, id } of the pip under the point within its 44 pt hit area, nearest first; else null. */
   pipAt(sx, sy) { return this.entities.pipAt(sx, sy); }
   /**
@@ -203,9 +293,10 @@ export class Renderer {
   wantsFast(s) {
     if (!s || !this.view) return false;
     const v = this.view, m = 2 * T;
-    if (s.foes && s.foes.length) for (const f of s.foes) if (f.x > v.x0 - m && f.x < v.x1 + m && f.y > v.y0 - m && f.y < v.y1 + m) return true;
+    const lz = this.d3 ? this.viewZ : -1;
+    if (s.foes && s.foes.length) for (const f of s.foes) if ((lz < 0 || (f.z | 0) === lz) && f.x > v.x0 - m && f.x < v.x1 + m && f.y > v.y0 - m && f.y < v.y1 + m) return true;
     const pr = s.proj;
-    if (pr && pr.length) for (const p of pr) if (p && p.x > v.x0 && p.x < v.x1 && p.y > v.y0 && p.y < v.y1) return true;
+    if (pr && pr.length) for (const p of pr) if (p && (lz < 0 || (p.z | 0) === lz) && p.x > v.x0 && p.x < v.x1 && p.y > v.y0 && p.y < v.y1) return true;
     return false;
   }
 
@@ -223,6 +314,14 @@ export class Renderer {
   draw(s, cam, alpha = 1, dt = 0, ui = {}) {
     const t0 = performance.now();
     this.time += dt;
+    // levels (D > 1): follow the camera's level, then draw from the view level's level view
+    const real = s;
+    if (this.d3) {
+      if (typeof cam.level === 'number' && cam.level !== this.viewZ) this.setViewLevel(cam.level);
+      this.preBakeGate(s, cam, dt, ui);
+      if (t0 - this.levelT < 500) cam.moving = true;   // a level change counts as motion for 0.5 s
+      s = this.levels.get(this.viewZ);
+    }
     const g = this.g, dpr = this.dpr, z = cam.zoom, cfg = this.cfg, ctx = this.ctx;
     // LOD hooks.
     const lod = lodOf(z, cfg, this.terrain.band);
@@ -230,7 +329,7 @@ export class Renderer {
       const prev = this.lod; this.lod = lod;
       for (const fn of this.lodFns) fn(lod, prev);
     }
-    ctx.state = s; ctx.kit = KIT;
+    ctx.state = s; ctx.kit = KIT; ctx.lvl = this.d3 ? this.viewZ : -1;
     ctx.scale = SP.scaleBucket(z * dpr); ctx.dpr = dpr; ctx.alpha = alpha; ctx.time = this.time; ctx.reduceMotion = this.settings.reduceMotion;
     SP.spriteFrame();
     SP.EMIS.length = 0;
@@ -256,12 +355,13 @@ export class Renderer {
     // 1. terrain (and the water shimmer over it)
     this.terrain.time = this.time; this.terrain.calm = lod.strategic || this.settings.reduceMotion;
     this.terrain.setSeason(seasonOf(s.tick));
+    this.bakes0 = this.terrain.st.bakes;
     this.terrain.draw(g, view, z, cam.x, cam.y);
     g.imageSmoothingEnabled = !this.pixelPerfect;
     ctx.chunkSize = cfg.bands[this.terrain.band].chunk * T;
     // 2. entities, y-sorted
     this.entities.draw(g, s, view, ctx);
-    for (const f of BUS.draw.world) f(g, s, view, this.time);
+    for (const f of BUS.draw.world) f(g, real, view, this.time);
     // Stage 2: fire and smoke on burning tiles (their light is the sim's, in the light texture)
     ctx.lowDetail = lod.calm;
     this.weather.update(s, this.time);
@@ -271,6 +371,7 @@ export class Renderer {
     // 3. light texture (fog, roof darkness, ambient, rt.light), flicker, rims
     this.light.flames = this.entities.flames;
     this.light.update(s);
+    if (this.d3 && this.terrain.prebake && !this.terrain.scrubbing() && this.terrain.st.bakes === this.bakes0) this.preBuildLight(s);
     this.light.flicker(this.time, cam.x, cam.y, this.settings.reduceMotion);
     this.light.draw(g, view, this.settings.lightSmoothing);
     g.imageSmoothingEnabled = !this.pixelPerfect;
@@ -281,9 +382,9 @@ export class Renderer {
     // 4. above the darkness: pips, overlays, plug-ins
     if (lod.strategic) this.entities.drawPips(g, ctx, z, ox, oy); else { this.entities.pipN = 0; this.entities.blobN = 0; }
     this.overlays.draw(g, s, view, ctx);
-    this.threat.update(s);
+    this.threat.update(real);
     this.threat.draw(g, view, ctx, z, ox, oy, dpr);
-    for (const f of BUS.draw.overlay) f(g, s, view, this.time);
+    for (const f of BUS.draw.overlay) f(g, real, view, this.time);
     if (!lod.calm) { g.globalCompositeOperation = 'lighter'; this.particles.draw(g, true, view); g.globalCompositeOperation = 'source-over'; }
     // 5. screen space
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -291,6 +392,21 @@ export class Renderer {
     const ms = performance.now() - t0;
     this.frames++; this.frameMs += (ms - this.frameMs) * 0.1; if (ms > this.frameMax) this.frameMax = ms;
     this.lastMs = ms;
+  }
+
+  /**
+   * The idle pre-bake gate (6.3): on while the camera and the level are still, for at most 3 s of stillness;
+   * never under Battery saver (settings.batterySaver or ui.saver) and never while paused and still (ui.paused,
+   * else the tick standing for 0.5 s).
+   */
+  preBakeGate(s, cam, dt, ui) {
+    const L = this.lastCam, moved = cam.x !== L[0] || cam.y !== L[1] || cam.zoom !== L[2];
+    L[0] = cam.x; L[1] = cam.y; L[2] = cam.zoom;
+    if (moved) this.still = 0; else this.still += dt;
+    if (s.tick !== this.lastTick) { this.lastTick = s.tick; this.tickStill = 0; } else this.tickStill += dt;
+    const paused = ui.paused !== undefined ? !!ui.paused : this.tickStill > 0.5;
+    const saver = !!(this.settings.batterySaver || ui.saver);
+    this.terrain.prebake = !moved && !saver && !paused && this.still < 3;
   }
 
   drawScreen(g, cam, ui) {
@@ -322,6 +438,8 @@ export class Renderer {
       weather: { kind: this.weather.kind, fires: this.weather.st.fires, puffs: this.weather.st.puffs, drops: this.weather.st.drops, season: this.terrain.season },
       pips: this.entities.pipN, blobs: this.entities.blobN, threat: { views: this.threat.views.length, edges: this.threat.edges.length, routeTiles: this.threat.st.routeTiles },
       sprites: { MB: +(SP.spriteMemory() / 1048576).toFixed(1) },
+      level: this.d3 ? { z: this.viewZ, rel: this.viewZ - zS, byLevel: t.heldByLevel(), phBuilds: st.phBuilds, phAvgMs: st.phBuilds ? +(st.phMs / st.phBuilds).toFixed(2) : 0, prebakes: st.prebakes,
+        uniformRects: st.uniformRects, light: { fullMs: +this.light.st.fullMs.toFixed(2), held: [...this.lights.keys()], MB: +(this.lightBytes() / 1048576).toFixed(1), prebuilds: this.lightPrebuilds || 0 }, switchMs: this.switchMs ? { n: this.switchMs.n, terrain: +(this.switchMs.terrain / this.switchMs.n).toFixed(2), view: +(this.switchMs.view / this.switchMs.n).toFixed(2), rest: +(this.switchMs.rest / this.switchMs.n).toFixed(2), max: +this.switchMs.max.toFixed(2) } : null, scrubFrames: st.scrubFrames, switches: st.levelSwitches, missing: st.missing, prebake: t.prebake, views: this.levels.builds } : null,
       frames: this.frames, frameMs: +this.frameMs.toFixed(2), frameMaxMs: +this.frameMax.toFixed(2), drawn: this.entities.st.drawn,
     };
   }
@@ -336,3 +454,6 @@ if (typeof location !== 'undefined' && typeof document !== 'undefined') {
     if (q.has('debug') && q.get('scene')) import('./scenes.js').then((m) => m.bootScene(q.get('scene'), q)).catch((e) => console.error('scene failed:', e && e.message));
   } catch (_) { /* no URL API */ }
 }
+
+/** Free a light layer's canvas (iOS frees canvas memory reliably only at size 0). */
+function freeLight(l) { if (l && l.c) { l.c.width = l.c.height = 0; l.img = null; l.px = null; } }

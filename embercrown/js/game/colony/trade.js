@@ -119,7 +119,7 @@ export function arrive(s, traderId) {
 function colonyStacks(s, g) {
   const out = [];
   const a = s.rt.idx.items[g.k];
-  if (a) for (const id of a) { const it = s.items[id]; if (!it.f && inStockpile(s, idx(it.x, it.y)) && (g.m === undefined || g.m === null || it.m === g.m) && (g.q === undefined || g.q === null || it.q === g.q)) out.push(it); }
+  if (a) for (const id of a) { const it = s.items[id]; if (!it.f && inStockpile(s, idx(it.x, it.y, it.z | 0)) && (g.m === undefined || g.m === null || it.m === g.m) && (g.q === undefined || g.q === null || it.q === g.q)) out.push(it); }
   return out;
 }
 const haveN = (s, g) => colonyStacks(s, g).reduce((n, it) => n + it.n, 0);

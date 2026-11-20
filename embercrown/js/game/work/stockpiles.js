@@ -10,14 +10,15 @@
 //                BUS.removed, terrain through B's onTileWrite. Zone edits rebuild it.
 //   rt.zoneField [Group]  per filter group (zones with the same filter and priority; at most
 //                WORK.zoneGroups, extra filters join the closest group): { key, pri, filter, zones,
-//                open, dist: Uint16Array(N) | null, lab: Uint8Array(N) | null }. dist/lab are a
-//                multi-source BFS (8-way, over all tiles) from every tile of every zone of the group
-//                that still has a free cell; lab is the zone id of the nearest seed. Straight-line
-//                geometry on purpose: the field must not depend on walls (it is rebuilt only when a
-//                zone is edited, fills or frees: C13 end-of-tick), and reachability is checked
-//                separately (region labels) when a cell is chosen.
-// Filling one cell only shrinks a free list; the field is rebuilt (end of tick, rt.dirty.zoneFields)
-// only when a zone's list becomes empty or stops being empty.
+//                open }. open lists the group's zones that still have a free cell (C13 end-of-tick).
+//                Stage Z1 (E5, F25): the zone DISTANCE FIELDS are gone (they cost 2.5 ms each at D = 20
+//                and needed a cap). A haul ranks the open zones by B's region-graph distance
+//                (regionDist, 3D, from the cached link Dijkstra: a pure cache) from the stack to each
+//                zone's first free cell, nearest first; the rt key keeps its name until A retires it.
+// Filling one cell only shrinks a free list; the groups are rebuilt (end of tick, rt.dirty.zoneFields)
+// only when a zone's list becomes empty or stops being empty, or a zone is edited.
+// Zones may span levels (4.4): a zone's fill order is its Chebyshev distance from the anchor plus two
+// per level of difference (PATH.VERT is 2 tiles).
 //
 // Stage 2 additions
 //   Filters are a tree (5.6): { cats, mats, q } plus optional x (excluded categories), k (extra item
@@ -38,15 +39,16 @@
 //     zone cell (the field, as before) with the best storage-building cell by priority, then by
 //     region-graph distance.
 
-import { W, H, N, idx, tx, ty, DX8, DY8, TER_PASSABLE } from '../core/grid.js';
+import { W, H, N, idx, tx, ty, tz, DX8, DY8, TER_PASSABLE } from '../core/grid.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick, BUS } from '../core/bus.js';
 import { zoneById, bldById } from '../core/state.js';
 import { def, structDef } from '../core/content.js';
-import { onTileWrite, compOf, regionDist } from '../world/terrain.js';
+import { onTileWrite, compOf } from '../world/terrain.js';
+import { linkRow, linkH } from '../world/regions.js';
 import { footprint } from '../world/pass.js';
 import { WORK, keyTile, isReserved } from './jobs.js';
-import { categoryOf, stackLimit, setCellHook, getItem, capAt, countOn, stacksOn, storeBldAt, storeCapOf, setRemoving, take, put, withZoneEdit } from './items.js';
+import { categoryOf, stackLimit, setCellHook, getItem, capAt, countOn, stacksOn, storeBldAt, storeCapOf, setRemoving, take, put, putAt, withZoneEdit } from './items.js';
 import { registerIdxPart } from './jobs.js';
 import { registerApplier } from '../core/commands.js';
 import { SLICE_APPLIERS } from '../core/apply.js';
@@ -132,7 +134,7 @@ const storeCatsOk = (b, it) => { const st = structDef(b.def).store; return !st.c
 
 /** Priority stack `it` has where it lies (a storage zone or storage building that accepts it), else -1. */
 export function curPri(s, it) {
-  const i = idx(it.x, it.y);
+  const i = idx(it.x, it.y, it.z | 0);
   const b = s.rt.occ[i] >= 0 ? storeBldAt(s, i) : null;
   const zid = s.L.zone[i];
   if (zid) {
@@ -159,7 +161,7 @@ export function cellFree(s, i, ignoreBld = -1) {
 function hearthAt(s) {
   const h = s.colony.hearth;
   const b = h && h.id !== null ? bldById(s, h.id) : null;
-  return b ? [b.x + 1, b.y + 1] : [W >> 1, H >> 1];
+  return b ? [b.x + 1, b.y + 1, b.z | 0] : [W >> 1, H >> 1, 0];
 }
 /** Tiles of every storage zone: Map zoneId -> sorted tile list (scan order). */
 function storageTiles(s) {
@@ -172,16 +174,16 @@ function storageTiles(s) {
 /** From-scratch rt.zoneFree (C13 rebuild). */
 export function rebuildZoneFree(s) {
   const rank = new Int32Array(N).fill(-1), lists = [];
-  const [hx, hy] = hearthAt(s);
+  const [hx, hy, hz] = hearthAt(s);
   const byId = storageTiles(s);
   const ids = [...byId.keys()].sort((a, b) => a - b);
   for (const id of ids) {
     const tiles = byId.get(id);
     if (!tiles.length) { lists.push({ id, cells: [] }); continue; }
     let anchor = tiles[0], ad = Infinity;
-    for (const i of tiles) { const dx = tx(i) - hx, dy = ty(i) - hy, d = dx * dx + dy * dy; if (d < ad) { ad = d; anchor = i; } }
-    const ax = tx(anchor), ay = ty(anchor);
-    const order = tiles.map((i) => [Math.max(Math.abs(tx(i) - ax), Math.abs(ty(i) - ay)), i]);
+    for (const i of tiles) { const dx = tx(i) - hx, dy = ty(i) - hy, dz = 2 * (tz(i) - hz), d = dx * dx + dy * dy + dz * dz; if (d < ad) { ad = d; anchor = i; } }
+    const ax = tx(anchor), ay = ty(anchor), az = tz(anchor);
+    const order = tiles.map((i) => [Math.max(Math.abs(tx(i) - ax), Math.abs(ty(i) - ay)) + 2 * Math.abs(tz(i) - az), i]);
     order.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
     for (let k = 0; k < order.length; k++) rank[order[k][1]] = k;
     const cells = [];
@@ -239,7 +241,7 @@ export function zoneGroups(s) {
     if (!g) {
       const f = z.filter, gf = { cats: [...f.cats].sort(), mats: [...(f.mats || [])].sort(), q: (f.q || [0, 6]).slice() };
       for (const k of ['x', 'k', 'xk']) if (f[k] && f[k].length) gf[k] = [...f[k]].sort();
-      g = { key, pri: z.pri, filter: gf, zones: [], open: [], dist: null, lab: null };
+      g = { key, pri: z.pri, filter: gf, zones: [], open: [] };
       groups.push(g);
     }
     g.zones.push(z.id);
@@ -247,27 +249,12 @@ export function zoneGroups(s) {
   return groups;
 }
 let fieldBuilds = 0;
-/** Number of end-of-tick zone-field rebuilds so far (tests: filling one cell must not rebuild). Not sim state. */
+/** Number of end-of-tick zone-group rebuilds so far (tests: filling one cell must not rebuild). Not sim state. */
 export const fieldBuildCount = () => fieldBuilds;
 
+/** A group's zones that still have a free cell (zone id order). Z1: no distance field any more (F25). */
 function buildField(s, g, free) {
   g.open = g.zones.filter((id) => { const l = free.lists.find((x) => x.id === id); return !!l && l.cells.length > 0; });
-  if (!g.open.length) { g.dist = null; g.lab = null; return; }
-  const dist = new Uint16Array(N).fill(0xffff), lab = new Uint8Array(N), q = new Int32Array(N);
-  let qh = 0, qt = 0;
-  const L = s.L.zone;
-  for (let i = 0; i < N; i++) { const z = L[i]; if (z && g.open.includes(z)) { dist[i] = 0; lab[i] = z; q[qt++] = i; } }
-  while (qh < qt) {
-    const i = q[qh++], x = tx(i), y = ty(i), d = dist[i] + 1;
-    for (let k = 0; k < 8; k++) {
-      const nx = x + DX8[k], ny = y + DY8[k];
-      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const j = idx(nx, ny);
-      if (dist[j] !== 0xffff) continue;
-      dist[j] = d; lab[j] = lab[i]; q[qt++] = j;
-    }
-  }
-  g.dist = dist; g.lab = lab;
 }
 /** From-scratch rt.zoneField (C13 rebuild): groups and their fields from saved state. */
 export function rebuildZoneField(s) {
@@ -293,8 +280,8 @@ function slotOpen(s, i, comp = -1) {
   const ok = (j) => s.rt.walkCost[j] !== 0 && (comp <= 0 || compOf(s, j, 0) === comp);
   if (ok(i)) return true;
   if (s.rt.walkCost[i] !== 0) return false;
-  const x = tx(i), y = ty(i);
-  for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && ok(idx(nx, ny))) return true; }
+  const x = tx(i), y = ty(i), z = tz(i);
+  for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && ok(idx(nx, ny, z))) return true; }
   return false;
 }
 /** Storage buildings off any stockpile with a free slot that take `it`: [[b, pri]] (idx.stores order). */
@@ -304,7 +291,7 @@ function storesFor(s, it) {
   if (!ids) return out;
   // (only slots a hauler could reach from where the stack lies: a strongbox in a sealed vault does not
   // make every coin in the stockpiles "need a haul": X 2.7)
-  const comp = it && it.x !== undefined ? compOf(s, idx(it.x, it.y), 0) : -1;
+  const comp = it && it.x !== undefined ? compOf(s, idx(it.x, it.y, it.z | 0), 0) : -1;
   for (const id of ids) {
     const b = bldById(s, id);
     if (!b || b.st !== 'done') continue;
@@ -350,15 +337,15 @@ export function findDest(s, col, it) {
   return null;
 }
 function destAt(s, col, it, best) {
-  const from = idx(it.x, it.y), comp = compOf(s, from, 0);
+  const from = idx(it.x, it.y, it.z | 0), comp = compOf(s, from, 0);
   const holder = col ? col.id : -1;
   const usable = (z) => !!z && z.pri === best && zoneAccepts(z, it);
   // a tile is reachable when it, or (for a blocking rack) one of its 8 neighbours, is in our component
   const reach = (ti) => {
     if (compOf(s, ti, 0) === comp) return true;
     if (s.rt.walkCost[ti] !== 0) return false;
-    const x = tx(ti), y = ty(ti);
-    for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && compOf(s, idx(nx, ny), 0) === comp) return true; }
+    const x = tx(ti), y = ty(ti), z = tz(ti);
+    for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && compOf(s, idx(nx, ny, z), 0) === comp) return true; }
     return false;
   };
   const pick = (z) => {
@@ -367,22 +354,26 @@ function destAt(s, col, it, best) {
     let mi = -1, md = Infinity;
     if (bucket) for (const id of bucket) {
       const o = getItem(s, id);
-      const ti = idx(o.x, o.y);
+      const ti = idx(o.x, o.y, o.z | 0);
       if (s.L.zone[ti] !== z.id || !mergeable(o, it) || isReserved(s, keyTile(ti), holder) || !reach(ti)) continue;
-      const d = Math.abs(o.x - it.x) + Math.abs(o.y - it.y);
+      const d = Math.abs(o.x - it.x) + Math.abs(o.y - it.y) + 2 * Math.abs((o.z | 0) - (it.z | 0));
       if (d < md) { md = d; mi = o.id; }
     }
-    if (mi >= 0) { const o = getItem(s, mi); return { i: idx(o.x, o.y), zoneId: z.id, merge: mi }; }
+    if (mi >= 0) { const o = getItem(s, mi); return { i: idx(o.x, o.y, o.z | 0), zoneId: z.id, merge: mi }; }
     for (const c of freeCells(s, z.id)) if (!isReserved(s, keyTile(c), holder) && zoneCellOk(s, c, it) && reach(c)) return { i: c, zoneId: z.id, merge: -1 };
     return null;
   };
   let out = null, od = Infinity;
-  // distance to a cell; a blocking rack's from its nearest open neighbour
+  // distance to a cell (a blocking rack's from its nearest open neighbour): the link heuristic (see below)
+  let row = null;
+  const lab = s.rt.region;
   const dist = (ti) => {
-    if (s.rt.walkCost[ti] !== 0) return regionDist(s, from, ti, 0);
+    if (comp === 0) return Infinity;
+    const one = (j) => (compOf(s, j, 0) !== comp ? Infinity : linkH(row || (row = linkRow(s, from, 0, 0, 0)), lab, j) / 10);
+    if (s.rt.walkCost[ti] !== 0) return one(ti);
     let best = Infinity;
-    const x = tx(ti), y = ty(ti);
-    for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && s.rt.walkCost[idx(nx, ny)] !== 0) best = Math.min(best, regionDist(s, from, idx(nx, ny), 0)); }
+    const x = tx(ti), y = ty(ti), z = tz(ti);
+    for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && s.rt.walkCost[idx(nx, ny, z)] !== 0) best = Math.min(best, one(idx(nx, ny, z))); }
     return best;
   };
   const offer = (r) => {
@@ -405,23 +396,23 @@ function destAt(s, col, it, best) {
       offer(r);
     }
   }
-  // fast path: the field's nearest zone
-  let fg = null, fd = 0xffff;
-  for (const g of s.rt.zoneField) {
-    if (g.pri !== best || !g.dist || g.dist[from] >= fd) continue;
-    const z = zoneById(s, g.lab[from]);
-    if (usable(z)) { fg = g; fd = g.dist[from]; }
-  }
-  if (fg) { const r = pick(zoneById(s, fg.lab[from])); if (r) { offer(r); return out; } }
-  // fallback: every qualifying open zone, region-graph nearest first cell
+  // Z1 (F25): the open zones at this priority, nearest first by region-graph distance from the stack to
+  // the zone's first free cell (ties: zone id); the first zone with a usable cell wins. The distance is the
+  // link heuristic of the stack's cached link Dijkstra (B's linkRow: pure, uncapped): the octile inside a
+  // region, else the best link route; on the bot colonies it picks the truly nearest zone (1.00-1.01x the
+  // A* optimum) where the centroid regionDist of a D = 1 map picked 1.9-2.4x.
+  const zs = [];
   for (const g of s.rt.zoneField) {
     if (g.pri !== best) continue;
     for (const id of g.open) {
       const z = zoneById(s, id);
       if (!usable(z)) continue;
-      offer(pick(z));
+      const cells = freeCells(s, id);
+      zs.push([cells.length ? dist(cells[0]) : Infinity, id, z]);
     }
   }
+  zs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const [, , z] of zs) { const r = pick(z); if (r) { offer(r); return out; } }
   return out;
 }
 
@@ -470,7 +461,7 @@ function storeRemoved(s, b) {
         const ids = stacksOn(s, i);
         const it = s.items[ids[ids.length - 1]];
         const bun = take(s, it.id, it.n);
-        if (bun) put(s, bun, tx(i), ty(i));
+        if (bun) putAt(s, bun, i);
       }
     }
   } finally { setRemoving(-1); }

@@ -140,7 +140,7 @@ export function roomThoughtsAfterSleep(s, col, bedId) {
   if (!stage2()) return;
   const b = bldById(s, bedId);
   if (!b) return;
-  const info = roomInfoAt(s, idx(b.x, b.y));
+  const info = roomInfoAt(s, idx(b.x, b.y, b.z | 0));
   if (!info) return;
   if (info.role === 'barracks') { if (!col.soldier) addThought(s, col, 'slept_barracks'); return; }
   if (info.role !== 'bedroom') return;

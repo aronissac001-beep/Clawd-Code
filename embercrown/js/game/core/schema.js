@@ -7,7 +7,11 @@
 //
 // Conventions
 // - Colonist, Animal and Foe positions (x, y) are WORLD units (TILE = 32 per tile, floats allowed);
-//   Stack and Building positions are TILE coordinates (integers).
+//   Stack and Building positions are TILE coordinates (integers). Every positioned entity also has an
+//   integer level `z` (C2 v3, EMBERCROWN-FORTRESS.md 7.2): always 0 on a D = 1 map (Stage Z1 step E1).
+// - Every voxel index (grid.js: i = (z * H + y) * W + x) is a u32 / Int32: a field holding one has the
+//   type `tile`, a path holds a Uint32Array, and VOXEL_REFS lists every other saved place one lives in
+//   (job toils and keys, plans, raid edges, the path queue), for the codec and the world migration.
 // - Stacks and Buildings use their array index as id: s.items[id], s.bld[id] (null = free slot;
 //   a new one always takes the lowest free index, 5.5). Colonists, animals, foes, raids, zones and
 //   nemeses take ids from s.next (monotonic, never reused) except zones, which reuse 1..254.
@@ -18,6 +22,7 @@
 //   must not depend on their key order.
 
 import { STREAMS } from './rand.js';
+import { N, INDEX_SPAN } from './grid.js';
 import { DONE_LEN } from '../../data/deeds-col.js';
 
 // 1: Stages 1a-1b. 2 (Stage 2): difficulty ids of 9.1 (hearthkeeper, warden, steadfast, ironhold; v1
@@ -29,7 +34,10 @@ import { DONE_LEN } from '../../data/deeds-col.js';
 // settled to one perk; Colonist.done (the deed counters perks are earned by, 3.1) is added at zero; and
 // colony.fallen (the fall, colony/fall.js) is an explicit false. fallSince and fallenAt stay optional keys,
 // written only when they happen.
-export const STATE_VERSION = 3;
+// 4 (the fortress switch, Stage Z1 E13, EMBERCROWN-FORTRESS.md 5.4; migrations[2] in state.js): the world has
+// depth. The ENTITIES step only marks the save (meta.world4); js/main.js runs core/migrate4.js migrateWorld on a
+// loaded colony with one plane, which then saves as EC3. Tool-made D = 1 states also carry v 4 (no field differs).
+export const STATE_VERSION = 4;
 /** Difficulties (doc 9.1, amended by EMBERCROWN-FORTRESS.md F9), easiest first. */
 export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'hard']);
 export const DEFAULT_DIFFICULTY = 'steadfast';
@@ -62,6 +70,7 @@ export const ID_KINDS = Object.freeze(['col', 'anim', 'foe', 'raid', 'nem', 'let
 
 // ---- Field specs ---------------------------------------------------------------------------
 // [name, type, default, core?]   types: int | num | str | bool | ref (int or null) | json | u8:<len> | u16:<len> | path
+//   | tile (a voxel index 0..N-1, or null)
 // `default` may be a function returning a fresh value. core = part of C2-core.
 const nul = null;
 const F = (name, type, def, core = false) => ({ name, type, def, core });
@@ -88,15 +97,17 @@ export const FIELDS = {
     F('bed', 'ref', nul, true), F('area', 'ref', nul),
     F('x', 'num', 0, true), F('y', 'num', 0, true),
     F('job', 'json', nul, true),                                 // Job (5.3) or null
-    F('path', 'path', nul, true),                                // { tiles: Uint16Array, i } or null
+    F('path', 'path', nul, true),                                // { tiles: Uint32Array, i } or null
     F('unreach', 'json', fresh([])),                             // [[targetKey, untilTick]]
     F('log', 'json', fresh([])), F('breakState', 'json', nul), F('inspo', 'json', nul),
     F('done', `u16:${DONE_LEN}`, () => new Uint16Array(DONE_LEN)),   // Stage 2.9: deed counters by position (data/deeds-col.js, 3.1)
+    F('z', 'int', 0, true),                                      // Z1: level (0 at D = 1)
   ],
   items: [
     F('id', 'int', 0, true), F('k', 'str', '', true), F('m', 'str', nul), F('q', 'int', 0), F('n', 'int', 1, true),
     F('x', 'int', 0, true), F('y', 'int', 0, true), F('hp', 'int', 100), F('f', 'bool', false), F('age', 'int', 0),
     F('name', 'str', nul), F('maker', 'ref', nul),
+    F('z', 'int', 0, true),
   ],
   bld: [
     F('id', 'int', 0, true), F('def', 'str', '', true), F('x', 'int', 0, true), F('y', 'int', 0, true),
@@ -105,6 +116,7 @@ export const FIELDS = {
     F('lvl', 'int', 1), F('owner', 'ref', nul, true), F('fuel', 'int', 0),
     F('bills', 'json', fresh([])), F('link', 'ref', nul), F('name', 'str', nul), F('maker', 'ref', nul),
     F('dcon', 'bool', false),                                    // 1a: marked for deconstruction (a Build job)
+    F('z', 'int', 0, true),
   ],
   zones: [
     F('id', 'int', 0, true), F('type', 'str', 'stockpile', true), F('name', 'str', ''), F('pri', 'int', 1),
@@ -114,11 +126,13 @@ export const FIELDS = {
     F('id', 'int', 0, true), F('kind', 'str', '', true), F('name', 'str', nul), F('x', 'num', 0, true), F('y', 'num', 0, true),
     F('hp', 'json', nul), F('tame', 'bool', false), F('owner', 'ref', nul, true), F('pen', 'ref', nul), F('age', 'int', 0),
     F('job', 'json', nul, true), F('path', 'path', nul, true), F('st', 'json', nul),
+    F('z', 'int', 0, true),
   ],
   foes: [
     F('id', 'int', 0, true), F('kind', 'str', '', true), F('raid', 'ref', nul), F('x', 'num', 0, true), F('y', 'num', 0, true),
     F('hp', 'json', nul), F('target', 'ref', nul), F('nem', 'ref', nul), F('job', 'json', nul, true), F('path', 'path', nul, true),
     F('st', 'json', nul),
+    F('z', 'int', 0, true),
   ],
   raids: [
     F('id', 'int', 0, true), F('inc', 'str', ''), F('pts', 'int', 0), F('edge', 'json', nul), F('goal', 'str', nul),
@@ -138,8 +152,8 @@ export function newBill(recipe, init = {}) {
 export function newJob(type, target, toils = [], init = {}) {
   return { type, target, toils, i: 0, work: 0, haul: null, ...init };
 }
-/** Path: tile index list plus cursor. */
-export function newPath(tiles, i = 0) { return { tiles: tiles instanceof Uint16Array ? tiles : Uint16Array.from(tiles), i }; }
+/** Path: voxel index list (Uint32Array, C2 v3) plus cursor. Any array-like of indexes is copied in. */
+export function newPath(tiles, i = 0) { return { tiles: tiles instanceof Uint32Array ? tiles : Uint32Array.from(tiles), i }; }
 
 export function defaultSchedule() {
   const a = new Uint8Array(24).fill(SCHED.WORK);
@@ -218,6 +232,11 @@ export const COLLECTIONS = Object.freeze({ col: 'col', items: 'items', bld: 'bld
 /** Every key of the saved state root, in order (s.rt and s.L are handled separately). */
 export const ROOT_KEYS = Object.freeze(['v', 'id', 'name', 'seed', 'w', 'h', 'tick', 'speed', 'rng', 'next', 'L',
   'colony', 'st', 'col', 'items', 'bld', 'zones', 'anim', 'foes', 'raids', 'rel', 'chron']);
+/**
+ * Root keys only a D > 1 state has (Stage Z1, before state v4 makes them every state's, 7.2): d (levels) and
+ * zS (the surface level). A D = 1 state has neither, so its saves and hashes are Stage 2.9's.
+ */
+export const DEPTH_KEYS = Object.freeze(['d', 'zS']);
 
 export function newColonyRecord() {
   return {
@@ -255,9 +274,12 @@ export function storyFromPlain(o) {
 const TYPE_OK = {
   int: (v) => Number.isInteger(v), num: (v) => typeof v === 'number' && Number.isFinite(v), str: (v) => typeof v === 'string',
   bool: (v) => typeof v === 'boolean', ref: (v) => Number.isInteger(v), json: () => true,
-  path: (v) => v && v.tiles instanceof Uint16Array && Number.isInteger(v.i),
+  path: (v) => v && v.tiles instanceof Uint32Array && Number.isInteger(v.i) && v.tiles.every((t) => t < N),
+  tile: (v) => Number.isInteger(v) && v >= 0 && v < N,
 };
-/** Errors (strings) for one entity; [] when valid. Nullable: str/ref/json/path fields may be null. */
+/** True when a non-null value fits a scalar field type (int num str bool ref json path tile). */
+export const fieldTypeOk = (type, v) => !!(TYPE_OK[type] && TYPE_OK[type](v));
+/** Errors (strings) for one entity; [] when valid. Nullable: str/ref/json/path/tile fields may be null. */
 export function checkEntity(kind, e) {
   const errs = [];
   for (const f of FIELDS[kind]) {
@@ -270,4 +292,70 @@ export function checkEntity(kind, e) {
   }
   for (const k of Object.keys(e)) if (!FIELDS[kind].some((f) => f.name === k)) errs.push(`${kind}.${k} not in schema`);
   return errs;
+}
+
+// ---- Voxel references (C2 v3: every saved voxel index, for the codec and the world migration) ----------
+/** Fields of type `tile` per entity kind (FIELDS order). */
+export const tileFields = (kind) => FIELDS[kind].filter((f) => f.type === 'tile').map((f) => f.name);
+/** Fields of type `path` per entity kind. */
+export const pathFields = (kind) => FIELDS[kind].filter((f) => f.type === 'path').map((f) => f.name);
+/**
+ * Every place in saved state that holds a voxel index besides the `tile` and `path` fields. Kinds:
+ *   tile   one index (-1 or null = none)          tiles  an array of indexes
+ *   key    a work-target key (jobs.js KEY): an index when key < INDEX_SPAN, else an entity key (left alone)
+ * A job (col/anim/foes .job) holds: target (key), claims [[key, n]], toils [{ i (tile), key }], plus the
+ * colonist's unreach list [[key, untilTick]]. Add a row here in the same change that saves a new one.
+ */
+export const VOXEL_REFS = Object.freeze([
+  { where: 'col.job / anim.job / foes.job', kind: 'key', field: 'target' },
+  { where: 'col.job / anim.job / foes.job', kind: 'key', field: 'claims[][0]' },
+  { where: 'col.job / anim.job / foes.job', kind: 'tile', field: 'toils[].i' },
+  { where: 'col.job / anim.job / foes.job', kind: 'key', field: 'toils[].key' },
+  { where: 'col.unreach', kind: 'key', field: '[][0]' },
+  { where: 'colony.plans', kind: 'tiles', field: '[].pillars, [].natural' },
+  { where: 'raids', kind: 'tile', field: '[].edge.i' },
+  { where: 'st.queue', kind: 'tile', field: '[].plan.edge.i' },
+  { where: 'st.dis', kind: 'tiles', field: '[].tiles' },
+  { where: 'rt.pathQ', kind: 'tile', field: '[][2] (goal)' },
+  { where: 'rt.flow', kind: 'field', field: '[].f (one value per voxel; removed with the flow fields in E11)' },
+]);
+const isIdx = (v) => Number.isInteger(v) && v >= 0;
+const mapKey = (v, fn) => (isIdx(v) && v < INDEX_SPAN ? fn(v, 'key') : v);
+const mapTile = (v, fn) => (isIdx(v) ? fn(v, 'tile') : v);
+function mapList(a, fn) { if (Array.isArray(a)) for (let k = 0; k < a.length; k++) a[k] = mapTile(a[k], fn); }
+function mapJob(j, fn) {
+  if (!j || typeof j !== 'object') return;
+  if ('target' in j) j.target = mapKey(j.target, fn);
+  if (Array.isArray(j.claims)) for (const c of j.claims) if (Array.isArray(c)) c[0] = mapKey(c[0], fn);
+  if (Array.isArray(j.toils)) for (const t of j.toils) {
+    if (!t || typeof t !== 'object') continue;
+    if ('i' in t) t.i = mapTile(t.i, fn);
+    if ('key' in t) t.key = mapKey(t.key, fn);
+  }
+}
+/**
+ * Apply fn(index, kind) -> index to every voxel index in a live state's saved part (VOXEL_REFS, `tile`
+ * and `path` fields, rt.pathQ), in place. kind is 'tile' or 'key'. rt.flow (a per-voxel field) is left to
+ * its owner. The world migration (E9) maps i -> i + zS * PLANE with this; the fields-tile test checks it.
+ * Returns the count of indexes visited.
+ */
+export function mapVoxelRefs(s, fn) {
+  let n = 0;
+  const f = (v, k) => { n++; return fn(v, k); };
+  for (const [key, kind] of Object.entries(COLLECTIONS)) {
+    const tf = tileFields(kind), pf = pathFields(kind);
+    for (const e of s[key]) {
+      if (!e) continue;
+      for (const name of tf) if (e[name] !== null && e[name] !== undefined) e[name] = mapTile(e[name], f);
+      for (const name of pf) { const p = e[name]; if (p && p.tiles) for (let k = 0; k < p.tiles.length; k++) p.tiles[k] = f(p.tiles[k], 'tile'); }
+      if ('job' in e) mapJob(e.job, f);
+      if (Array.isArray(e.unreach)) for (const u of e.unreach) if (Array.isArray(u)) u[0] = mapKey(u[0], f);
+      if (kind === 'raids' && e.edge && typeof e.edge === 'object') e.edge.i = mapTile(e.edge.i, f);
+    }
+  }
+  for (const p of s.colony.plans || []) { if (p) { mapList(p.pillars, f); mapList(p.natural, f); } }
+  for (const q of s.st.queue || []) if (q && q.plan && q.plan.edge && typeof q.plan.edge === 'object') q.plan.edge.i = mapTile(q.plan.edge.i, f);
+  for (const d of s.st.dis || []) if (d) mapList(d.tiles, f);
+  if (s.rt && Array.isArray(s.rt.pathQ)) for (const r of s.rt.pathQ) if (Array.isArray(r)) r[2] = mapTile(r[2], f);
+  return n;
 }

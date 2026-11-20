@@ -25,13 +25,15 @@
 // beasts and reavers hunt down it); the dig field also prices natural rock (DIG_COST, the sapper's
 // tunnel: sappers.js digs it) so the route preview shows the planned tunnel.
 
-import { N, W, H, DX8, DY8, tileOfW } from '../core/grid.js';
+import { N, W, H, D, PLANE, DX8, DY8, tileOfW, idx } from '../core/grid.js';
 import { raidLive } from '../core/state.js';
 import { stepCost, SIDE, footprint } from '../world/pass.js';
 import { structDef, hasFlag } from '../world/defs.js';
 import { bal, def } from './defs.js';
 import { TER } from '../core/grid.js';
 import { stage2 } from '../people/defs.js';
+import { skyZAt } from '../world/vertical.js';
+import * as HF from './hflow.js';
 
 export const FLOW_UNREACHED = 0xffff;
 /** Field goals: the raid goals with a field, then 'edge' (dawn retreat: every open map-edge tile). */
@@ -220,7 +222,16 @@ export function edgeTiles(s) {
   for (let x = 0; x < W; x++) add((H - 1) * W + x);
   return out;
 }
-export const onEdge = (i) => { const x = i % W, y = (i / W) | 0; return x === 0 || y === 0 || x === W - 1 || y === H - 1; };
+export const onEdge = (i) => { const p = i % PLANE, x = p % W, y = (p / W) | 0; return x === 0 || y === 0 || x === W - 1 || y === H - 1; };
+/** D > 1: open sky-exposed map-edge voxels (z >= skyZ of the column; 2.10 surface entries), ascending. */
+export function edgeVoxels(s) {
+  const out = [], wc = s.rt.walkCost;
+  const col = (c) => { for (let z = skyZAt(s, c); z < D; z++) { const i = z * PLANE + c; if (stepCost(wc[i], SIDE.HOS) !== 0) out.push(i); } };
+  for (let x = 0; x < W; x++) col(x);
+  for (let y = 1; y < H - 1; y++) { col(y * W); col(y * W + W - 1); }
+  for (let x = 0; x < W; x++) col((H - 1) * W + x);
+  return out.sort((a, b) => a - b);
+}
 
 /** Loot seeds [tile, start cost]: stacks (not corpses) by value, the richest at 0 (Stage 2), ascending by tile. */
 function lootSeeds(s) {
@@ -229,7 +240,7 @@ function lootSeeds(s) {
   for (const it of s.items) {
     if (!it || it.k === 'corpse') continue;
     const d = def('item', it.k), v = Math.max(1, ((d && d.value) || 1) * it.n);
-    const i = it.y * W + it.x;
+    const i = idx(it.x, it.y, it.z | 0);
     by.set(i, (by.get(i) || 0) + v);
   }
   for (const v of by.values()) if (v > top) top = v;
@@ -240,7 +251,7 @@ function lootSeeds(s) {
  *  people = able colonists, edge = the open map edge. Elements are tiles or [tile, start cost]. */
 export function goalTiles(s, goal) {
   const out = [];
-  const tileOfCol = (c) => tileOfW(c.y) * W + tileOfW(c.x);
+  const tileOfCol = (c) => idx(tileOfW(c.x), tileOfW(c.y), c.z | 0);
   if (goal === 'core') {
     const hb = s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null;
     if (hb) for (const i of footprint(s, hb)) out.push(i);
@@ -249,14 +260,14 @@ export function goalTiles(s, goal) {
     const seeds = lootSeeds(s);
     if (seeds.length) return seeds;
   } else if (goal === 'loot' || goal === 'dig') {
-    for (const it of s.items) if (it && (!stage2() || it.k !== 'corpse')) out.push(it.y * W + it.x);
+    for (const it of s.items) if (it && (!stage2() || it.k !== 'corpse')) out.push(idx(it.x, it.y, it.z | 0));
   } else if (goal === 'people') {
     for (const c of s.col) if (!c.hp.dead && !c.hp.down) out.push(tileOfCol(c));
     if (!out.length) for (const c of s.col) if (!c.hp.dead) out.push(tileOfCol(c));
   } else if (goal === 'edge') {
-    for (const i of edgeTiles(s)) out.push(i);
+    for (const i of D > 1 ? edgeVoxels(s) : edgeTiles(s)) out.push(i);
   }
-  if (!out.length) out.push(((H >> 1) * W) + (W >> 1));
+  if (!out.length) out.push(idx(W >> 1, H >> 1, D > 1 ? Math.min(D - 1, skyZAt(s, (H >> 1) * W + (W >> 1))) : 0));
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
@@ -267,14 +278,14 @@ export const fieldGoalOf = (r) => (r.stage === 'retreat' ? 'edge' : r.goal);
 /** Goals needed now: those of raids from 'sighted' to 'retreat' (a retreating raid wants 'edge', and so
  *  does a raid with a fleeing member: a thief with loot, a wounded elite), in FIELD_GOALS order, at most
  *  CAPS.flowFields. Stage 1b: the 'people' goal has no field (foes close in by sight). */
-export function liveGoals(s) {
+export function liveGoals(s, all = false) {
   const want = [];
   const flee = stage2() && s.foes.some((f) => f.st && f.st.flee);
   for (const g of FIELD_GOALS) {
     if (g === 'people' && !stage2()) continue;
     if (s.raids.some((r) => r.stage !== 'warned' && r.stage !== 'ended' && fieldGoalOf(r) === g) || (g === 'edge' && flee)) want.push(g);
   }
-  return want.slice(0, bal('caps').flowFields || 3);
+  return all ? want : want.slice(0, bal('caps').flowFields || 3);
 }
 
 /** (Re)build one field now. */
@@ -289,6 +300,7 @@ export function rebuildField(s, fl, goals = goalTiles(s, fl.goal), stamp = -1) {
 /** Tick system (slot 'raids', after raid stages): keep the live set and rebuild on its slot tick. */
 export function flowSystem(s) {
   if (!raidLive(s)) { if (s.rt.flow.length) s.rt.flow = []; return; }
+  if (D > 1) { if (s.rt.flow.length) s.rt.flow = []; for (const g of liveGoals(s, true)) hfield(s, g); return; }
   const want = liveGoals(s);
   const kept = s.rt.flow.filter((fl) => want.includes(fl.goal));
   for (const g of want) if (!kept.some((fl) => fl.goal === g)) kept.push(rebuildField(s, { goal: g, slot: GOAL_SLOT[g], built: -1, stamp: 0, f: null }));
@@ -306,6 +318,19 @@ export function flowSystem(s) {
  * at most `max` steps; [] when the field is not built yet or the edge cannot reach the goal.
  */
 export function routeTiles(s, raid, max = 400) {
+  if (D > 1) {
+    if (!raid.edge || !raidLive(s)) return [];
+    const lvl = hfield(s, raid.goal);
+    let i = raid.edge.i;
+    if (!lvl || HF.hValue(s, lvl, i) >= HF.INF) return [];
+    const out = [i];
+    for (let k = 0; k < max; k++) {
+      const j = hfStep(s, lvl, i);
+      if (j < 0 || s.rt.walkCost[j] === 0) break;
+      out.push(j); i = j;
+    }
+    return out;
+  }
   const fl = fieldFor(s, raid.goal);
   if (!fl || !raid.edge) return [];
   let i = raid.edge.i;
@@ -318,3 +343,54 @@ export function routeTiles(s, raid, max = 400) {
   }
   return out;
 }
+
+// ---- D > 1: hierarchical flow (hflow.js; F5). Nothing here is saved; rt.flow stays empty. ----------------
+const smashCostOf = (b) => SMASH.base + SMASH.perBand * hpBand(b);
+const memo = new WeakMap();   // state -> { tick, smash, sx, goals: Map(goal -> [seeds, hash]) }: per-tick inputs
+function inputs(s) {
+  let m = memo.get(s);
+  if (!m || m.tick !== s.tick) {
+    const smash = HF.smashList(s, smashable, smashCostOf);
+    m = { tick: s.tick, smash, sx: HF.pairsHash(smash), goals: new Map() };
+    memo.set(s, m);
+  }
+  return m;
+}
+/** The hierarchical flow level of a goal on a D > 1 map (null at D = 1, or before the runtime exists). */
+export function hfield(s, goal) {
+  if (D <= 1) return null;
+  const m = inputs(s);
+  let gi = m.goals.get(goal);
+  if (!gi) { const seeds = goalTiles(s, goal); gi = [seeds, HF.pairsHash(seeds)]; m.goals.set(goal, gi); }
+  return HF.levelFor(s, goal, gi[0], m.smash, { g: gi[1], x: m.sx });
+}
+/** The sapper dig level (2.10, planar in Z1): the level holding most dig goals (ties: the lower). */
+function digLevel(lvl) {
+  const n = new Map();
+  for (const i of lvl.goalAt.keys()) { const z = (i / PLANE) | 0; n.set(z, (n.get(z) || 0) + 1); }
+  let bz = -1, bn = 0;
+  for (const [z, k] of n) if (k > bn || (k === bn && z < bz)) { bz = z; bn = k; }
+  return bz;
+}
+function digField(s, lvl) {
+  if (lvl.dig) return lvl.dig;
+  const z = digLevel(lvl), wc = s.rt.walkCost, occ = s.rt.occ, ter = s.L.terrain;
+  const costAt = (i) => {
+    const c = stepCost(wc[i], SIDE.HOS);
+    if (c !== 0) return c;
+    if (occ[i] >= 0) { const b = s.bld[occ[i]]; if (smashable(b)) return smashCostOf(b); }
+    return ter[i] === TER.ROCK ? DIG_COST : 0;
+  };
+  lvl.dig = { z, f: z >= 0 ? HF.planeField(s, z, [...lvl.goalAt], costAt, FLOW_UNREACHED) : null };
+  return lvl.dig;
+}
+/** The next voxel for a hostile at i on a D > 1 level (a delver on the dig level walks the planar dig field). */
+export function hfStep(s, lvl, i, digger = false) {
+  if (digger && lvl.name === 'dig') {
+    const dg = digField(s, lvl);
+    if (dg.f && ((i / PLANE) | 0) === dg.z && dg.f[i % PLANE] !== FLOW_UNREACHED) return HF.planeStep(s, dg.f, i);
+  }
+  return HF.hStep(s, lvl, i);
+}
+/** True when voxel i has a way to the goal of lvl (D > 1). */
+export const hfReach = (s, lvl, i) => HF.hValue(s, lvl, i) < HF.INF;
