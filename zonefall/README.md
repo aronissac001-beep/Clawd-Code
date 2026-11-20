@@ -162,7 +162,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - Crops need **water**. A water bottle adds half a planter's water, a water barrel within 4 m waters it by itself, and rain waters planters in the open (and fills barrels).
   - Crops need **light**: the sun when the planter is in the open, or a powered ceiling light or floodlight close by. With lights, they grow at night and indoors.
   - Tap a ripe planter to harvest. You get the crop and often a seed or two back.
-  - Seeds come from food crates, crates and barrels, from picking wild hemp and berries, and from the General Goods vendor at Haven Market. You can also pick hemp seeds out of cloth.
+  - Seeds only turn up in the good crates: military and elite crates, supply drops, and the locked crates on the cargo ship and the oil rig. Barrels, plain crates, food crates and toolboxes don't have them. You also get seeds from picking wild hemp and berries and from the General Goods vendor at Haven Market, and you can pick hemp seeds out of cloth.
 - **Cooking and food buffs:**
   - The campfire roasts corn and bakes potatoes.
   - The **Cooking Pot** is a pot on a tripod over its own wood fire. Pick a recipe, and the ingredients come out of your pockets. Light the fire and the dishes cook one after another.
