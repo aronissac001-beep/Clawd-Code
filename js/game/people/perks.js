@@ -77,12 +77,14 @@ export function grantText(col, perkId) {
   const p = def('perk', perkId), why = whyText(col, perkId);
   return `${firstName(col)} has learned ${p ? p.name : perkId}${why ? ': ' + why : ''}`;
 }
-/** Add an earned perk: the colonist log line, the Chronicle line and the toast event. */
+/** Add an earned perk: the Chronicle line (the toast and the Annals read it), a colonist log line saying what it does. */
 function grant(s, col, perkId) {
   const p = def('perk', perkId);
   col.perks.push(perkId);
   const why = whyText(col, perkId), text = grantText(col, perkId);
-  if (Array.isArray(col.log)) { col.log.push({ tick: s.tick, text: text + '.' }); if (col.log.length > DEED_RULES.logCap) col.log.splice(0, col.log.length - DEED_RULES.logCap); }
+  // the log line says what the perk does (the Chronicle line, which the Log tab also shows, says how it was earned)
+  const what = p && p.text ? `Learned ${p.name}: ${p.text.replace(/\.$/, '')}.` : text + '.';
+  if (Array.isArray(col.log)) { col.log.push({ tick: s.tick, text: what }); if (col.log.length > DEED_RULES.logCap) col.log.splice(0, col.log.length - DEED_RULES.logCap); }
   addChron(s, 'perk', 'chron_perk', { colId: col.id, name: firstName(col), perk: p ? p.name : perkId, why });
   if ('perkEarned' in EVENTS) emit(s, 'perkEarned', { colId: col.id, perk: perkId, text });
 }
@@ -148,13 +150,13 @@ function seamFollower(s, i, colId, ore) {
 /** Every rule and toil id the 33 perks name, with where its code lives (validate-data and the perk card). */
 export const PERK_HOOKS = Object.freeze({
   caveSense: 'B support.rumbleTicks (F binds a 2 h lead; I shows rumbling())', seamFollower: 'F perks.js', stonefriend: 'E mine toil', heartdelver: 'C render (gem glow)',
-  quickShoring: 'E build giver', salvager: 'E deconstruct', master_builder: 'H sapper dig rate', siege_engineer: 'E repair, H',
+  quickShoring: 'E build giver', salvager: 'E deconstruct', master_builder: 'H sapper dig rate', siege_engineer: 'E repair (givers/repair.js: twice as fast in a raid); H barricade',
   reforger: 'E smith recipes', temper: 'E smith recipes', crownsmith: 'E quality', ashquencher: 'E smith recipes',
   fieldSurgeon: 'E care giver', fever_watch: 'F health.tend', taintbreaker: 'E surgery (Stage 3)', ember_hands: 'F health.emberHands (bleeding)',
   shieldwall: 'H combat', duel: 'H combat', unbroken: 'F health.damage', warcry: 'H combat',
   fire_arrows: 'H combat, B fire', overwatch: 'H combat', deadeye: 'H combat', volley: 'H combat',
   trapwright: 'E build giver', stoneCarver: 'E craft giver', banner_maker: 'F draft.bannerHolds (no breaks; H: no fleeing)', hearthCook: 'K feast command',
-  graft: 'E grow giver', calm_beast: 'K animals', deep_reader: 'K research', chronicle: 'E art giver', parley: 'F breaks.talkDown, H parley',
+  graft: 'E grow giver', calm_beast: 'K animals', deep_reader: 'E lore tablets (givers/lore.js: a second tech); K beast study', chronicle: 'E art giver', parley: 'F breaks.talkDown, H parley',
 });
 for (const id of Object.keys(PERK_HOOKS)) RULES.set(id, RULES.get(id) || null);
 

@@ -2,7 +2,7 @@
 //
 // threatPoints(s) follows 9.2 with integer maths (balance.js THREAT; rates per mille):
 //   wealthPts = wealth <= knee ? wealth x lo / 1000 : kneePts + (wealth - knee) x hi / 1000
-//   popPts    = popPer x max(0, able - popFree);  floorPts = (floorPerDay x day + yearEndPts x years) x floorPct
+//   popPts    = popPer x max(0, able - popFree);  floorPts = min(floorMax[difficulty], floorPerDay x day + yearEndPts x years) x floorPct
 //   points    = clamp((base + wealth + pop + floor) x difficulty% x storyteller% x defenceAdj%, min, max)
 // Wealth is K's threat wealth (walls, floors and defences at wallWealthPct, colony/wealth.js); the
 // storyteller's floorPct makes the floor rise faster (The Long Night: x2).
@@ -37,7 +37,7 @@ export const ableCount = (s) => s.col.reduce((n, c) => n + (able(c) ? 1 : 0), 0)
 
 /**
  * The threat budget now. `over` replaces any input (tests, the bot report): { wealth, able, day,
- * difficultyPct, storytellerPct, adjPct, floorPct }.
+ * difficultyPct, storytellerPct, adjPct, floorPct, floorMax }.
  */
 export function threatPoints(s, over = {}) {
   const T = bal('threat');
@@ -48,7 +48,11 @@ export function threatPoints(s, over = {}) {
   const floorPct = over.floorPct !== undefined ? over.floorPct : stDef && stDef.floorPct ? stDef.floorPct : 100;
   const wPts = wealth <= T.wealthKnee ? Math.floor((wealth * T.wealthLoPermille) / 1000) : T.wealthKneePts + Math.floor(((wealth - T.wealthKnee) * T.wealthHiPermille) / 1000);
   const pPts = T.popPer * Math.max(0, ableN - T.popFree);
-  const fPts = Math.floor(((T.floorPerDay * day + T.yearEndPts * Math.floor(day / DAYS_PER_YEAR)) * floorPct) / 100);
+  // the floor rises with the days up to its difficulty's cap (2.9b: uncapped, the calendar alone took a
+  // Steadfast hold from 400 points at day 100 to 1,500 at day 300, whatever it had to defend; past the
+  // cap the raids grow with the hold's wealth and people, the 9.2 terms a player can see and answer)
+  const fMax = over.floorMax !== undefined ? over.floorMax : T.floorMax && T.floorMax[s.colony.difficulty] !== undefined ? T.floorMax[s.colony.difficulty] : Infinity;
+  const fPts = Math.floor((Math.min(fMax, T.floorPerDay * day + T.yearEndPts * Math.floor(day / DAYS_PER_YEAR)) * floorPct) / 100);
   const diff = over.difficultyPct !== undefined ? over.difficultyPct : (T.difficultyPct[s.colony.difficulty] || 100);
   const stPct = over.storytellerPct !== undefined ? over.storytellerPct : stDef ? stDef.ptsPct : 100;
   const adj = over.adjPct !== undefined ? over.adjPct : defenceAdjPct(s);

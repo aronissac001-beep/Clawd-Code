@@ -96,7 +96,10 @@ export const TARGETS_2 = Object.freeze({
   herd: 4, herdDay: 40,     // K: a herd of >= 4 by day 40 on Greenvale seeds
 });
 /** The soak (14.8 J): at day 300. */
-export const SOAK = Object.freeze({ days: 300, blobKB: 100, stacks: 2500, tickP95ms: 1.0, growthPct: 25, growthMinB: 4096 });
+// (difficulty: the soak plays Warden, EMBERCROWN-FORTRESS.md Stage 2.9b: the difficulty a careful player
+// should never lose on; Steadfast and Hard run with --difficulty)
+// (alive, idleMax: 2.9b, the hold must stand and thrive to the last day, not only keep its save small)
+export const SOAK = Object.freeze({ days: 300, difficulty: 'warden', alive: 10, idleMax: 0.30, blobKB: 100, stacks: 2500, tickP95ms: 1.0, growthPct: 25, growthMinB: 4096 });
 /** Balance report targets (14.4). */
 export const BALANCE = Object.freeze({ masterDay: [25, 60], noL20Before: 100, grandmasterDay: [110, 200] });
 
@@ -135,6 +138,8 @@ const BENCHES = [
   ['sculptor', (Q) => Q.tech('sculpture') && Q.n >= 11 && Q.stock('block') >= 40, 'sculptor2'],
   ['potter', (Q) => Q.tech('pottery') && Q.n >= 10, 'potter2'],
   ['mason', (Q) => Q.n >= 15, 'mason4'],
+  // (2.9b) the soldiers' yard: they spar in their joy hours (Melee and Archery XP)
+  ['trainingyard', (Q) => Q.tier >= 2 && Q.n >= 8 && Q.stock('wood') >= 120],
 ];
 // the work sink (a careful player keeps idle hands busy): trade goods and art whose targets grow with
 // the days, so there is always something worth making once the needs are met
@@ -149,17 +154,19 @@ const BILLS = {
   mason: [['cut_blocks', (Q) => 160 + (Q.hearthLvl < 2 ? 80 : 0) + Q.n * 10], ['make_millstone', (Q) => (Q.tech('milling') && !Q.has('windmill') ? 1 : 0)],
     ['ashlar_blocks', (Q) => lux(Q, 3, 400)], ['stone_table', (Q) => Math.ceil(Q.n / 4)], ['stone_endtable', (Q) => lux(Q, 0.4, 12)], ['make_pillar', (Q) => lux(Q, 0.05, 6)]],
   carpenter: [['make_chair', (Q) => Q.n], ['make_table', (Q) => Math.ceil(Q.n / 4)], ['make_endtable', (Q) => Math.ceil(Q.n / 2)], ['make_shelf', (Q) => lux(Q, 0.05, 6)],
-    ['make_wardrobe', (Q) => lux(Q, 0.05, 6)], ['make_woodshield', (Q) => Math.ceil(Q.n / 3)]],
+    ['make_wardrobe', (Q) => lux(Q, 0.05, 6)], ['make_woodshield', (Q) => Q.n]],
   potter: [['fine_pottery', (Q) => lux(Q, 0.6, 80)], ['make_jar', () => 6]],
   jeweller: [['cut_gem', () => 4], ['make_ring', (Q) => lux(Q, 0.1, 12)], ['make_amulet', (Q) => lux(Q, 0.05, 6)]],
   campfire: [['simple_meal', (Q) => Q.n * 3]],
   stove: [['stove_meal', (Q) => Q.n * 3], ['bake_bread', (Q) => (Q.stock('flour') ? 20 : 0)]],
   bloomery: [['smelt_iron', (Q) => 60 + Q.n * 4], ['smelt_copper', () => 30], ['smelt_tin', () => 12], ['make_bronze', (Q) => (Q.tech('smelting') ? 20 : 0)]],
-  forge: [['forge_pick', (Q) => Math.ceil(Q.n / 4)], ['forge_spear', (Q) => Math.ceil(Q.n / 3)], ['forge_sword', (Q) => Math.ceil(Q.n / 3)],
-    ['forge_ironhelm', (Q) => Math.ceil(Q.n / 3)], ['forge_fellingaxe', (Q) => Math.ceil(Q.n / 6)], ['forge_bands', (Q) => (Q.tech('masonry2') ? 8 : 0)]],
+  // (2.9b: the fighters' kit first, a helm and a weapon for every colonist and shields and mail for the
+  // line: before it a third of the hold went to the horde in tunics, the iron went to picks and bands)
+  forge: [['forge_ironhelm', (Q) => Q.n], ['forge_spear', (Q) => Math.ceil(Q.n / 2)], ['forge_ironshield', (Q) => Math.ceil(Q.n / 2)], ['forge_sword', (Q) => Math.ceil(Q.n / 3)],
+    ['forge_mail', (Q) => (Q.tier >= 2 ? Math.ceil(Q.n / 2) : 0)], ['forge_pick', (Q) => Math.ceil(Q.n / 4)], ['forge_fellingaxe', (Q) => Math.ceil(Q.n / 6)], ['forge_bands', (Q) => (Q.tech('masonry2') ? 8 : 0)]],
   tannery: [['tan_leather', () => 30], ['cure_fur', () => 10]],
   loom: [['weave_linen', () => 60], ['weave_wool', () => 40]],
-  tailor: [['make_bandages', () => 12], ['sew_tunic', (Q) => Q.n], ['sew_boots', (Q) => Math.ceil(Q.n / 2)], ['sew_jerkin', (Q) => Math.ceil(Q.n / 4)]],
+  tailor: [['make_bandages', () => 12], ['sew_leathercap', (Q) => Q.n], ['sew_gambeson', (Q) => Q.n], ['sew_jerkin', (Q) => Math.ceil(Q.n / 2)], ['sew_tunic', (Q) => Math.ceil(Q.n / 2)], ['sew_boots', (Q) => Math.ceil(Q.n / 2)]],
   apothecary: [['make_poultice', (Q) => Q.n * 2], ['make_candles', () => 20]],
   charkiln: [['make_charcoal', () => 40]],
   brewery: [['ale_wort', () => 2], ['wine_wort', () => 2]],
@@ -172,7 +179,8 @@ const BILLS = {
   blastfurnace: [['make_steel', () => 40]],
 };
 // recipes that eat wood (paused under WOOD_RESERVE + 20 a colonist)
-const WOODY = new Set(['make_chair', 'make_table', 'make_endtable', 'make_shelf', 'make_wardrobe', 'make_woodshield', 'make_charcoal', 'make_shortbow']);
+// (shields are not: they are the line's armour, 20 wood each)
+const WOODY = new Set(['make_chair', 'make_table', 'make_endtable', 'make_shelf', 'make_wardrobe', 'make_charcoal', 'make_shortbow']);
 const WOOD_RESERVE = 200;
 // role -> [skill(s), work type]
 const ROLE_SKILL = {
@@ -253,7 +261,11 @@ export function makePolicy(s) {
       let ch = null;
       if (k === 'join') {
         const more = (l.data.people || []).length;
-        const ok = Q.n + more <= POP_CAP && (foodDays(s) >= 2 || Q.n < 6) && (!l.data.pursued || Q.n >= 5);
+        // (2.9b: a hold under ten takes the hands it is offered, and a lone wanderer while there is a day of
+        // food: at "two days of food or under six colonists" seed 1 refused six joiners in a row from day 140
+        // and shrank to 8 as its losses went unreplaced)
+        const fd = foodDays(s);
+        const ok = Q.n + more <= POP_CAP && (fd >= 2 || Q.n < 10 || (more === 1 && fd >= 1)) && (!l.data.pursued || Q.n >= 5);
         ch = ok ? 0 : 1;
       } else if (k === 'captive') ch = Q.n < POP_CAP ? 0 : l.choices.length - 1;
       else if (k === 'heirloom') ch = totals(s, 'coins') >= ((l.data && l.data.price) || 0) + 100 ? 0 : 1;
@@ -399,12 +411,17 @@ export function makePolicy(s) {
     // beds in the dug rooms only: underground they sit at a steady 12 C through Deepcold (the surface
     // dorm of the first nights freezes in winter)
     const inRoom = (b) => Q.rooms.some((q) => q.use === 'bedroom' && b.x >= q.rect.x0 && b.x <= q.rect.x1 && b.y >= q.rect.y0 && b.y <= q.rect.y1);
-    const beds = s.bld.filter((b) => b && (b.def === 'bed' || b.def === 'cot' || b.def === 'bunk' || b.def === 'doublebed') && inRoom(b)).length;
-    if (beds >= Q.n + 1) return [];
+    const isBedDef = (b) => b && (b.def === 'bed' || b.def === 'cot' || b.def === 'bunk' || b.def === 'doublebed');
+    // (2.9b) a bed still owned by a colonist who died is given back (the assign command with no one): the
+    // sim kept it theirs, so every death took a bed away for good and the newcomers slept on the floor,
+    // where an infected wound is never held back by bed rest (seed 2: 10 of 39 died of infection)
     const cmds = [];
+    for (const b of s.bld) if (isBedDef(b) && b.owner !== null && b.owner !== undefined) { const o = s.col.find((c) => c.id === b.owner); if (!o || o.hp.dead) cmds.push({ t: 'assign', bId: b.id, colId: null }); }
+    const beds = s.bld.filter((b) => isBedDef(b) && inRoom(b)).length;
+    if (beds >= Q.n + 1) return cmds;
     const open = (r) => rectTiles(r).every((i) => s.L.terrain[i] !== TER.ROCK && s.L.terrain[i] !== TER.RUBBLE && TER_PASSABLE[s.L.terrain[i]]);
     const room = Q.rooms.find((q) => !q.use && open(q.rect) && (q.rect.x1 - q.rect.x0 + 1) * (q.rect.y1 - q.rect.y0 + 1) >= 9);
-    if (!room) return [];
+    if (!room) return cmds;
     room.use = 'bedroom';
     const r = room.rect, w = r.x1 - r.x0 + 1, h = r.y1 - r.y0 + 1;
     const rows = h >= 4 ? [r.y0, r.y1 - 1] : [r.y0];
@@ -533,6 +550,30 @@ export function makePolicy(s) {
     return [...(fresh.length ? [{ t: 'draft', colIds: fresh, on: true }] : []), { t: 'order', colIds: ids, kind: 'attack', target: { id: rf.id, kind: 'foe' } }];
   }
 
+  // (2.9b) beasts hunt people, not the Hearth: while every hostile on the map is a beast, the drafted
+  // go after them together (an Attack order on the beast nearest the Hearth) instead of holding the
+  // line while a pair of wolves pulls down whoever was working out at the edge (seed 1: 4 of 11 deaths
+  // to a wolf pair by day 180)
+  const beastFoe = (f) => { const d = def('raider', f.kind); return !!d && d.kind === 'beast'; };
+  function hunt() {
+    if (!P.drafted) return [];
+    const foes = s.foes.filter((f) => !(f.st && f.st.down) && s.raids.some((r) => r.id === f.raid && r.stage === 'active'));
+    // (a big pack is still met in the dug room's doorway: only a few beasts are hunted down)
+    const n = living().filter((c) => c.drafted && !c.hp.down).length;
+    if (!foes.length || !foes.every(beastFoe) || foes.length * 2 > n) return [];
+    const d2 = (f) => (((f.x / 32) | 0) - hx) ** 2 + (((f.y / 32) | 0) - hy) ** 2;
+    const tgt = foes.slice().sort((a, b) => d2(a) - d2(b) || a.id - b.id)[0];
+    const ids = living().filter((c) => c.drafted && !c.hp.down && !(c.job && c.job.order === 'attack' && c.job.foe === tgt.id)).map((c) => c.id);
+    return ids.length ? [{ t: 'order', colIds: ids, kind: 'attack', target: { id: tgt.id, kind: 'foe' } }] : [];
+  }
+
+  // (2.9b) every colonist fights in this hold: once the training yard stands, all are soldiers, so they
+  // spar there in their joy hours
+  function soldiers() {
+    if (!Q.has('trainingyard')) return [];
+    return living().filter((c) => !c.soldier).map((c) => ({ t: 'soldier', colId: c.id, on: true }));
+  }
+
   return {
     notes: P, Q,
     step() {
@@ -544,11 +585,19 @@ export function makePolicy(s) {
       const beast = next && (incidentDef(next.inc).tags || []).includes('beast');
       const den = Q.rooms.find((q) => q.use === 'bedroom');
       if (Q.hold0 && !P.drafted) P.holdAt = beast && den ? { x: (den.rect.x0 + den.rect.x1) >> 1, y: (den.rect.y0 + den.rect.y1) >> 1 } : Q.hold0;
+      // (2.9b) the rescuer: while seven or more can fight, the best Medicine stays out of the line to
+      // carry in and tend the downed (with everyone drafted the downed lay where they fell until the
+      // horde left, and bled out: 7 of seed 1's 48 deaths by day 170)
+      if (!P.drafted || !P.keepOut) {
+        const L = living().filter((c) => !c.hp.down && !c.breakState && can(c, 'care'));
+        const resc = L.length >= 7 ? L.slice().sort((a, b) => lvl(b, 'medicine') - lvl(a, 'medicine') || a.id - b.id)[0] : null;
+        P.keepOut = new Set(resc ? [resc.id] : []);
+      }
       const cmds = base.step();
       // remember the rooms the base digs (bedrooms later)
       for (const c of cmds) if (c.t === 'designate' && c.kind === 'mine' && c.add && (c.rect.x1 - c.rect.x0 + 1) * (c.rect.y1 - c.rect.y0 + 1) >= 9 && !(P.plan && c.rect === P.plan.tunnel)) Q.rooms.push({ rect: c.rect, use: null });
-      cmds.push(...letters(), ...roles(), ...research(), ...rift());
-      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial());
+      cmds.push(...letters(), ...roles(), ...research(), ...rift(), ...hunt());
+      if (s.tick % TICKS_PER_HOUR === 0 || P.phase === 1) cmds.push(...hearth(), ...workshops(), ...bills(), ...housing(), ...food(), ...animals(), ...ores(), ...burial(), ...soldiers());
       return cmds;
     },
   };
@@ -803,6 +852,11 @@ export function judgeSoak(r) {
   const last = blobRows[blobRows.length - 1] || null;
   const add = (name, ok, detail) => out.push({ name, ok: !!ok, detail });
   add('ran to the end with no exception', !m.checks.some((c) => (c.name === 'no exception' || c.name === 'state valid') && !c.ok), (m.checks.find((c) => !c.ok && (c.name === 'no exception' || c.name === 'state valid')) || {}).detail || `${r.days} days`);
+  // (2.9b) the hold stands: it did not fall, and it ends with S.alive or more colonists, busy
+  const fell = m.checks.find((c) => c.name === 'the colony did not fall' && !c.ok);
+  add(`the hold stands for ${r.days} days`, !fell && m.series.length >= r.days, fell ? fell.detail : `${m.series.length} days`);
+  add(`>= ${S.alive} colonists alive at day ${r.days}`, m.colonists.alive >= S.alive, `${m.colonists.alive} alive (peak ${m.colonists.peak}); deaths ${JSON.stringify(m.deathCauses)}`);
+  add(`idle < ${S.idleMax * 100}% of work hours at 10+ colonists`, m.idle10 !== null && m.idle10 < S.idleMax, m.idle10 === null ? 'never 10 colonists' : `idle ${(m.idle10 * 100).toFixed(1)}%`);
   add(`save < ${S.blobKB} KB at day ${r.days}`, last && last.blobKB < S.blobKB, last ? `${last.blobKB} KB on day ${last.day}` : 'no blob measured');
   add(`item stacks < ${S.stacks} at day ${r.days}`, m.stacks < S.stacks, `${m.stacks} stacks (peak ${Math.max(...m.series.map((x) => x.stacks))})`);
   const top = (m.tickProfile || []).slice(0, 3).map((x) => `${x.sys} ${x.meanMs} ms (${ownerOfSys(x.sys)})`).join(', ');
@@ -821,7 +875,9 @@ export function judgeSoak(r) {
   if (blobRows.length >= 3) {
     const mid = blobRows.find((x) => x.day >= Math.floor(r.days * 2 / 3)) || blobRows[blobRows.length - 2];
     // (a key whose collection has a cap and stays within it may grow up to that cap: chron, items ...)
-    const capped = { chron: 'chron', items: 'stacks', bld: 'bld', anim: 'anim', zones: 'zones', 'st.letters': 'letters', 'st.history': 'history', 'col.living': 'living' };
+    // (colony.work holds E's haul wait list, one row per stack waiting, and the filth list, at most
+    // FILTH.max tiles: bounded by the stack cap; it swings with the hauling, 2.9b)
+    const capped = { chron: 'chron', items: 'stacks', bld: 'bld', anim: 'anim', zones: 'zones', 'st.letters': 'letters', 'st.history': 'history', 'col.living': 'living', 'colony.work': 'stacks' };
     for (const [k, v] of Object.entries(last.sizes)) {
       if (capped[k] && last.caps && last.caps[capped[k]] <= CAPS[capped[k]]) continue;
       const a = mid.sizes[k] || 0;

@@ -1,7 +1,7 @@
 // The colony bot (gate 14.4 "Colony bot" from Stage 1a and "Balance report" from Stage 2; owner J).
 //   node tools/colonybot.mjs [--stage=2|1b|1a] [--seeds=1-5] [--days=N] [--jobs=4] [--storyteller=id]
 //                            [--json] [--out=FILE] [--verbose] [--twice]
-//   node tools/colonybot.mjs --soak [--seeds=1] [--days=300] [--out=FILE]        (Stage 2 soak, 14.8 J)
+//   node tools/colonybot.mjs --soak [--seeds=1] [--days=300] [--difficulty=warden] [--out=FILE]  (Stage 2 soak, 14.8 J)
 //   node tools/colonybot.mjs --report [--from=FILE,FILE] [--jobs=4] [--out=FILE]  (balance report, 14.4)
 // Bots: v2 (Stage 2, the default: a role-and-bill policy, tools/lib/bot2.mjs, 100 days), v1 (--stage=1b:
 // the scripted first nights, 10 days), v0 (--stage=1a: the scripted sandbox, 5 days); their players,
@@ -42,27 +42,27 @@ const has = (f) => process.argv.includes(f);
 const save = (file, obj) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify(obj, null, 1)); };
 
 /** One v2 seed, in this process: the plain result (no state). */
-async function v2Seed(seed, days, { storyteller = null, soak = false } = {}) {
+async function v2Seed(seed, days, { storyteller = null, soak = false, difficulty = null } = {}) {
   const { saveBlob } = await import('../js/game/save/colonysave.js');
   // progress on stderr every 25 days (a soak runs for minutes)
-  const onDay = (s, d, row) => { if (d % 25 === 0 && (soak || has('--progress'))) process.stderr.write(`  [seed ${seed}${storyteller ? ' ' + storyteller : ''}] day ${d}: ${row.alive}/${row.total} colonists, ${row.stacks} stacks, tier ${row.tier}, tick p95 ${row.tickP95} ms${row.blobKB !== undefined ? `, ${row.blobKB} KB` : ''}\n`); };
-  const r = await runBot2({ seed, days, storyteller, blobFn: saveBlob, blobEvery: soak ? 10 : 25, tickP95At: soak ? 2400 : 0, onDay });
+  const onDay = (s, d, row) => { if (d % 25 === 0 && (soak || has('--progress'))) process.stderr.write(`  [seed ${seed}${storyteller ? ' ' + storyteller : ''}${difficulty ? ' ' + difficulty : ''}] day ${d}: ${row.alive}/${row.total} colonists, ${row.stacks} stacks, tier ${row.tier}, tick p95 ${row.tickP95} ms${row.blobKB !== undefined ? `, ${row.blobKB} KB` : ''}\n`); };
+  const r = await runBot2({ seed, days, storyteller, difficulty, blobFn: saveBlob, blobEvery: soak ? 10 : 25, tickP95At: soak ? 2400 : 0, onDay });
   let blobKB = null;
   try { blobKB = +((await saveBlob(r.s)).length / 1024).toFixed(1); } catch (_) { /* reported as null */ }
-  const out = { seed, days, storyteller, ok: r.ok, hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, notes: r.notes.slice(-40), metrics: r.metrics };
+  const out = { seed, days, storyteller, difficulty, ok: r.ok, hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, notes: r.notes.slice(-40), metrics: r.metrics };
   if (soak) out.soak = judgeSoak(r);
   return out;
 }
 const topRefused = (list) => { const m = new Map(); for (const [, t, why] of list) { const k = `${t}: ${why}`; m.set(k, (m.get(k) || 0) + 1); } return [...m].sort((a, b) => b[1] - a[1]).slice(0, 8); };
 
 /** Seeds in parallel child processes (each runs `--one`), or in this process when jobs <= 1. */
-async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false } = {}) {
-  if (jobs <= 1 || seeds.length <= 1) { const out = []; for (const sd of seeds) out.push(await v2Seed(sd, days, { storyteller, soak })); return out; }
+async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false, difficulty = null } = {}) {
+  if (jobs <= 1 || seeds.length <= 1) { const out = []; for (const sd of seeds) out.push(await v2Seed(sd, days, { storyteller, soak, difficulty })); return out; }
   const results = new Array(seeds.length);
   let next = 0;
   const one = (k) => new Promise((resolve) => {
     const file = join(OUT_DIR, `.seed-${process.pid}-${k}.json`);
-    const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : [])];
+    const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : []), ...(difficulty ? [`--difficulty=${difficulty}`] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'] });
     p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
   });
@@ -101,23 +101,25 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (has('--one')) {
     // a child of --jobs: one v2 seed, written to --out
     const seed = parseSeeds(arg('seeds', '1'))[0];
-    const r = await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak') });
+    const r = await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak'), difficulty: arg('difficulty', null) });
     save(out, r);
     process.exit(0);
   }
   if (has('--soak')) {
-    const seeds = parseSeeds(arg('seeds', '1')), days = +arg('days', SOAK.days);
-    const results = await v2Seeds(seeds, days, { jobs, soak: true });
+    // (Stage 2.9b: the soak plays Warden, the difficulty a careful player should never lose on; any other
+    // with --difficulty)
+    const seeds = parseSeeds(arg('seeds', '1')), days = +arg('days', SOAK.days), difficulty = arg('difficulty', SOAK.difficulty);
+    const results = await v2Seeds(seeds, days, { jobs, soak: true, difficulty });
     printV2(results, days);
     let ok = true;
     for (const r of results) {
-      console.log(`\nsoak seed ${r.seed}, ${days} days:`);
+      console.log(`\nsoak seed ${r.seed}, ${days} days (${difficulty}):`);
       for (const c of r.soak || [{ name: 'ran', ok: false, detail: r.error }]) { console.log(`  ${c.ok ? 'ok  ' : c.info ? 'info' : 'FAIL'} ${c.name}: ${c.detail}`); if (!c.ok && !c.info) ok = false; }
       if (r.metrics) for (const x of r.metrics.series.filter((y) => y.blobKB !== undefined)) console.log(`    day ${x.day}: ${x.alive}/${x.total} colonists, ${x.stacks} stacks, ${x.bld} buildings, ${x.blobKB} KB, wealth ${x.wealth}, tier ${x.tier}, tick p95 ${x.tickP95} ms`);
       if (r.metrics && r.metrics.tickProfile) { console.log(`  tick cost by system at day ${days} (mean / max ms over 2,400 ticks):`); for (const x of r.metrics.tickProfile) console.log(`    ${x.sys.padEnd(44)} ${x.meanMs}${x.maxMs === null ? '' : ' / ' + x.maxMs}`); }
       if (r.metrics) { const last = r.metrics.series.filter((y) => y.sizes).slice(-1)[0]; if (last) console.log(`  largest saved keys at day ${last.day}: ${Object.entries(last.sizes).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${(v / 1024).toFixed(1)} KB`).join(', ')} (JSON, before deflate)`); }
     }
-    if (out) save(out, { kind: 'soak', days, seeds, targets: SOAK, ok, results });
+    if (out) save(out, { kind: 'soak', days, seeds, difficulty, targets: SOAK, ok, results });
     console.log(`colonybot soak [${days} days]: ${ok ? 'PASS' : 'FAIL'}`);
     process.exit(ok ? 0 : 1);
   }
@@ -132,7 +134,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (j.kind === 'soak') soak = j.results[0]; else if (j.bot === 'v2') main = j.results;
     }
     if (!main) main = await v2Seeds([1, 2, 3, 4, 5], TARGETS_2.days, { jobs: Math.max(1, jobs) });
-    if (!soak && !has('--no-soak')) soak = (await v2Seeds([1], SOAK.days, { soak: true }))[0];
+    if (!soak && !has('--no-soak')) soak = (await v2Seeds([1], SOAK.days, { soak: true, difficulty: SOAK.difficulty }))[0];
     const others = [];
     for (const st of ['wandering', 'long_night']) others.push(...(await v2Seeds([1, 2], TARGETS_2.days, { jobs: Math.max(1, jobs), storyteller: st })).map((r) => ({ ...r, storyteller: st })));
     const { report, text } = balanceReport(main, soak, others);

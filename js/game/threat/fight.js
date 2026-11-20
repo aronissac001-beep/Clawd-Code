@@ -45,7 +45,7 @@ import { stage2 } from '../people/defs.js';
 import { raidById, foeById, damageFoe, steer, liveRecord } from './raiders.js';
 import { foeStats, affixPct, WEAPONS, COMBAT } from './stats.js';
 import { startOrder, holdHere } from './orders.js';
-import { def } from './defs.js';
+import { def, all } from './defs.js';
 import { coverAt, towerOf } from '../defence/towers.js';
 import { RIFT } from './rift.js';
 import { didDeed } from '../people/coldeeds.js';
@@ -98,6 +98,35 @@ function pickPart(s) {
 const foeActive = (s, f) => { if (f.st && f.st.down) return false; const r = raidById(s, f.raid); return !!r && r.stage === 'active'; };
 const isBeast = (f) => { const d = def('raider', f.kind); return !!d && d.kind === 'beast'; };
 
+// ---- Armour (6.6) ---------------------------------------------------------------------------------
+/**
+ * Worn armour (Stage 2.9b). Every worn piece (col.gear.slots) covers parts by its slot: head the head;
+ * body the torso and arms; outer the torso, arms and legs; feet the legs; a shield in the hands guards
+ * every part at ARMOUR.shieldPct of its value. A piece counts its wear.armour x its quality's armour
+ * percent (5.8). A blow to part `pi` loses the sum in percent, capped at ARMOUR.maxPct; blows only
+ * (cut, stab, blunt, bite): the taint, fire and frost pass through. (Before 2.9b worn gear changed
+ * nothing in a fight: a hold in helms and mail bled like one in tunics.)
+ */
+export const ARMOUR = Object.freeze({ maxPct: 60, shieldPct: 50, kinds: Object.freeze(['cut', 'stab', 'blunt', 'bite']) });
+const ARMOUR_COVER = Object.freeze({ head: [0], body: [1, 2, 3], outer: [1, 2, 3, 4, 5], feet: [4, 5] });
+const ARMOUR_SLOTS = Object.freeze(['head', 'body', 'outer', 'feet']);
+function pieceArmour(b) {
+  const k = b && typeof b === 'object' ? b.k : b;
+  const d = k ? def('item', k) : null;
+  if (!d || !d.wear || !d.wear.armour) return 0;
+  const q = all('quality')[(b && b.q) | 0];
+  return Math.floor(((d.wear.armour | 0) * (q && q.armour ? q.armour : 100)) / 100);
+}
+/** The percent a blow of `kind` to part `pi` of col loses to worn armour (0 when none). */
+export function armourPct(col, pi, kind = 'cut') {
+  const sl = col.gear && col.gear.slots;
+  if (!sl || !ARMOUR.kinds.includes(kind)) return 0;
+  let a = 0;
+  for (const slot of ARMOUR_SLOTS) if (sl[slot] && ARMOUR_COVER[slot].includes(pi)) a += pieceArmour(sl[slot]);
+  if (sl.hands) a += Math.floor((pieceArmour(sl.hands) * ARMOUR.shieldPct) / 100);
+  return Math.min(ARMOUR.maxPct, a);
+}
+
 // ---- 1. Foes strike ------------------------------------------------------------------------------
 function strikeBuilding(s, f, st) {
   const b = f.st && f.st.bt !== null && f.st.bt !== undefined ? s.bld[f.st.bt] : null;
@@ -126,6 +155,8 @@ function foesStrike(s) {
       if (roll100(s) >= hit) continue;
       const part = pickPart(s);
       let dmg = Math.max(1, Math.floor((st.dmg * (s.colony.hearth.fuel > 0 ? 100 : COMBAT.coldHearthPct) * (S2 ? affixPct(f, 'dmgPct') : 100)) / 10000));
+      // worn armour takes its share off the blow (Stage 2.9b: helms, mail and shields counted for nothing)
+      if (S2) dmg = Math.max(1, Math.floor((dmg * (100 - armourPct(c, part, st.kind))) / 100));
       if (keeper && part <= 1) dmg = Math.max(1, Math.min(dmg, c.hp.parts[part] - 1));
       if (keeper && part <= 1 && c.hp.parts[part] <= 1) continue;
       const res = damageCol(s, c, part, st.kind, dmg, f);

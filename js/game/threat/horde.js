@@ -24,6 +24,7 @@ import { spawnRaid, setStage, burnFoe, foeById, activeRaids, liveRecord, escapeF
 import { stage2 } from '../people/defs.js';
 import { isHollow } from '../defence/braziers.js';
 import { COMBAT, foeStats } from './stats.js';
+import { bal } from './defs.js';
 
 export const HORDE_ID = 'hollow_horde';
 export const sunUp = (tick) => { const p = phaseOf(tick); return p === 'dawn' || p === 'day'; };
@@ -39,6 +40,45 @@ export function sunBurn(s, raid) {
   }
 }
 
+/**
+ * Hollow morale and the rout (EMBERCROWN-FORTRESS.md 2.10, Stage 2.9b). Every TPS ticks while the raid
+ * is active: raid.morale = 100 - losses - leader - light, where
+ *   losses  every member lost (slain, or downed) costs max(lossPer, lossHalf / n0): a horde that loses
+ *           about half its number breaks, whatever its size (as a reaver warband does at 50%)
+ *   leader  the elite leader slain or fled costs leadPct
+ *   light   every lightSecs member-seconds a Hollow stands in light of lightLvl or more costs 1 (the
+ *           counter is saved in the raid's live record as `lit`)
+ * At or below routAt the raid routs: it turns to 'retreat' and walks back to its edge (the leader, like
+ * at dawn, slinks away first). The Rift's spawn (hollow_rift) has its own logic and does not rout.
+ */
+export function hollowMorale(s, raid) {
+  if (raid.stage !== 'active' || s.tick % TPS !== 0) return;
+  const M = moraleTuning();
+  const live = liveRecord(s, raid.id), n0 = Math.max(1, live.n0 | 0);
+  let lit = 0;
+  for (const id of raid.members) {
+    const f = foeById(s, id);
+    if (!f || !isHollow(f) || (f.st && f.st.down)) continue;
+    const i = clamp(tileOfW(f.y), 0, H - 1) * W + clamp(tileOfW(f.x), 0, W - 1);
+    if (s.rt.light[i] >= M.lightLvl) lit++;
+  }
+  if (lit) live.lit = (live.lit | 0) + lit;
+  const per = Math.max(M.lossPer, Math.floor(M.lossHalf / n0));
+  const m = 100 - (live.lost | 0) * per - (live.leadDown ? M.leadPct : 0) - Math.floor((live.lit | 0) / M.lightSecs);
+  raid.morale = Math.max(0, Math.min(100, m));
+  if (raid.morale > M.routAt) return;
+  live.routed = 1;
+  // a breach from the deep goes back down the way it came; a horde walks back to its edge
+  const deep = raid.edge && raid.edge.side === 'deep';
+  for (const id of raid.members.slice()) { const f = foeById(s, id); if (f && (deep || (f.st && (f.st.lead || f.nem !== null)))) escapeFoe(s, f, true); }
+  setStage(s, raid, 'retreat');
+}
+/** Morale tuning (balance.js THREAT.hollowMorale), with the 2.10 numbers when a key is missing. */
+export function moraleTuning() {
+  const t = bal('threat').hollowMorale || {};
+  return { lossPer: t.lossPer ?? 3, lossHalf: t.lossHalf ?? 150, leadPct: t.leadPct ?? 30, lightLvl: t.lightLvl ?? 3, lightSecs: t.lightSecs ?? 10, routAt: t.routAt ?? 25 };
+}
+
 export const HORDE_LOGIC = Object.freeze({
   start(s, entry) {
     const r = spawnRaid(s, entry);
@@ -47,6 +87,7 @@ export const HORDE_LOGIC = Object.freeze({
     return r.id;
   },
   tick(s, raid) {
+    if (stage2()) hollowMorale(s, raid);
     if (raid.stage === 'active' && sunUp(s.tick)) {
       setStage(s, raid, 'retreat');
       // Stage 2: an elite (or a nemesis) alive at first light slinks away before the sun takes it (9.10)

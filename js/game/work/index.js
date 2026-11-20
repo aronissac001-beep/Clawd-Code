@@ -33,11 +33,13 @@ import { CARE_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER, CARE_BENCH_GIVER } from
 import { REFUEL_GIVER } from './givers/refuel.js';
 import { GIVER as TAILOR_GIVER } from './givers/tailor.js';
 import { GIVER as ART_GIVER } from './givers/art.js';
-import { STUDY_GIVER, LORE_BENCH_GIVER } from './givers/lore.js';
+import { STUDY_GIVER, LORE_BENCH_GIVER, TABLET_GIVER } from './givers/lore.js';
 import { FISH_GIVER } from './givers/cook.js';
 import { QUARRY_GIVER } from './givers/mine.js';
 import { CLEAN_GIVER } from './givers/clean.js';
 import { FIRE_GIVER } from './givers/fire.js';
+import { REPAIR_GIVER } from './givers/repair.js';
+import { SMOOTH_GIVER, ENGRAVE_GIVER } from './givers/stone.js';
 import { filthSystem } from './filth.js';
 import { rotSystem } from './rot.js';
 import { haulAudit } from './haul.js';
@@ -68,13 +70,15 @@ export const SLICE_GIVERS = Object.freeze([HAUL_GIVER, MINE_GIVER, CHOP_GIVER, B
 export const FIRST_NIGHT_GIVERS = Object.freeze([COOK_GIVER, GROW_GIVER, HARVEST_GIVER, SMITH_GIVER, CARE_GIVER, REFUEL_GIVER]);
 /**
  * Stage 2 givers (14.8 row E): Tailor, Art, Lore (study desk and bench bills), full Care (tend, talk
- * down, feed, the apothecary), the fisher's hut and the quarry, cleaning and the fire emergency (Haul).
+ * down, feed, the apothecary), the fisher's hut and the quarry, cleaning and the fire emergency (Haul), and
+ * Repair (Build: damaged structures, givers/repair.js) lore tablets (Lore: givers/lore.js) and
+ * Smooth and Engrave (Craft and Art: givers/stone.js), Stage 2.9b.
  * Each one is quiet until the Stage 2 world rules are on (B's worldrec stage switch), so a Stage 1b game
  * plays exactly as before.
  */
 const stage2Only = (g) => Object.freeze({ ...g, candidates: (s, c, k) => (worldStage2() ? g.candidates(s, c, k) : []) });
 export const HOLD_GIVERS = Object.freeze([TAILOR_GIVER, ART_GIVER, STUDY_GIVER, LORE_BENCH_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER, CARE_BENCH_GIVER,
-  FISH_GIVER, QUARRY_GIVER, CLEAN_GIVER, FIRE_GIVER].map(stage2Only));
+  FISH_GIVER, QUARRY_GIVER, CLEAN_GIVER, FIRE_GIVER, REPAIR_GIVER, TABLET_GIVER, SMOOTH_GIVER, ENGRAVE_GIVER].map(stage2Only));
 export const ALL_GIVERS = Object.freeze([...SLICE_GIVERS, ...FIRST_NIGHT_GIVERS, ...HOLD_GIVERS]);
 
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);

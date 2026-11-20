@@ -55,8 +55,8 @@ export const sortedHas = (a, v) => {
 const clusterLists = () => { const out = []; for (let c = 0; c < CW * CH; c++) out.push([]); return out; };
 
 // ---- Designations ---------------------------------------------------------------------------------
-/** Indexed designation kinds (Stage 1a: the Mine and Chop givers). */
-export const DESIG_INDEX = Object.freeze([['mine', DESIG.MINE], ['chop', DESIG.CHOP], ['harvest', DESIG.HARVEST]]);
+/** Indexed designation kinds (Stage 1a: the Mine and Chop givers; Stage 2.9b: Smooth and Engrave, givers/stone.js). */
+export const DESIG_INDEX = Object.freeze([['mine', DESIG.MINE], ['chop', DESIG.CHOP], ['harvest', DESIG.HARVEST], ['smooth', DESIG.SMOOTH], ['engrave', DESIG.ENGRAVE]]);
 export function rebuildDesigIndex(s) {
   const out = {};
   for (const [name] of DESIG_INDEX) out[name] = clusterLists();

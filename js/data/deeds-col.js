@@ -10,7 +10,7 @@
 // Player-facing text: `past` ends the "has learned" toast and the Chronicle line ("Bryn has learned Seam
 // Follower: mined 150 ore"); `prog` is the Skills tab's "next" line ("mined 112 of 150 ore"). No emoji.
 
-/** Length of col.done (the schema field, owner A). 37 slots are used; the rest are room to append. */
+/** Length of col.done (the schema field, owner A). 42 slots are used; the rest are room to append. */
 export const DONE_LEN = 48;
 /** Counters saturate here (Uint16). */
 export const DONE_MAX = 65535;
@@ -26,7 +26,7 @@ export const COL_DEEDS = Object.freeze([
   { id: 'supports_built', slot: 5, past: 'set {n} props and pillars', prog: 'built {have} of {n} props or pillars', by: 'F coldeeds (built event)' },
   { id: 'deconstructed', slot: 6, past: 'took down {n} structures', prog: 'took down {have} of {n} structures', by: 'F coldeeds (BUS.removed)' },
   { id: 'walls_built', slot: 7, past: 'raised {n} walls', prog: 'built {have} of {n} walls', by: 'F coldeeds (built event)' },
-  { id: 'raid_repairs', slot: 8, past: 'repaired {n} structures under attack', prog: 'repaired {have} of {n} structures in raids', by: 'E repair (request)' },
+  { id: 'raid_repairs', slot: 8, past: 'repaired {n} structures under attack', prog: 'repaired {have} of {n} structures in raids', by: 'E repair giver (work/givers/repair.js: a repair finished in or begun in a live raid)' },
   // ---- smithing ----
   { id: 'ore_smelted', slot: 9, past: 'smelted {n} loads of ore', prog: 'smelted {have} of {n} loads of ore', by: 'F coldeeds (crafted event: ingots)' },
   { id: 'forged_fine', slot: 10, past: 'forged {n} pieces of Superior work or better', prog: 'forged {have} of {n} Superior pieces', by: 'F coldeeds (crafted event: weapons, armour, tools)' },
@@ -39,7 +39,7 @@ export const COL_DEEDS = Object.freeze([
   { id: 'bleeds_stopped', slot: 16, past: 'kept {n} fallen colonists from bleeding out', prog: 'saved {have} of {n} from bleeding out', by: 'F health.tend (a downed patient whose bleeding stopped)' },
   // ---- melee ----
   { id: 'choke_raids', slot: 17, past: 'held a narrow way in {n} raids', prog: 'held a 1-tile choke in {have} of {n} raids', by: 'F coldeeds (choke scan during raids)' },
-  { id: 'elites_felled', slot: 18, past: 'felled {n} captains and elites', prog: 'felled {have} of {n} captains or elites', by: 'F coldeeds (BUS.kill); H downFoe (request)' },
+  { id: 'elites_felled', slot: 18, past: 'felled {n} captains and elites', prog: 'felled {have} of {n} captains or elites', by: 'F coldeeds (BUS.kill)' },
   { id: 'recovered', slot: 19, past: 'fell and rose again {n} times', prog: 'downed and recovered {have} of {n} times', by: 'F coldeeds (downed event, then up again)' },
   { id: 'kills', slot: 20, past: 'slew {n} foes', prog: 'slew {have} of {n} foes', by: 'F coldeeds (BUS.kill)' },
   // ---- archery ----
@@ -47,24 +47,35 @@ export const COL_DEEDS = Object.freeze([
   { id: 'post_kills', slot: 22, past: 'made {n} kills from a tower or on Hold', prog: 'made {have} of {n} kills from a tower or on Hold', by: 'F coldeeds (BUS.kill)' },
   { id: 'volley_kills', slot: 23, past: 'made {n} kills beside fellow archers', prog: 'made {have} of {n} kills in a squad of archers', by: 'F coldeeds (BUS.kill)' },
   // ---- signature deeds ----
-  { id: 'traps_set', slot: 24, past: 'built or rearmed {n} traps', prog: 'built or rearmed {have} of {n} traps', by: 'F coldeeds (built event); H/E rearm (request)' },
-  { id: 'stone_worked', slot: 25, past: 'smoothed or engraved {n} tiles of stone', prog: 'smoothed or engraved {have} of {n} tiles', by: 'E smooth / engrave (request)' },
+  { id: 'traps_set', slot: 24, past: 'built or rearmed {n} traps', prog: 'built or rearmed {have} of {n} traps', by: 'F coldeeds (built event)' },
+  { id: 'stone_worked', slot: 25, past: 'smoothed or engraved {n} tiles of stone', prog: 'smoothed or engraved {have} of {n} tiles', by: 'E stone givers (work/givers/stone.js: a floor smoothed or engraved)' },
   { id: 'garments', slot: 26, past: 'sewed {n} garments', prog: 'sewed {have} of {n} garments', by: 'F coldeeds (crafted event: apparel)' },
   { id: 'fine_meals', slot: 27, past: 'cooked {n} fine meals', prog: 'cooked {have} of {n} fine meals', by: 'F coldeeds (crafted event: fine meals, feasts)' },
   { id: 'harvested', slot: 28, past: 'harvested {n} plants', prog: 'harvested {have} of {n} plants', by: 'F coldeeds (harvested event)' },
   { id: 'tamed', slot: 29, past: 'tamed {n} animals', prog: 'tamed {have} of {n} animals', by: 'F coldeeds (tamed event)' },
   { id: 'researched', slot: 30, past: 'brought the hold {n} new techs', prog: 'researched {have} of {n} techs', by: 'E lore giver (the scholar who finishes a research)' },
-  { id: 'tablets_read', slot: 31, past: 'read {n} lore tablets', prog: 'read {have} of {n} lore tablets', by: 'K lore tablets (request)' },
-  { id: 'walls_engraved', slot: 32, past: 'engraved {n} walls with the hold\'s story', prog: 'engraved {have} of {n} walls', by: 'E art giver (request)' },
-  { id: 'trades', slot: 33, past: 'struck {n} bargains', prog: 'made {have} of {n} trades', by: 'K trade (request)' },
-  { id: 'persuaded', slot: 34, past: 'won over {n} prisoners', prog: 'persuaded {have} of {n} prisoners', by: 'H capture (request)' },
+  { id: 'tablets_read', slot: 31, past: 'read {n} lore tablets', prog: 'read {have} of {n} lore tablets', by: 'E tablet giver (work/givers/lore.js: a lore tablet read)' },
+  { id: 'walls_engraved', slot: 32, past: 'carved the hold\'s story into {n} stones', prog: 'engraved {have} of {n} stones', by: 'E stone givers (work/givers/stone.js: a smoothed floor engraved)' },
+  { id: 'trades', slot: 33, past: 'struck {n} bargains', prog: 'made {have} of {n} trades', by: 'K trade (colony/trade.js tradeCmd: the envoy of a trade of 10+ coins)' },
+  { id: 'persuaded', slot: 34, past: 'won over {n} prisoners', prog: 'persuaded {have} of {n} prisoners', by: 'H capture (threat/capture.js: the envoy when a captive is recruited; request to H)' },
   // ---- internal state (never shown) ----
   { id: 'downed_open', slot: 35, internal: true, by: 'F coldeeds: 1 while a downing waits for the colonist to stand again' },
   { id: 'choke_mark', slot: 36, internal: true, by: 'F coldeeds: (raid id mod 65,535) + 1 of the last raid counted in choke_raids' },
+  // ---- Stage 2.9b (appended) ----
+  { id: 'meals_cooked', slot: 37, past: 'cooked {n} meals for the hold', prog: 'cooked {have} of {n} meals', by: 'F coldeeds (crafted event: any meal, bread or feast)' },
+  { id: 'masonwork', slot: 38, past: 'finished {n} pieces of masonwork', prog: 'finished {have} of {n} pieces of masonwork', by: 'E bills (work/bills.js: a finished Masonry bill)' },
+  { id: 'artworks', slot: 39, past: 'finished {n} works of art', prog: 'finished {have} of {n} works of art', by: 'E bills (work/bills.js: a finished Art bill)' },
+  { id: 'study_hours', slot: 40, past: 'spent {n} hours at study', prog: 'studied {have} of {n} hours', by: 'F coldeeds.studied (work/givers/lore.js studyYield: an hour of lore points at a desk)' },
+  { id: 'study_acc', slot: 41, internal: true, by: 'F coldeeds: lore points toward the next study hour' },
 ]);
 
 /**
  * How each of the 33 perks is earned (3.1 table): the skill level (the perk row's lvl) and the deeds.
+ * Stage 2.9b tuning (the 3.1 balance target: the median Master holds 1-2 perks of their skill by day 120;
+ * measured with tools/colonybot.mjs seeds 1-5): Hearth Cook also comes from 600 meals of any kind (a cook
+ * who feeds the hold all season, fine meals or not), and Deep Reader from 8 techs brought to the hold (the
+ * hold's best scholar is credited, the techs a hold learns by day 120 being 10-25 in all). The rest stand as
+ * the table has them: the bot's Masters (mining, growing, smithing) already meet them by day 120.
  * `all` must every one hold; `any` is "or" (one is enough). Keyed by perk id (js/data/perks.js).
  */
 export const PERK_EARN = Object.freeze({
@@ -100,13 +111,13 @@ export const PERK_EARN = Object.freeze({
   volley_captain: { lvl: 20, all: [{ deed: 'volley_kills', n: 30 }] },
   // Signature perks (15)
   trapwright: { lvl: 15, all: [{ deed: 'traps_set', n: 30 }] },
-  stone_carver: { lvl: 15, all: [{ deed: 'stone_worked', n: 200 }] },
+  stone_carver: { lvl: 15, any: [{ deed: 'stone_worked', n: 200 }, { deed: 'masonwork', n: 150 }] },   // 2.9b: or a mason's bench work
   banner_maker: { lvl: 15, all: [{ deed: 'garments', n: 20 }] },
-  hearth_cook: { lvl: 15, all: [{ deed: 'fine_meals', n: 200 }] },
+  hearth_cook: { lvl: 15, any: [{ deed: 'fine_meals', n: 200 }, { deed: 'meals_cooked', n: 600 }] },   // 2.9b: or a season of plain cooking
   graft_hand: { lvl: 15, all: [{ deed: 'harvested', n: 300 }] },
   beast_friend: { lvl: 15, all: [{ deed: 'tamed', n: 5 }] },
-  deep_reader: { lvl: 15, any: [{ deed: 'researched', n: 10 }, { deed: 'tablets_read', n: 2 }] },
-  chronicler: { lvl: 15, all: [{ deed: 'walls_engraved', n: 20 }] },
+  deep_reader: { lvl: 15, any: [{ deed: 'researched', n: 8 }, { deed: 'tablets_read', n: 2 }, { deed: 'study_hours', n: 300 }] },   // 2.9b: 8 techs (was 10), or long study
+  chronicler: { lvl: 15, any: [{ deed: 'walls_engraved', n: 20 }, { deed: 'artworks', n: 12 }] },        // 2.9b: or art from the bench
   silver_tongue: { lvl: 15, any: [{ deed: 'trades', n: 20 }, { deed: 'persuaded', n: 2 }] },
 });
 
@@ -124,8 +135,10 @@ export const DEED_RULES = Object.freeze({
   smeltCats: ['ingots'],
   garmentCats: ['apparel'],
   fineMeals: ['finemeal', 'feast'],
+  mealCats: ['meals'],   // any cooked meal (meals_cooked)
   forgedFineQ: 3,        // quality index: 3 Superior (the "Excellent or better" of 3.1), 4 Masterwork
   masterQ: 4,
   logCap: 20,            // col.log keeps this many lines
   checkEveryTicks: 600,  // the earn check: once a game hour
+  studyHourPts: 60,      // lore points of one study hour (a point a minute at speed 1.0)
 });

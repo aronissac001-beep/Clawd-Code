@@ -69,6 +69,9 @@ export const PATH = { budgetPerTick: 8000, searchCapDiv: 2, leaderRepathTicks: 4
 export const THREAT = {
   base: 40, min: 40, max: 4000, wealthKnee: 50000, wealthLoPermille: 8, wealthKneePts: 400, wealthHiPermille: 3,
   popPer: 14, popFree: 3, floorPerDay: 2, yearEndPts: 40, wallWealthPct: 50,
+  // the floor's cap per difficulty (Stage 2.9b; raidplan.threatPoints): reached about day 110 (Hearthkeeper),
+  // 160 (Warden), 210 (Steadfast); Hard has none
+  floorMax: { hearthkeeper: 300, warden: 450, steadfast: 600 },
   lossAdjPct: 85, winAdjPct: 115, winAdjMaxPct: 130, maxPerRaid: 60, maxHostiles: 80, maxWarnH: 36,
   difficultyPct: { hearthkeeper: 35, warden: 70, steadfast: 100, hard: 140 },
   // Storyteller (9.1): tension 0-100; the scripted first major of a start (story.firstMajorD)
@@ -77,6 +80,10 @@ export const THREAT = {
   arriveH: { day: 10, dusk: 19, night: 21 },     // arrival hour by incident `arrive` ('any': a seeded hour)
   // Raids on the map (9.3): foe speed in world units per tick at speed 100
   foeSpeed: 2,
+  // Hollow morale and the rout (EMBERCROWN-FORTRESS.md 2.10; threat/horde.js hollowMorale, Stage 2.9b):
+  // a member lost costs max(lossPer, lossHalf / starting members) (a horde that loses half breaks), the
+  // leader leadPct, and every lightSecs member-seconds in light lightLvl+ cost 1; at routAt it routs
+  hollowMorale: { lossPer: 3, lossHalf: 150, leadPct: 30, lightLvl: 3, lightSecs: 10, routAt: 25 },
 };
 /** Colony wealth (6.7, 9.2; K's colony/wealth.js): structures count at bldPct, colonists add
  *  coinsPer10Levels coins per 10 skill levels; a full recompute every recomputeEvery ticks. */

@@ -67,7 +67,7 @@ test('data: every one of the 33 perks has its 3.1 earn rule at its own level; de
   assert.deepEqual(PERK_EARN.seam_follower, { lvl: 10, all: [{ deed: 'ore_mined', n: 150 }] });
   assert.deepEqual(PERK_EARN.cave_sense.any.map((d) => [d.deed, d.n]), [['caveins_near', 2], ['mined', 400]]);
   assert.deepEqual(PERK_EARN.warcry, { lvl: 20, all: [{ deed: 'kills', n: 60 }] });
-  assert.deepEqual(PERK_EARN.hearth_cook, { lvl: 15, all: [{ deed: 'fine_meals', n: 200 }] });
+  assert.deepEqual(PERK_EARN.hearth_cook, { lvl: 15, any: [{ deed: 'fine_meals', n: 200 }, { deed: 'meals_cooked', n: 600 }] }, '2.9b: or 600 meals of any kind');
 });
 
 test('Seam Follower: Mining 10 and 150 ore mined earns it within the hour, with no letter; a toast line, a Chronicle line and a log line', () => {
@@ -97,7 +97,8 @@ test('Seam Follower: Mining 10 and 150 ore mined earns it within the hour, with 
   assert.ok(line, 'a Chronicle line');
   assert.deepEqual([line[3].name, line[3].perk], [first, 'Seam Follower']);
   const log = c.log[c.log.length - 1];
-  assert.match(log.text, new RegExp(`^${first} has learned Seam Follower: followed 150 ore seams\\.$`));
+  assert.equal(log.text, 'Learned Seam Follower: Mining one vein tile makes the whole connected vein known.', 'the log says what the perk does');
+  assert.deepEqual(line[3].why, 'followed 150 ore seams', 'the Chronicle line (and its toast) says how it was earned');
   assert.equal(perks.grantText(c, 'seam_follower'), `${first} has learned Seam Follower: followed 150 ore seams`);
   assert.ok(!c.perks.includes('cave_sense'), 'Cave Sense needs its own deed');
 });
@@ -117,10 +118,10 @@ test('no perk before its level: 1,000 ore at Mining 9 earns nothing until Mining
   setLevel(c, 'mining', 10);
   toNextHour(s);
   assert.ok(c.perks.includes('seam_follower') && c.perks.includes('cave_sense'), 'both perks of the old pair, earned together');
-  assert.ok(!c.perks.includes('hearth_cook'), 'Hearth Cook needs 200 fine meals');
+  assert.ok(!c.perks.includes('hearth_cook'), 'Hearth Cook needs 200 fine meals or 600 meals');
   const next = perks.nextPerks(c, { skill: 'cooking' })[0];
   assert.equal(next.id, 'hearth_cook');
-  assert.equal(next.text, 'Hearth Cook: cooked 0 of 200 fine meals');
+  assert.equal(next.text, 'Hearth Cook: cooked 0 of 200 fine meals or cooked 0 of 600 meals');
   didDeed(s, c, 'fine_meals', 200);
   toNextHour(s);
   assert.ok(c.perks.includes('hearth_cook'));
@@ -234,4 +235,23 @@ test('the Stage 2.9 migration helper: an old pending choice settles on the neare
   assert.equal(perks.settleChoice(col, ['reforger', 'temperer'], { items }), 'temperer', 'Superior blades made: nearer to Temperer');
   const e = perks.settledChronEntry(100, col, 'temperer');
   assert.deepEqual(e, [100, 'perk', 'chron_perk_settled', { colId: 7, name: 'Bryn', perk: 'Temperer' }]);
+});
+
+test('2.9b: every meal a cook makes counts (meals_cooked); Hearth Cook comes at Cooking 15 with 600 meals of any kind, or 200 fine meals', () => {
+  const s = colony('perks-meals');
+  const [a, b] = s.col;
+  s.rt.events.length = 0;
+  for (const k of ['meal', 'bread', 'finemeal', 'feast', 'ingot']) emit(s, 'crafted', { itemId: 1, k, q: 0, colId: a.id });
+  tapEvents(s);
+  assert.equal(deedCount(a, 'meals_cooked'), 4, 'meal, bread, fine meal and feast; not an ingot');
+  assert.equal(deedCount(a, 'fine_meals'), 2);
+  setLevel(a, 'cooking', 15); setLevel(b, 'cooking', 14);
+  didDeed(s, a, 'meals_cooked', 595); didDeed(s, b, 'meals_cooked', 900);
+  toNextHour(s);
+  assert.ok(!a.perks.includes('hearth_cook'), '599 meals: not yet');
+  didDeed(s, a, 'meals_cooked', 1);
+  toNextHour(s);
+  assert.ok(a.perks.includes('hearth_cook'), '600 meals at Cooking 15');
+  assert.ok(!b.perks.includes('hearth_cook'), 'no perk before its level');
+  assert.equal(perks.grantText(a, 'hearth_cook'), `${a.name.split(' ')[0]} has learned Hearth Cook: cooked 600 meals for the hold`);
 });

@@ -50,6 +50,7 @@ import { depositId } from '../../js/game/world/defs.js';
 import { isHostile, incidentDef } from '../../js/game/threat/incidents.js';
 import { draftVeto } from '../../js/game/people/draft.js';
 const HURT_BLOOD = 60 * 100;       // policy mode stands a drafted colonist down below this blood (x FIX)
+const PAIN_OUT = 45;                // policy mode stands a drafted colonist down at this much untended pain (downed past 80)
 const DRAFT_R = 16, STAND_R = 26, FRESH_H = 3;  // policy mode: draft when a hostile is this close (tiles), stand down past STAND_R
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 /** The bot's default stage: v1 plays Stage 1b (needs, the storyteller and the first horde). '1a' runs v0. */
@@ -284,9 +285,13 @@ export function makePlayer(s, stage = '1b', opts = {}) {
     const side = e ? e.plan.edge.side : (s.raids[0] && s.raids[0].edge ? s.raids[0].edge.side : null);
     return side === 'n' ? [0, -1] : side === 's' ? [0, 1] : side === 'e' ? [1, 0] : side === 'w' ? [-1, 0] : null;
   }
-  const fit = (c) => !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0);
-  // badly hurt: low on blood, or a deep wound still bleeding once blood has started to fall
-  const unfit = (c) => c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100);
+  // (policy mode, 2.9b: P.keepOut names colonists the v2 policy keeps out of the line: its rescuer)
+  const fit = (c) => !(P.keepOut && P.keepOut.has(c.id)) && !(c.hp.illness || c.hp.wounds.some((w) => (w.infected | 0) > 0) || (c.hp.taint | 0) > 0);
+  // badly hurt: low on blood, or a deep wound still bleeding once blood has started to fall; policy mode
+  // (2.9b) also stands down one in pain near the downing line (a player pulls the hurt back before they
+  // fall where the horde is: a colonist downed in the line bled out before anyone could reach them)
+  const painOf = (c) => { let p = 0; for (const w of c.hp.wounds) if (w.tended === 0) p += w.dmg; return p; };
+  const unfit = (c) => c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100) || (pol && painOf(c) >= PAIN_OUT);
   const holdSpot = () => { const at = P.holdAt || { x: hx, y: hy + 2 }; return rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null)); };
   /** 1b defence: 2 braziers by the Hearth toward the omen's edge; draft at Imminent and hold there; undraft after. */
   function defence() {

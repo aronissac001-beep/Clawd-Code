@@ -175,6 +175,7 @@ function noteLeader(s, foe, by) {
   const live = liveRecord(s, foe.raid);
   if (by && Array.isArray(by.sk)) live.slayer = by.id;
   if (foe.kind === 'reaver_captain') live.captainDown = true;
+  if (foe.st.lead) live.leadDown = true;   // (Hollow morale: the leader slain or downed, horde.js)
 }
 
 /** Remove a dead foe: loot, BUS.kill, `died` (kind 'foe'), nemesis, and its raid membership. */
