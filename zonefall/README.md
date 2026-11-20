@@ -214,6 +214,13 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - The cupboard window shows the upkeep per day and how long your stock lasts.
   - If the cupboard runs dry, or a piece is outside any claim, the piece decays. Twig goes in about a minute, wood in a day and armored in about two days.
 - **Survival:** health, food, water, bleeding and radiation. You hunt, cook, smelt, craft with workbench tiers, research blueprints and recycle.
+- **Workbench tech tree:** the **Tech tree** tab next to Craft shows a tree of blueprints for each workbench tier.
+  - At a workbench of tier N you can spend scrap to learn any blueprint of tier N or lower, without owning the item.
+  - Each tier has a few branches (sidearms, rifles, sights, explosives and so on). In a branch, a blueprint needs the one above it.
+  - T1 blueprints cost 80 to 125 scrap, T2 200 to 300 and T3 420 to 600. Cheaper items cost less.
+  - Learned blueprints are green, ones you can unlock now glow yellow, and locked ones show what they need. Tap one to see what it crafts from, then tap **Unlock**.
+  - Scrap in your Tool Cupboard and boxes counts when you're inside your claim.
+  - The Research Table still works and is cheaper (75, 175 or 350 scrap), but it uses up the item.
 - **Human-like enemies:**
   - They react a beat after spotting you, and their aim settles the longer they track you.
   - They shoot worse on the move, and getting hit spoils their aim.

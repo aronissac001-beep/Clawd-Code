@@ -21,6 +21,7 @@ import { WORLD } from './world/gen.js';
 import { Net } from './net.js';
 import { Profile, openCreator } from './profile.js';
 import { Home } from './homestead.js';
+import { techTreeBody } from './techtree.js';
 
 /* global ART */
 const artLib = () => (typeof ART !== 'undefined' ? ART : window.ART) || null;
@@ -614,7 +615,7 @@ export const UI = {
   openInventory(side) {
     const p = G.player; if (!p || p.dead) return;
     this.sel = null; this.attPick = null;
-    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }] });
+    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
   },
   invBody(body, side) {
     const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
@@ -926,7 +927,7 @@ export const UI = {
         if (this.craftCat !== 'all' && c !== this.craftCat) continue;
         const locked = r.bp && !G.run.bps.includes(r.id); const why = canCraft(p, r);
         const row = el('div', 'rec' + (why ? ' no' : '') + (locked ? ' locked' : ''));
-        row.innerHTML = `<img src="${ic(r.out)}"><div class="rt"><b class="${rarCls(r.out)}">${def.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${Object.entries(r.cost).map(([k, v]) => `<span class="${haveCount(p, k) >= v ? '' : 'bad'}">${v} ${nm(k)}</span>`).join(' · ')}</small>${locked ? '<small class="lockt">Blueprint needed (research or find one)</small>' : r.wb ? '<small class="dim">Workbench T' + r.wb + '</small>' : ''}</div>`;
+        row.innerHTML = `<img src="${ic(r.out)}"><div class="rt"><b class="${rarCls(r.out)}">${def.name}${r.n > 1 ? ' ×' + r.n : ''}</b><small>${Object.entries(r.cost).map(([k, v]) => `<span class="${haveCount(p, k) >= v ? '' : 'bad'}">${v} ${nm(k)}</span>`).join(' · ')}</small>${locked ? '<small class="lockt">Blueprint needed: unlock it in the tech tree, research or find one</small>' : r.wb ? '<small class="dim">Workbench T' + r.wb + '</small>' : ''}</div>`;
         const b = el('button', why ? '' : 'primary', 'Craft'); b.disabled = !!why; b.onclick = e => { e.stopPropagation(); craft(p, r, 1); this.rebuild(); };
         row.appendChild(b);
         if (!why && !r.bp && ITEMS[r.out].stack > 1) { const b5 = el('button', '', '×5'); b5.disabled = !!canCraft(p, r, 5); b5.onclick = e => { e.stopPropagation(); craft(p, r, 5); this.rebuild(); }; row.appendChild(b5); }
@@ -934,8 +935,14 @@ export const UI = {
       }
       body.appendChild(list);
       if (p.queue.length) { const q = el('div', 'queue'); q.innerHTML = 'Queue: ' + p.queue.map(x => nm(x.r.out) + (x.n > 1 ? ' ×' + x.n : '')).join(', '); body.appendChild(q); }
-    }, { cls: 'wide', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', on: true, fn: () => this.openCraft() }] });
+    }, { cls: 'wide', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', on: true, fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
     this.sheetRefresh = () => { if (G.player.queue.length) this.rebuild(); };
+  },
+  /** the workbench tech tree: spend scrap to learn blueprints of your workbench's tier or lower (techtree.js) */
+  openTech(tier) {
+    const p = G.player; if (!p || p.dead) return;
+    if (tier) this.techTier = tier;
+    this.openSheet('Tech tree', body => techTreeBody(this, body, this.techTier), { cls: 'wide tech', tabs: [{ label: 'Inventory', fn: () => this.openInventory() }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', on: true, fn: () => this.openTech() }] });
   },
   openResearch() {
     this.openSheet('Research Table', body => {
