@@ -22,7 +22,6 @@ import { installWorld, setExplored } from '../world/terrain.js';
 import { hearthStartFuel } from '../world/fuel.js';
 import { plantCode } from '../world/defs.js';
 import { buildStubMap } from '../world/stubmap.js';
-import { generateWorld } from '../world/mapgen.js';
 import { generateWorld3 } from '../world/mapgen3.js';
 import { installMovement } from '../systems/pathing.js';
 import { installWork } from '../work/index.js';
@@ -78,8 +77,19 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
  *     placed, s.colony.hearth set, initRuntime run and the opening reveal done (B's generateWorld).
  * The default is B's mapgen (3.2, slice steps); 'stub' selects the provisional stub map.
  */
+// D = 1 worlds (one plane, the Stage 2 generator) are tools-only since Z2 (EMBERCROWN-FORTRESS.md 7.6): the
+// generator lives in tools/lib/mapgen1.js and is not shipped (not imported by the game, not in sw.js). Under Node
+// (tests, bots, the D = 1 gate rows) it is loaded here; a browser harness registers it with registerWorld1(fn).
+// The specifier is built at run time so no browser ever fetches it and the service-worker check does not trace it.
+const IN_NODE = typeof process !== 'undefined' && !!(process.versions && process.versions.node);
+let gen1 = IN_NODE ? (await import(['..', '..', '..', 'tools', 'lib', 'mapgen1.js'].join('/'))).generateWorld : null;
+/** Registers the D = 1 generator (tools/lib/mapgen1.js generateWorld) in a browser harness. */
+export function registerWorld1(fn) { gen1 = fn; }
 export const WORLDS = Object.freeze({
-  mapgen: (s) => { const info = generateWorld(s); return { done: true, spawn: info.spawn || null, info }; },
+  mapgen: (s) => {
+    if (!gen1) throw new Error('foundColony: D = 1 worlds are tools-only (register tools/lib/mapgen1.js with registerWorld1)');
+    const info = gen1(s); return { done: true, spawn: info.spawn || null, info };
+  },
   stub: (s) => provisionalWorld(s),
   // Stage Z1: the fortress (128 x 128 x 20, mapgen3); foundColony picks it for d > 1
   fortress: (s) => { const info = generateWorld3(s); return { done: true, spawn: info.spawn || null, info }; },

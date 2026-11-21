@@ -1329,7 +1329,7 @@ export const MAP_MAX = 256; export const D_MAX = 32;   // assert N < KEY.SPAN (1
 | File | Change |
 |---|---|
 | `js/game/world/mapgen3.js` | NEW: the 3D generator (2.2) |
-| `js/game/world/mapgen.js` | kept for D=1 worlds until the fortress switch, then deleted (no frozen copies: the pristine is stored, F28) |
+| `js/game/world/mapgen.js` | retired from the shipped game in Z2 (Z1fix): moved to `tools/lib/mapgen1.js` for the D=1 tools and gate rows (bots v0-v2, the Stage 2 determinism scenes, the world tests); not in `setup.js`'s imports, `sw.js` or the `check-mapgen` allowances. Under Node `setup.js` loads it for `foundColony({ d: 1 })`; a browser harness registers it with `registerWorld1` (`tools/determinism-lib.mjs`). No frozen copies for saves: the pristine is stored (F28) |
 | `js/game/world/amend/` | NEW, empty until the first world amendment (5.6) |
 | `js/game/save/pristine.js` | NEW: the pristine store, its CRCs, embedding and the fallback order (5.1) |
 | `tools/check-mapgen.mjs`, `tools/capture-fixture.mjs`, `tools/tests/cache-drop.test.mjs` | NEW (J): the mapgen Math lint, fixture capture from an old commit, the F25 contract test |

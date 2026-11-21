@@ -364,7 +364,7 @@ test('waystones: must touch claimed land, and the tier limits how many', () => {
 // ---- Stage 2 maps and discoveries ----------------------------------------------------------------------------
 test('mapgen (Stage 2): 3-5 caverns, springs, a sealed vault with loot, ruins and about 6% blight away from the site', async () => {
   fresh();
-  const { generateWorld } = await import('../../js/game/world/mapgen.js');
+  const { generateWorld } = await import('../lib/mapgen1.js');
   const s = createColony(3);
   const info = generateWorld(s);
   const x = info.stage2;

@@ -65,7 +65,7 @@ import { alertTracker } from './alerts.js';
 import { mountLedger } from './ledger.js';
 import { mountIntros } from './intros.js';
 import { mountPrompts } from './cards.js';
-import { mountLetters, openDemand, openTrade, openLetters, openChoice } from './letters.js';
+import { mountLetters, openDemand, openTrade, openLetters, openChoice, cutsSeal, openSealLetter } from './letters.js';
 import { helpButton } from './help.js';
 import { isFallen, fallSummary } from '../game/colony/fall.js';
 import { checkFall } from '../main.js';
@@ -191,9 +191,10 @@ export function mountShell(root, api) {
     mirrored: () => ui.landscape,
   });
   setSpeed(1);
-  // back from the background, or Continue: always paused, with the Dawn Ledger (2.2, D4, 10.10)
+  // back from the background, or Continue: always paused, with the Dawn Ledger (2.2, D4, 10.10); a hold just
+  // given depth shows its "Your hold now has depth" card first and the ledger when that card is closed (intros.js)
   let resumePaused = false;
-  const onResume = () => { if (ruin.on) return; setSpeed(0); speed.render(); resumePaused = true; if (ledger) { if (ui.tool) endTool(); ledger.showResume(); } };
+  const onResume = () => { if (ruin.on) return; setSpeed(0); speed.render(); resumePaused = true; if (ledger) { if (ui.tool) endTool(); if (intros.showFirst('depth', () => ledger.showResume())) return; ledger.showResume(); } };
   window.addEventListener('ec2:resume', onResume);
 
   /** D3: 5x is blocked while raiders are on the map or anyone is drafted. */
@@ -594,7 +595,10 @@ export function mountShell(root, api) {
     loop.poke();
   }
 
+  let sealYes = false;   // the Seal letter's yes is being sent (no second letter)
   function send(cmd, okText = null, quiet = false) {
+    // the Seal asks first (owner decision 3): an order that would cut the Seal-stone waits for the letter's yes
+    if (deep && !ruin.on && !sealYes && cutsSeal(s, cmd)) { openSealLetter(ctx, () => { sealYes = true; try { send(cmd, okText, quiet); } finally { sealYes = false; } }); return { ok: false, reason: 'the Seal asks first', asked: true }; }
     // a fallen hold is read-only (1.3): nothing reaches the sim (A's send refuses too)
     const res = ruin.on || isFallen(s) ? { ok: false, reason: RUIN_TEXT.readOnly } : api.send(cmd);
     ui.lastCmd = cmd; ui.lastRes = res;
@@ -782,7 +786,7 @@ export function mountShell(root, api) {
       const foe = foe0 && (!deep || (foe0.z | 0) === viewZ()) ? foe0 : null;   // pick by z (4.4)
       if (orderIds.length) {
         const hit = pickAt(s, wpt.x, wpt.y, cam.zoom, null, undefined, deep ? viewZ() : null);
-        if (!(hit && hit.kind === 'colonist')) { const tl = tileAt(wpt.x, wpt.y); orderDrafted(ctx, orderIds, foe ? { foe } : { x: tl.x, y: tl.y }); return; }
+        if (!(hit && hit.kind === 'colonist')) { const tl = tileZ(wpt.x, wpt.y); orderDrafted(ctx, orderIds, foe ? { foe } : tl); return; }   // the level shown (4.4)
       }
       if (foe) { const raid = s.raids.find((r) => r.members.includes(foe.id)); select({ kind: 'raid', id: raid ? raid.id : null }); return; }
       const sel = pickAt(s, wpt.x, wpt.y, cam.zoom, prev, undefined, deep ? viewZ() : null);

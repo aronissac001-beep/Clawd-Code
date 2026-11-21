@@ -20,6 +20,9 @@ import { fullName, nemesisById } from '../game/threat/nemesis.js';
 import { demandCard } from '../game/people/embertouch.js';
 import { buyPrice, sellPrice, colonyCoins } from '../game/colony/trade.js';
 import { nemesisRow } from './colonyui.js';
+import { W, PLANE, D, TER, DESIG } from '../game/core/grid.js';
+import { stoneId } from '../game/world/defs.js';
+import { vdigAt } from '../game/work/vdig.js';
 /** F's ember record: met is the tick the demand was met, or -1 (null in older records). */
 const emberMet = (em) => typeof em.met === 'number' ? em.met >= 0 : !!em.met;
 
@@ -257,4 +260,61 @@ export function openTrade(ctx, visitId) {
     });
     el.append(deal, h('p.ec-note', { text: `${tr.text || ''} Goodwill with their faction lowers prices; an envoy with Social bargains better.`.trim() }));
   }, { back: true });
+}
+
+// ---- The Seal asks first (owner decision 3; EMBERCROWN-FORTRESS.md 3.12 Hollow King) -----------------------------
+// The first order that would cut the Seal-stone (a Mine, Risky, Stairs, Ramp or Channel mark, or a carved hall,
+// over one of its 3 x 3 voxels) raises one letter before it is sent: break the Seal, or leave it. Once the Seal
+// is marked or cut (state), or the player said yes on this device, it never asks again. UI only: the command
+// itself is unchanged, so the sim and its determinism are untouched.
+const SEAL_KEY = (s) => 'ec2.seal.' + (s.id || 'colony');
+const CUTS = new Set(['mine', 'risky', 'stairs', 'ramp', 'channel']);
+const sealCache = new WeakMap();
+/** The Seal-stone voxels of this hold (ascending; [] at D = 1 or when the world has none). */
+export function sealVoxels(s) {
+  if (D <= 1 || !s.L || !s.L.mat) return [];
+  let v = sealCache.get(s.L.mat);
+  if (v) return v;
+  const id = stoneId('sealstone'), m = s.L.mat;
+  v = [];
+  if (id) for (let i = 0; i < m.length; i++) if (m[i] === id) v.push(i);
+  sealCache.set(s.L.mat, v);
+  return v;
+}
+/** True when the Seal has been agreed to: a Seal voxel cut or marked, or a yes on this device. */
+export function sealAgreed(s) {
+  try { if (localStorage.getItem(SEAL_KEY(s)) === '1') return true; } catch (_) { /* private mode: state alone */ }
+  for (const i of sealVoxels(s)) if (s.L.terrain[i] !== TER.ROCK || (s.L.desig[i] & (DESIG.MINE | DESIG.RISKY)) || vdigAt(s, i)) return true;
+  return false;
+}
+/** The levels a command reaches: its rect's level, and `levels` down (or up) from it. */
+function cmdLevels(c) {
+  const z = c.rect.z | 0, n = Math.max(1, c.levels | 0);
+  return c.dir === 'up' ? [z, z + n - 1] : [z - n + 1, z];
+}
+/** True when command c would cut a Seal-stone voxel that is not yet agreed to. */
+export function cutsSeal(s, c) {
+  if (!c || !c.rect || c.rect.z === undefined) return false;
+  if (!((c.t === 'designate' && c.add !== false && CUTS.has(c.kind)) || c.t === 'carve')) return false;
+  const vs = sealVoxels(s);
+  if (!vs.length) return false;
+  const r = c.rect, x0 = Math.min(r.x0, r.x1), x1 = Math.max(r.x0, r.x1), y0 = Math.min(r.y0, r.y1), y1 = Math.max(r.y0, r.y1), [z0, z1] = cmdLevels(c);
+  const hit = vs.some((i) => { const z = (i / PLANE) | 0, p = i - z * PLANE, x = p % W, y = (p / W) | 0; return z >= z0 && z <= z1 && x >= x0 && x <= x1 && y >= y0 && y <= y1; });
+  return hit && !sealAgreed(s);
+}
+/** The Seal's letter: yes sends `go()` (the order as given) and remembers the answer; no sends nothing. */
+export function openSealLetter(ctx, go) {
+  const s = ctx.s;
+  ctx.openSheet('The Seal-stone', (el) => {
+    el.classList.add('ec-letter');
+    el.append(h('div.ec-letter-ic', { html: icon('book') }),
+      h('p.ec-letter-t', { text: 'The old songs say the Hollow King sleeps under this grey plug, and what is cut cannot be mended. Break the Seal?' }));
+    const acts = h('div.ec-choices');
+    const yes = h('button.ec-act', { type: 'button', 'data-act': 'seal-break', text: 'Break the Seal' });
+    const no = h('button.ec-act.primary', { type: 'button', 'data-act': 'seal-leave', text: 'Leave it sealed' });
+    onTap(yes, () => { try { localStorage.setItem(SEAL_KEY(s), '1'); } catch (_) { /* the marks themselves remember */ } ctx.closeSheet(); go(); });
+    onTap(no, () => { ctx.closeSheet(); if (ctx.toast) ctx.toast('The Seal stays whole.'); });
+    acts.append(no, yes);
+    el.append(acts, h('p.ec-note', { text: 'You are asked once. Leaving it sealed sends nothing.' }));
+  }, { letter: true });
 }

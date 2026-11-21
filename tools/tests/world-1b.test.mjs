@@ -19,7 +19,7 @@ import {
 import { outdoorTemp, TEMP } from '../../js/game/world/temperature.js';
 import { isRipe, harvestPlant, canSow, sowPlant, plantsSystem } from '../../js/game/world/plants.js';
 import { plantCode } from '../../js/game/world/defs.js';
-import { generateWorld } from '../../js/game/world/mapgen.js';
+import { generateWorld } from '../lib/mapgen1.js';
 import { saveBlob, loadBlob } from '../../js/game/save/colonysave.js';
 import { BUS } from '../../js/game/core/bus.js';
 

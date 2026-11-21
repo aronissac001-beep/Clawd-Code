@@ -163,7 +163,7 @@ export const draftedIds = (s) => s.col.filter((c) => c.drafted && !c.hp.dead).ma
 /** Order the drafted colonists in the selection: move to a tile, or attack a hostile. */
 export function orderDrafted(ctx, ids, target) {
   if (!ids.length) return null;
-  const cmd = target.foe ? { t: 'order', colIds: ids, kind: 'attack', target: { id: target.foe.id, kind: 'foe' } } : { t: 'order', colIds: ids, kind: 'move', target: { x: target.x, y: target.y } };
+  const cmd = target.foe ? { t: 'order', colIds: ids, kind: 'attack', target: { id: target.foe.id, kind: 'foe' } } : { t: 'order', colIds: ids, kind: 'move', target: target.z === undefined ? { x: target.x, y: target.y } : { x: target.x, y: target.y, z: target.z } };   // at D > 1 the level shown (4.4)
   const r = ctx.send(cmd, null, true);
   if (r && r.ok) ctx.orderLine(ids, target);
   else ctx.toast(`They cannot go there${r && r.reason ? ': ' + r.reason : ''}.`, 'bad');

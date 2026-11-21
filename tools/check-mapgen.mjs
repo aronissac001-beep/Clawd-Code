@@ -5,16 +5,16 @@
 // the repo's sinX and table lookups. Flagged in code (comments and strings are skipped):
 //   Math.sin cos tan asin acos atan atan2 sinh cosh tanh exp expm1 pow log log2 log10 log1p sqrt cbrt hypot
 //   fround random; the ** operator; Date and performance (wall-clock); Intl and toLocale* (locale).
-// Files: js/game/world/mapgen*.js and js/data/worldgen.js. js/game/world/mapgen.js (the D = 1 generator, deleted
-// at the fortress switch E13) keeps one allowance: the Math.sqrt of hillPass (sqrt is correctly rounded by
-// IEEE 754, so it is exact on every engine; the 3D generator's port compares squares instead).
+// Files: js/game/world/mapgen*.js and js/data/worldgen.js. The D = 1 generator left the shipped game in Z2 (now
+// tools/lib/mapgen1.js, tools and tests only; its hillPass Math.sqrt is correctly rounded by IEEE 754), so there
+// are no allowances: the 3D generator compares squares instead.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BANNED = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'exp', 'expm1', 'pow', 'log', 'log2', 'log10', 'log1p', 'sqrt', 'cbrt', 'hypot', 'fround', 'random'];
-const ALLOW = { 'js/game/world/mapgen.js': { 'Math.sqrt': 1 } };
+const ALLOW = {};   // none: the D = 1 generator (and its Math.sqrt) moved to tools/lib/mapgen1.js, out of the shipped game
 
 /** Source with comments, strings and template literal text blanked (newlines kept, so line numbers hold). */
 export function codeOnly(src) {

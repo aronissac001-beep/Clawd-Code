@@ -13,6 +13,15 @@
 //   books: at least this many books (items `bookKinds`) lie on shelf tiles (`shelves`) in the room
 // The tavern takes the Dining role too: a table in the room makes it a dining hall (order 50 before 90), and the
 // role order stays as it is so no existing room changes role.
+// LOCKUP_ROLE (Z2.12, 3.9; js/game/colony/justice.js reads it): a room with a cell bed (and a door) is a Lockup,
+// where the Warden of Law confines offenders. It sits before Bedroom so a cell with a cot in it stays a Lockup. The
+// role is in DATA.room only while a `cellbed` structure exists (js/data/laws.js CELL_BED; a G request to add the
+// row to structures/housing.js), so the registry never names a missing structure.
+import { DATA as HOUSING } from './structures/housing.js';
+export const LOCKUP_ROLE = Object.freeze({ id: 'lockup', name: 'Lockup', order: 38, match: { any: ['cellbed'] }, thoughts: [-3, -2, -1, 0, 1, 2],
+  text: 'A cell bed behind a door: where the Warden of Law confines offenders.' });
+const HAS_CELLBED = HOUSING.structure.some((r) => r.id === 'cellbed');
+
 export const HALLS = Object.freeze([
   { id: 'tavern', name: 'Tavern', roles: ['tavern', 'dining'], minTier: 'plain', has: [['bar', 'tavern', 'dicetable', 'stage'], ['table', 'longtable']], drink: 5 },
   { id: 'temple', name: 'Temple', roles: ['temple'], minTier: 'plain', has: [['altar', 'shrine', 'temple']] },
@@ -26,6 +35,7 @@ export const DATA = {
       text: 'Infirmary beds or a surgery table. Its tier improves tending.' },
     { id: 'barracks', name: 'Barracks', order: 20, match: { any: ['bunk', 'barracks'], count: 2 }, thoughts: [-4, -2, 0, 1, 2, 3],
       text: 'Two bunks or more. Soldiers mind it less than others.' },
+    ...(HAS_CELLBED ? [LOCKUP_ROLE] : []),
     { id: 'bedroom', name: 'Bedroom', order: 40, match: { any: ['bed', 'doublebed', 'cot', 'bedroll'], count: 1 }, thoughts: [-4, 0, 2, 4, 6, 8] },
     // Z2.8 (3.13): a room with cradles and no bed; newborns are laid in its cradles
     { id: 'nursery', name: 'Nursery', order: 45, match: { any: ['cradle'] }, thoughts: [-3, 0, 1, 2, 3, 5],

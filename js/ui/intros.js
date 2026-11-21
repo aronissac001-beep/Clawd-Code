@@ -78,12 +78,15 @@ export function mountIntros(root, ctx, opts) {
   const el = h('aside.ec-guide.ec-intro', { 'aria-label': 'New in your hold', hidden: true });
   root.append(el);
   let seen = loadSeen(), cur = null, lastEnd = -Infinity, lastShow = 0;
+  let after = null;   // showFirst's follow-on (the Dawn Ledger after the depth card), run when the card is closed
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   function hide(markSeen = true) {
     if (cur && markSeen && !seen.includes(cur.id)) { seen.push(cur.id); saveSeen(seen); }
     cur = null; el.hidden = true; clear(el); lastEnd = now();
     document.body.classList.remove('has-intro');
     if (!document.querySelector('.ec-guide:not(.ec-intro):not([hidden])')) document.body.classList.remove('has-guide');
+    const then = after; after = null;
+    if (then) then();
   }
   function show(it) {
     cur = it; clear(el); el.hidden = false;
@@ -97,7 +100,7 @@ export function mountIntros(root, ctx, opts) {
     if (it.go) {
       const go = h('button.ec-act.ec-guide-go', { type: 'button', 'data-act': 'intro-go', text: it.go.label || 'Show me' });
       onTap(go, () => {
-        const g = it.go; hide();
+        const g = it.go; after = null; hide();   // the player chose an action: what showFirst queued stays closed
         if (g.fn) g.fn(ctx, s);
         else if (g.colony) ctx.openColony(g.colony);
         else if (g.panel) ctx.openPanel(g.panel);
@@ -124,6 +127,21 @@ export function mountIntros(root, ctx, opts) {
         try { ok = !!it.when(s); } catch (_) { ok = false; }
         if (ok) { lastShow = now(); show(it); return; }
       }
+    },
+    /**
+     * Show intro `id` now, ahead of anything else, when it is due and unseen on this device (Continue of a
+     * migrated hold: the depth card comes before the Dawn Ledger, which `then` opens when the card is closed
+     * with Got it or the close button). Returns false (and runs nothing) when the card is not due.
+     */
+    showFirst(id, then = null) {
+      const it = INTROS.find((x) => x.id === id);
+      if (!it || seen.includes(id)) return false;
+      let ok = false;
+      try { ok = !!it.when(s); } catch (_) { ok = false; }
+      if (!ok) return false;
+      if (cur && cur.id !== id) hide(false);
+      lastShow = now(); show(it); after = then;
+      return true;
     },
     hide,
     destroy() { el.remove(); },

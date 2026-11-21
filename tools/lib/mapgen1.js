@@ -16,19 +16,19 @@
 //                           function of the live state (reachability labels), so nothing is stored.
 // No map-sized buffers at import (D1): everything is allocated per call.
 
-import { W, H, N, TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, ROOF, idx } from '../core/grid.js';
-import { fork, rint, rnd } from '../core/rand.js';
-import { newBuilding } from '../core/schema.js';
-import { initRuntime } from '../core/state.js';
-import { GEN, DATA as GEN_DATA } from '../../data/worldgen.js';
-import { depthRebuild, chamfer, SUPPORT_RADIUS } from './pass.js';
-import { stoneId, depositId, layerOfDepth, plantCode, structDef, sizeOf } from './defs.js';
-import { compOf } from './regions.js';
-import { installWorld } from './terrain.js';
-import { revealAround } from './fog.js';
-import { worldStage2 } from './worldrec.js';
-import { seedBlight } from './blight.js';
-import { spawn as spawnItem } from '../work/items.js';
+import { W, H, N, TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, ROOF, idx } from '../../js/game/core/grid.js';
+import { fork, rint, rnd } from '../../js/game/core/rand.js';
+import { newBuilding } from '../../js/game/core/schema.js';
+import { initRuntime } from '../../js/game/core/state.js';
+import { GEN, DATA as GEN_DATA } from '../../js/data/worldgen.js';
+import { depthRebuild, chamfer, SUPPORT_RADIUS } from '../../js/game/world/pass.js';
+import { stoneId, depositId, layerOfDepth, plantCode, structDef, sizeOf } from '../../js/game/world/defs.js';
+import { compOf } from '../../js/game/world/regions.js';
+import { installWorld } from '../../js/game/world/terrain.js';
+import { revealAround } from '../../js/game/world/fog.js';
+import { worldStage2 } from '../../js/game/world/worldrec.js';
+import { seedBlight } from '../../js/game/world/blight.js';
+import { spawn as spawnItem } from '../../js/game/work/items.js';
 
 // ---- Small deterministic helpers -------------------------------------------------------------------
 /** A private generator over one u32 seed (rand.js functions read r.rng.g). */

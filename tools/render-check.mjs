@@ -42,6 +42,8 @@ const add = (name, ok, detail) => { checks.push({ name, ok: !!ok, detail }); };
 // ---- set up: the day-5 colony in the real shell, with a per-frame probe on the renderer -----------
 const setup = await page.evaluate(async (scene) => {
   let s;
+  // D = 1 scenes need the tools-only plane generator in the browser (EMBERCROWN-FORTRESS.md 7.6)
+  (await import('/js/game/core/setup.js')).registerWorld1((await import('/tools/lib/mapgen1.js')).generateWorld);
   if (scene === 'slice') { const m = await import('/tools/tests/slice-scene.mjs'); s = (await m.day5Colony('DAY5-1')).s; }
   else { const b = await import('/tools/lib/bot.mjs'); s = await b.botColony(1, 5); }
   const app = await import('/js/ui/app.js');

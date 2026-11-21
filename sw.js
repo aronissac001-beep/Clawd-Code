@@ -268,7 +268,6 @@ const FILES = [
   './js/game/world/fog.js',
   './js/game/world/fuel.js',
   './js/game/world/light.js',
-  './js/game/world/mapgen.js',
   './js/game/world/mapgen3.js',
   './js/game/world/mechanisms.js',
   './js/game/world/pass.js',

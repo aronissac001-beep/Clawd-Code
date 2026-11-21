@@ -162,6 +162,8 @@ export async function runSuite({ seed = 'DET-1', ticks = 3000, engine = 'node' }
 // which the stub world does not maintain (so the stub scene runs alone, before any real scene).
 const real = async () => {
   const [setup, slice, bot, rtc, bot2, bot3] = await Promise.all([import('../js/game/core/setup.js'), import('./tests/slice-scene.mjs'), import('./lib/bot.mjs'), import('../js/game/core/rtcontract.js'), import('./lib/bot2.mjs'), import('./lib/bot3.mjs')]);
+  // the D = 1 scenes need the tools-only plane generator (EMBERCROWN-FORTRESS.md 7.6); Node's setup.js loads it itself
+  if (typeof process === 'undefined') setup.registerWorld1((await import('./lib/mapgen1.js')).generateWorld);
   return { installSim: setup.installSim, runSliceSuite: slice.runSliceSuite, runLog: slice.runLog, runBot: bot.runBot, runBot2: bot2.runBot2, runBot3: bot3.runBot3, foundFortress: bot3.foundFortress, botFound: bot.botFound, dirtyClear: rtc.dirtyClear };
 };
 const hashOf = stateHash, stateErrors = checkState, rebuilder = rebuilderOf, same = rtEqual, cachesBad = verifyCaches, rtKeys = checkRt;

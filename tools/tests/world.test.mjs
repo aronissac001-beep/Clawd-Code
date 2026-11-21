@@ -10,7 +10,7 @@ import { W, H, N, idx, TER, ROOF, DESIG, getBit } from '../../js/game/core/grid.
 import { newBuilding, newColonist, newPath } from '../../js/game/core/schema.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../js/game/core/time.js';
 import { installWorld, mineTile, setOcc, regionOf, reachable, lightAt, depthAt } from '../../js/game/world/terrain.js';
-import { generateWorld, generateMap, spawnEdges } from '../../js/game/world/mapgen.js';
+import { generateWorld, generateMap, spawnEdges } from '../lib/mapgen1.js';
 import { roofRockByDepth } from '../../js/game/world/stubmap.js';
 import { wouldUnsupport, mineAllowed, planUnsupported, pillarsFor, unsupportedCount, onCaveIn } from '../../js/game/world/support.js';
 import { plantsSystem, fellPlant, plantYield, treeAt } from '../../js/game/world/plants.js';
