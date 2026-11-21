@@ -122,7 +122,9 @@ export function awardXp(s, col, skillId, ticks = 1) {
   if (stage2() && sk[2] > 0) passionTick(s, col, i, sk[2], ticks);
   const eff = full * XP_FIX + Math.floor((rest * XP_FIX * b.dailyAfterPct) / 100);  // ticks x XP_FIX
   const passion = b.passionPct[sk[2]] === undefined ? 100 : b.passionPct[sk[2]];
-  sk[1] += Math.floor((eff * passion * learnPct(col, skillId)) / 10000);
+  let mult = passion * learnPct(col, skillId);                                        // percent x percent
+  if (b.learnCapPct && mult > b.learnCapPct * 100) mult = b.learnCapPct * 100;        // (Z2b) stacked learners capped
+  sk[1] += Math.floor((eff * mult) / 10000);
   let gained = 0;
   while (sk[0] < MAX_LVL && sk[1] >= xpFor(sk[0] + 1) * XP_FIX) {
     sk[1] -= xpFor(sk[0] + 1) * XP_FIX;

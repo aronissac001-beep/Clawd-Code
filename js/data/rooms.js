@@ -59,7 +59,9 @@ export const DATA = {
     { id: 'squalid', name: 'Squalid', min: 0 },
     { id: 'plain', name: 'Plain', min: 20 },
     { id: 'decent', name: 'Decent', min: 40 },
-    { id: 'fine', name: 'Fine', min: 65 },
+    // (Z2: 60, was 65: a 5 x 5 bedroom with two beds, a flagstone floor, a wardrobe, an end table and a sconce scores
+    // 61; at 65 it took fine-quality furniture or statues, and Fine gates births, so no ordinary hold had a child)
+    { id: 'fine', name: 'Fine', min: 60 },
     { id: 'grand', name: 'Grand', min: 90 },
     { id: 'majestic', name: 'Majestic', min: 130 },
   ],

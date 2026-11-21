@@ -24,14 +24,14 @@
 // births, cases and sentences, petitions, halls, soldiers, winch uses, Unrested days, mood at day 100.
 // The same seed gives the same command log and the same final hash.
 import { TICKS_PER_DAY, TICKS_PER_HOUR, START_TICK } from '../../js/game/core/time.js';
-import { idx, TER, TER_MINEABLE, TER_UP, TER_DOWN, TER_BUILDABLE, inB } from '../../js/game/core/grid.js';
+import { idx, W, TER, TER_MINEABLE, TER_PASSABLE, TER_UP, TER_DOWN, TER_BUILDABLE, inB } from '../../js/game/core/grid.js';
 import { structDef, sizeOf, def, all } from '../../js/game/core/content.js';
-import { SKILL_IDS, FIX } from '../../js/game/core/schema.js';
+import { SKILL_IDS, WORK_IDS, FIX } from '../../js/game/core/schema.js';
 import { runBot2 } from './bot2.mjs';
 import { foundFortress, makeDeep, makeMeter3, evaluate3, TARGETS_Z1 } from './bot3.mjs';
 import { setBotLevel, oreRect } from './bot.mjs';
 import { totals, totalsMat } from '../../js/game/work/items.js';
-import { depositId } from '../../js/game/world/defs.js';
+import { depositId, stoneId } from '../../js/game/world/defs.js';
 import { pendingLetters } from '../../js/game/threat/letters.js';
 import { officesView } from '../../js/game/colony/offices.js';
 import { justiceView, casesOf } from '../../js/game/colony/justice.js';
@@ -40,7 +40,8 @@ import { hallsOf } from '../../js/game/colony/visitors.js';
 import { restingList, unrestedDays, slabNames } from '../../js/game/people/death.js';
 import { hasTech, eraOpen } from '../../js/game/colony/research.js';
 import { winchUses } from '../../js/game/colony/verbs/winch.js';
-import { lifeStage } from '../../js/game/people/family.js';
+import { lifeStage, couples, sharedFineBedroom } from '../../js/game/people/family.js';
+import { disabledWork } from '../../js/game/people/roles.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
 import { legendRecords } from '../../js/game/colony/legends.js';
 
@@ -92,15 +93,57 @@ export function makeZ2(s, deep, base = null, opts = {}) {
     temple: (r) => [['shrine', r.x0 + 1, r.y0 + 1], ['sconce', r.x1, r.y1]],
     lockup: (r) => [['cellbed', r.x0 + 1, r.y0]],
     office: (r) => [['table', r.x0 + 1, r.y0], ['chair', r.x0 + 1, r.y0 + 1], ['sconce', r.x1, r.y1]],
+    // a couple's bedroom (Z2.8 births): 5 x 5, two beds, an end table, a wardrobe and a sconce on a flagstone floor
+    // scores Fine (61; js/data/rooms.js); the door is on the west side, so the beds stand along the east
+    couple: (r) => [['bed', r.x1, r.y0], ['bed', r.x1 - 2, r.y0], ['endtable', r.x1 - 1, r.y0], ['wardrobe', r.x1, r.y1], ['sconce', r.x0, r.y1]],
   };
+  // floor tiles of a furnished room (every interior tile but the furniture's: beds are 1 x 2)
+  const FLOOR = { couple: (r) => { const out = [], skip = new Set([`${r.x1},${r.y0}`, `${r.x1},${r.y0 + 1}`, `${r.x1 - 2},${r.y0}`, `${r.x1 - 2},${r.y0 + 1}`, `${r.x1 - 1},${r.y0}`, `${r.x1},${r.y1}`, `${r.x0},${r.y1}`]);
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) if (!skip.has(`${x},${y}`)) out.push([x, y, r.z]); return out; } };
   function furnish() {
     const cmds = [];
     for (const q of Z.rooms) {
       if (!q.dug || Z.furnished.has(q) || !FURNISH[q.use]) continue;
       Z.furnished.add(q);
+      if (FLOOR[q.use] && structDef('f_flag')) {
+        // (a placeLine path is a line of touching tiles: one command per run of a row)
+        let run = [];
+        const flush = () => { if (run.length) cmds.push({ t: 'placeLine', def: 'f_flag', path: run }); run = []; };
+        for (const t of FLOOR[q.use](q.rect)) { const l = run[run.length - 1]; if (l && (l[1] !== t[1] || l[0] + 1 !== t[0])) flush(); run.push(t); }
+        flush();
+      }
       for (const [d, x, y] of FURNISH[q.use](q.rect)) if (structDef(d)) cmds.push({ t: 'place', def: d, x, y, z: q.z, rot: 0 });
       note(`${q.use} on -4 furnished`);
     }
+    return cmds;
+  }
+
+  // births (Z2.8): once a married couple lives, a couple's bedroom on -4 at the corridor's south end (east of it),
+  // and both spouses' beds in it once built (a child needs both beds in one Fine bedroom)
+  function coupleRoom() {
+    const cmds = [];
+    if (!Z.planned) return cmds;
+    if (!Z.couple) {
+      const pair = couples(s)[0];
+      if (!pair) return cmds;
+      const sh = deep.D3.shaft, x0 = sh.x0, y0 = sh.y0, z = zS - 4;
+      const r = rect(x0 + 3, y0 + 12, x0 + 7, y0 + 16, z);
+      if (!allRock(r, 1)) { Z.couple = { none: true }; note('couple room: no rock on -4'); return cmds; }
+      const room = { z, use: 'couple', rect: r, neck: { x: x0 + 2, y: y0 + 13 } };
+      deep.D3.rooms.push(room); Z.rooms.push(room); deep.D3.done = 0;
+      Z.couple = { room, pair: [pair[0].id, pair[1].id] };
+      note(`couple room on -4 for ${pair[0].name} and ${pair[1].name}`);
+      return cmds;
+    }
+    if (Z.couple.none || !Z.couple.room.dug || s.tick % (6 * TICKS_PER_HOUR) !== 0) return cmds;
+    // the couple: the first living pair (a widow's room goes to the next couple)
+    const pair = couples(s)[0];
+    if (!pair) return cmds;
+    const r = Z.couple.room.rect;
+    const beds = s.bld.filter((b) => b && b.def === 'bed' && b.st === 'done' && (b.z | 0) === r.z && b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1);
+    if (beds.length < 2 || sharedFineBedroom(s, pair[0], pair[1])) return cmds;
+    for (let k = 0; k < 2; k++) if (pair[k].bed !== beds[k].id) cmds.push({ t: 'assign', bId: beds[k].id, colId: pair[k].id });
+    if (cmds.length) note(`couple room: beds to ${pair[0].name} and ${pair[1].name}`);
     return cmds;
   }
 
@@ -108,6 +151,22 @@ export function makeZ2(s, deep, base = null, opts = {}) {
   function winchStep() {
     const w = Z.winch, sh = deep.D3.shaft;
     if (!sh || w.st === 'done' || w.st === 'none') return [];
+    if (w.st === 'built') {
+      // the deep store takes what the deep benches and the cellar use, ahead of the surface piles (priority one up):
+      // ore, fuel, hides and bone, fibre, herbs, clay, ingots, leather, cloth, parts, drink and preserved food ride the
+      // winch down; wood, blocks and fresh food stay
+      // by the surface builds
+      const wb = s.bld.find((b) => b && b.def === 'winch' && b.st === 'done');
+      const store = deep.D3.rooms.find((q) => q.use === 'store' && q.dug);
+      if (!wb || !store) return [];
+      const zi = s.L.zone[idx(store.rect.x0 + 1, store.rect.y1, store.z)];
+      const z = zi ? s.zones.find((q) => q.id === zi) : null;
+      if (!z) return [];
+      w.st = 'done';
+      const f = z.filter || { mats: [], q: [0, 6] };
+      note('winch built: the deep store takes the deep benches\' goods first');
+      return [{ t: 'zoneCfg', zoneId: z.id, patch: { pri: Math.min(3, (z.pri | 0) + 1), filter: { cats: ['ore', 'fuel', 'animal', 'fibre', 'herbs', 'clay', 'ingots', 'leather', 'cloth', 'parts', 'drink', 'preserved', 'gems'], mats: (f.mats || []).slice(), q: (f.q || [0, 6]).slice() } } }];
+    }
     if (w.st === 'wait') {
       // the shaft reaches -6 first; the column must be rock (no fluid) from -1 to -6, beside the shaft, with free
       // surface ground over it and for its landing (the first of a few columns east and west of the shaft that fits)
@@ -144,12 +203,19 @@ export function makeZ2(s, deep, base = null, opts = {}) {
       note('winch column open: the winch goes over it');
     }
     if (w.st === 'place') {
-      // (the winch needs Support pillars: retried every 6 hours until it is planned)
-      if (s.bld.some((b) => b && b.def === 'winch')) { w.st = 'done'; note('winch planned'); return []; }
+      // (retried every 6 hours until it is planned)
+      if (s.bld.some((b) => b && b.def === 'winch')) { w.st = 'built'; note('winch planned'); return []; }
       if (s.tick % (6 * TICKS_PER_HOUR) !== 0) return [];
-      // the winch needs Support pillars: research it first (a player would)
-      if (!hasTech(s, 'supports')) { if (s.colony.research.cur !== 'supports' && eraOpen(s, (def('tech', 'supports') || {}).era)) { note('research Support pillars for the winch'); return [{ t: 'research', tech: 'supports' }]; } return []; }
-      return [{ t: 'place', def: 'winch', x, y, z: zS, rot: 3 }];
+      // the winch's tech (data: Carpentry) first, as a player would
+      const wt = structDef('winch').tech;
+      if (wt && !hasTech(s, wt)) { if (s.colony.research.cur !== wt && eraOpen(s, (def('tech', wt) || {}).era)) { note(`research ${wt} for the winch`); return [{ t: 'research', tech: wt }]; } return []; }
+      // the hatch tile and a landing beside it must still be free (the surface plan may have built there since the
+      // column was chosen: seed 5 asked 574 times for a tile a building stood on); else the column is given up
+      const freeAt = (xx, yy) => { if (!inB(xx, yy)) return false; const i = idx(xx, yy, zS); return s.rt.occ[i] < 0 && !s.L.zone[i] && !TER_MINEABLE[T[i]] && !TER_UP[T[i]] && !TER_DOWN[T[i]]; };
+      const LX = [0, -1, 0, 1], LY = [1, 0, -1, 0];
+      const rot = [3, 1, 0, 2].find((r) => freeAt(x + LX[r], y + LY[r]));
+      if (!freeAt(x, y) || rot === undefined) { w.st = 'none'; note('winch: its tile on the surface was built over'); return []; }
+      return [{ t: 'place', def: 'winch', x, y, z: zS, rot }];
     }
     return [];
   }
@@ -161,8 +227,8 @@ export function makeZ2(s, deep, base = null, opts = {}) {
     const room = Z.rooms.find((q) => q.use === 'brewhouse' && q.dug);
     if (!room) return [];
     if (!hasTech(s, 'brewing')) {
-      // (Support pillars first while the winch waits for it)
-      if (Z.winch.st === 'place' && !hasTech(s, 'supports')) return [];
+      // (the winch's tech first while the winch waits for it)
+      if (Z.winch.st === 'place' && structDef('winch').tech && !hasTech(s, structDef('winch').tech)) return [];
       const era = (def('tech', 'brewing') || {}).era;
       if (s.colony.research.cur !== 'brewing' && era && eraOpen(s, era) && s.tick % (6 * TICKS_PER_HOUR) === 0) { note('research Brewing for the tavern'); return [{ t: 'research', tech: 'brewing' }]; }
       return [];
@@ -247,32 +313,70 @@ export function makeZ2(s, deep, base = null, opts = {}) {
     return [];
   }
 
-  // a seizure's demand (3.3): a player sets bills for what is short (an ingot is smelted, blocks are cut) and digs a
-  // vein of the ore it needs, once per demand
+  // a seizure's demand (3.3): a player looks at the demand card twice a day while it is unmet: a count bill for what
+  // a bench makes (an ingot is smelted from ore in stock, blocks are cut, meals cooked), and a vein dug of the ore or
+  // gem it names or its recipe needs (each vein once per seizure)
   function demandHand() {
     const em = s.colony.ember;
-    if (!em || em.met >= 0 || em.kind === 'whispered' || Z.demand === em.start || !base) return [];
-    Z.demand = em.start;
+    if (!em || em.met >= 0 || em.kind === 'whispered' || !base) return [];
+    if (Z.demand !== em.start) { Z.demand = em.start; Z.demandAt = 0; Z.demandDug = new Set(); Z.demandTiles = []; }
+    if (s.tick < Z.demandAt) return [];
+    Z.demandAt = s.tick + 12 * TICKS_PER_HOUR;
     const cmds = [], bits = [];
+    const dig = (mat, stone = false) => {
+      if (!mat || Z.demandDug.has(mat)) return;
+      Z.demandDug.add(mat);
+      const sid = stone ? stoneId(mat) : 0;
+      const v = base.api.oreDig(stone ? (i) => T[i] === TER.ROCK && s.L.mat[i] === sid && !s.L.ore[i] : depositId(mat));
+      if (v && v.length) { for (const i of v) { Z.demandTiles.push(i); cmds.push({ t: 'designate', kind: 'mine', rect: oreRect(s, i), add: true }); } bits.push(`dig ${mat} (${v.length})`); }
+    };
+    const stocked = (i) => (i.k ? (i.mat ? totalsMat(s, i.k, i.mat) : totals(s, i.k)) : 1) >= i.n;
     for (const d of em.demand || []) {
-      if (!Array.isArray(d)) continue;
+      if (!Array.isArray(d) || d[0] === 'token') continue;
       const [k, m, n] = d;
       const have = m ? totalsMat(s, k, m) : totals(s, k);
       if (have >= n) continue;
-      const r = all('recipe').find((x) => (x.out || []).some((o) => o.k === k) && (!m || (x.in || []).some((i) => i.mat === m) || x.id.endsWith('_' + m)) && (!x.tech || hasTech(s, x.tech)) && s.bld.some((b) => b && b.st === 'done' && x.bench.includes(b.def)));
-      if (r) {
-        const b = s.bld.find((q) => q && q.st === 'done' && r.bench.includes(q.def) && q.bills && q.bills.length < 10);
-        const per = Math.max(1, (r.out.find((o) => o.k === k) || { n: 1 }).n | 0);
-        if (b) { cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: r.id, mode: 'count', n: Math.ceil((n - have) / per) } }); bits.push(`${r.id} x${Math.ceil((n - have) / per)}`); }
-        const oreIn = (r.in || []).find((i) => i.k === 'ore' && i.mat);
-        if (oreIn && totalsMat(s, 'ore', oreIn.mat) < oreIn.n * Math.ceil((n - have) / per)) {
-          const v = base.api.oreDig(depositId(oreIn.mat));
-          if (v && v.length) { for (const i of v) cmds.push({ t: 'designate', kind: 'mine', rect: oreRect(s, i), add: true }); bits.push(`dig ${oreIn.mat} (${v.length})`); }
-        }
+      if (k === 'ore' || k === 'gem') { dig(m); continue; }
+      // (a recipe whose output takes its material from an input, cut_blocks, is billed with that material only)
+      const fromIn = (x) => !!m && (x.in || []).length === 1 && !x.in[0].mat && (x.out || []).some((o) => o.k === k && o.matFrom === 0);
+      const rs = all('recipe').filter((x) => (x.out || []).some((o) => o.k === k && (!m || !o.mat || o.mat === m)) && (!m || (x.in || []).some((i) => i.mat === m) || (x.out || []).some((o) => o.mat === m) || x.id.endsWith('_' + m) || fromIn(x))
+        && (!x.tech || hasTech(s, x.tech)) && !x.addon && s.bld.some((b) => b && b.st === 'done' && x.bench.includes(b.def)));
+      // (a recipe whose inputs are in stock first: copper ore on hand before iron still in the rock)
+      const r = rs.find((x) => (x.in || []).every(stocked)) || rs[0];
+      if (!r) continue;
+      const per = Math.max(1, (r.out.find((o) => o.k === k) || { n: 1 }).n | 0), want = Math.ceil((n - have) / per);
+      const b = s.bld.find((q) => q && q.st === 'done' && r.bench.includes(q.def) && q.bills && q.bills.length < 10);
+      const mats = fromIn(r) ? [m] : null;
+      if (b && !b.bills.some((bl) => bl.recipe === r.id && (bl.mode !== 'count' || bl.n > 0) && (!mats || (bl.ingredients && bl.ingredients.mats || []).includes(m)))) {
+        cmds.push({ t: 'bill', op: 'add', bId: b.id, bill: { recipe: r.id, mode: 'count', n: want, ...(mats ? { ingredients: { mats } } : {}) } });
+        bits.push(`${r.id}${mats ? ' of ' + m : ''} x${want}`);
       }
+      const oreIn = (r.in || []).find((i) => i.k === 'ore' && i.mat);
+      if (oreIn && totalsMat(s, 'ore', oreIn.mat) < oreIn.n * want) dig(oreIn.mat);
+      // blocks of a named stone: rough stone of it mined first (four tiles of the nearest seam)
+      if (mats && r.in[0].k === 'stone' && totalsMat(s, 'stone', m) < want) dig(m, true);
     }
     if (bits.length) note(`seizure demand: ${bits.join(', ')}`);
     return cmds;
+  }
+
+  // the demand's tunnel is dug now, as a player taps "dig this now": every 3 hours the best free miner (not one
+  // already digging) is set on the next tile of it that is open to a floor
+  const MINE_W = WORK_IDS.indexOf('mine'), MINING = SKILL_IDS.indexOf('mining');
+  function demandDigger() {
+    const em = s.colony.ember;
+    if (!em || em.met >= 0 || !Z.demandTiles || !Z.demandTiles.length) return [];
+    Z.demandTiles = Z.demandTiles.filter((i) => TER_MINEABLE[T[i]]);
+    const i = Z.demandTiles.find((j) => [j - 1, j + 1, j - W, j + W].some((k) => k >= 0 && k < T.length && TER_PASSABLE[T[k]]));
+    if (i === undefined || s.raids.some((r) => r.stage === 'active') || foodDays(s) < 3) return [];
+    if (s.tick < (Z.demandDigAt | 0)) return [];
+    Z.demandDigAt = s.tick + 3 * TICKS_PER_HOUR;   // (one tap every 3 hours: a tile takes a miner about that long)
+    const fit = live(s).filter((c) => !c.hp.down && !c.drafted && !c.breakState && lifeStage(c) === 'adult' && c.need[0] > 5000 && c.need[1] > 4000
+      && !disabledWork(c).includes(MINE_W) && !(c.job && (c.job.type === 'mine' || c.job.type === 'vdig')) && !(c.role && ['cook', 'grower', 'doctor'].includes(c.role[0])))
+      .sort((a, b) => b.sk[MINING][0] - a.sk[MINING][0] || a.id - b.id);
+    if (!fit.length) return [];
+    const r = oreRect(s, i);
+    return [{ t: 'prioritise', colId: fit[0].id, target: { x: r.x0, y: r.y0, z: r.z }, work: 'mine' }];
   }
 
   // add-ons: a cutting yard beside the first finished mason bench (Masonry)
@@ -316,7 +420,7 @@ export function makeZ2(s, deep, base = null, opts = {}) {
       if (base) base.Q.popCap = foodDays(s) >= 12 ? POP_CAP4 : Math.min(POP_CAP4, live(s).length);
       if (deep.D3.shaft && !Z.planned && day() >= HALL_DAY) { Z.planned = true; planHalls(); }
       if (base && Z.furnished.size && !base.Q.drinkWant) { base.Q.drinkWant = 15; note('the tavern wants drink: buy it from traders'); }
-      cmds.push(...demandHand(), ...brew(), ...furnish(), ...winchStep(), ...offices(), ...(opts.squads === false ? [] : squads()), ...slabs(), ...addons(), ...petitions());
+      cmds.push(...demandHand(), ...demandDigger(), ...brew(), ...coupleRoom(), ...furnish(), ...winchStep(), ...offices(), ...(opts.squads === false ? [] : squads()), ...slabs(), ...addons(), ...petitions());
       return cmds;
     },
   };

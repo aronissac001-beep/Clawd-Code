@@ -288,7 +288,6 @@ export const DATA = {
     // Shell and bone: small crafts for traders
     { id: 'carve_bonecraft', name: 'Bone craft', bench: ['carpenter'], in: [{ k: 'bone', n: 8 }], out: [{ k: 'bonecraft', n: 2 }],
       skill: 'art', work: 60, minSkill: 2, quality: true, xp: 600, stage: '2', text: 'Combs, beads and pins carved from bone.' },
-    // (the fungus brews, shell crafts and the forge, tannery and loom add-on recipes are STAGED below)
     // ---- Stage Z2.4: recipes of the surviving add-ons (addon: the add-on row lists them; js/data/addons.js) ----
     { id: 'melt_weapons', name: 'Melt down weapons', bench: ['bloomery', 'blastfurnace'], in: [{ cat: 'weapons', n: 1 }, { cat: 'fuel', n: 2 }], out: [{ k: 'ingot', n: 6, matFrom: 0 }],
       skill: 'smithing', work: 40, minSkill: 2, quality: false, tech: 'bloomery', addon: 'slag_pit', xp: 400, stage: '3', text: 'Scrap weapons back into ingots of their metal.' },
@@ -304,14 +303,7 @@ export const DATA = {
       skill: 'masonry', work: 90, minSkill: 6, quality: true, tech: 'pottery', addon: 'glazing_kiln', xp: 900, stage: '3' },
     { id: 'fire_keystones', name: 'Keystone bricks', bench: ['kiln'], in: [{ k: 'clay', n: 12 }, { cat: 'fuel', n: 1 }], out: [{ k: 'keystone', n: 16, mat: 'brick' }],
       skill: 'masonry', work: 70, minSkill: 6, quality: false, tech: 'pottery', addon: 'vault_kiln', xp: 700, stage: '3', text: 'Wedge bricks for a brick vault.' },
-  ],
-};
-
-// Stage Z2.4 recipes STAGED with their items (js/data/items.js STAGED: in traded categories, they would change caravan
-// stock): G moves them into DATA.recipe, and their add-ons' rows (js/data/addons.js STAGED) into DATA.addon, at the
-// Z2 switch. Every row validates with the staged items (renown.test).
-export const STAGED = {
-  recipe: [
+    // ---- Z2 switch (append only): the fungus brews, shell crafts and the forge, tannery and loom add-on recipes ----
     { id: 'carve_shellcraft', name: 'Shell craft', bench: ['carpenter'], in: [{ k: 'shell', n: 4 }], out: [{ k: 'bonecraft', n: 3 }],
       skill: 'art', work: 60, minSkill: 4, quality: true, xp: 600, stage: '3', text: 'Inlay and beads of shellback shell.' },
     { id: 'dimroot_wort', name: 'Dimroot ale wort', bench: ['brewery'], in: [{ k: 'dimroot', n: 14 }], out: [{ k: 'alewort', n: 1 }],
@@ -336,3 +328,7 @@ export const STAGED = {
       skill: 'tailoring', work: 50, minSkill: 4, quality: false, tech: 'weaving', addon: 'silk_frame', xp: 500, stage: '3', text: 'Fine cloth: half the work of linen, thanks to the frame.' },
   ],
 };
+
+// Stage Z2.4 recipes once STAGED: moved into DATA.recipe above at the Z2 switch (the export stays, empty, for old readers).
+export const STAGED = { recipe: [] };
+

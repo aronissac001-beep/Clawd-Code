@@ -487,6 +487,7 @@ z counts from the bottom. The UI shows **relative levels**: 0 is the surface, +1
 | **Woken seep** | a fortress voxel within 15 tiles planar and 2 levels of a seep, or the Hold rank | breaches |
 | **The Hollow's hunger** | lights on the surface at night, the Hearth's level | the Hollow horde (the baseline cause, always present from the first night) |
 | **Hard winter** | the season and the weather | starving beasts at the surface edges |
+| **Scent of carrion** (Z2b amendment) | raw meat and fish in the hold, plus 10 per carcass or corpse, from 30 up; not before day 15 (a new camp's grace) | manhunters and wolf pairs at the surface edges, any season (R2 9.3 "Beasts: Camp, any"; with Hard winter their only cause they had vanished for most of the year) |
 
 - **The storyteller schedules only from causes.** Its budget and persona (R2 9.1-9.2, chosen at founding) still set the pace and size; it picks an incident kind only if a live cause allows it, weighted by the cause. No cause, no incident of that kind.
 - **Letters and the Annals name the cause:** "The Ashen Banner comes for the vault of their fathers, which you opened in Thaw", "Word of your silver has spread since the Fen traders left".

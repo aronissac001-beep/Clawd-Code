@@ -14,7 +14,7 @@ import { CELL_BED } from '../laws.js';   // Z2.12: the Lockup's cell bed (a room
 
 export const DATA = {
   structure: [
-    { ...CELL_BED, art: 'struct.bed' },
+    { ...CELL_BED, art: 'struct.cellbed' },
     { id: 'bed', name: 'Bed', cat: 'housing', kind: 'furniture', size: [1, 2], band: 'camp', comfort: 80, roomRole: 'bedroom', cap: 1,
       flags: ['bed'], art: 'struct.bed', stage: '1a', text: 'Rest at full speed. One bed makes a bedroom. Wood from a carpenter, stone from a mason.' },
     { id: 'hut', name: 'Cottage', cat: 'housing', kind: 'construct', size: [3, 3], cost: { wood: 60 }, work: 240, hp: 400, band: 'camp', tech: 'roofing',

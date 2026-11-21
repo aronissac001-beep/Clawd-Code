@@ -432,18 +432,20 @@ export function makePlayer(s, stage = '1b', opts = {}) {
    * ground through rock (at most ORE_REACH tiles), the path to the first ore tile, then up to 3 more
    * tiles of that vein. The bot digs where a prospecting player would; it reads the ore layer directly.
    */
+  // (id: a deposit id, or (Z2, bot v4's seizure demands) a predicate on the voxel: a stone of a material)
   function oreDig(id) {
     if (!id) return null;
+    const hit = typeof id === 'function' ? id : (i) => s.L.ore[i] === id;
     const n = s.L.terrain.length, prev = new Int32Array(n).fill(-2), dist = new Uint8Array(n), q = [];
     for (let i = 0; i < n; i++) if (TER_PASSABLE[s.L.terrain[i]] && !TER_WATER[s.L.terrain[i]] && (s.L.fog[i >> 3] & (1 << (i & 7)))) { prev[i] = -1; q.push(i); }
     for (let k = 0; k < q.length; k++) {
       const i = q[k];
-      if (prev[i] >= 0 && s.L.ore[i] === id) {
+      if (prev[i] >= 0 && hit(i)) {
         const path = []; for (let j = i; j >= 0 && prev[j] !== -1; j = prev[j]) path.push(j);
         const vein = [i];
         for (let a = 0; a < vein.length && vein.length < 4; a++) {
           const x = vein[a] % W;
-          for (const j of [vein[a] - 1, vein[a] + 1, vein[a] - W, vein[a] + W]) if (j >= 0 && j < n && Math.abs((j % W) - x) <= 1 && s.L.ore[j] === id && !vein.includes(j) && vein.length < 4) vein.push(j);
+          for (const j of [vein[a] - 1, vein[a] + 1, vein[a] - W, vein[a] + W]) if (j >= 0 && j < n && Math.abs((j % W) - x) <= 1 && hit(j) && !vein.includes(j) && vein.length < 4) vein.push(j);
         }
         return path.reverse().concat(vein.slice(1)).filter((j) => !(s.L.desig[j] & DESIG.MINE));
       }

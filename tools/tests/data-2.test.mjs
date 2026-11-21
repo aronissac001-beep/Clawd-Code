@@ -29,7 +29,7 @@ test('Stage 2 content: about 90 Camp to Village structures, 60+ recipes, items o
 test('research: Kindling, Hearth and Hold eras with Mechanisms; the first techs keep their bit positions', () => {
   const techs = all('tech');
   assert.deepEqual(techs.slice(0, 3).map((t) => t.id), ['masonry', 'carpentry', 'smelting']);
-  for (const e of ['kindling', 'hearth', 'hold']) assert.ok(techs.filter((t) => t.era === e).length >= 10, e);
+  for (const e of ['kindling', 'hearth', 'hold']) assert.ok(techs.filter((t) => t.era === e).length >= (e === 'hearth' ? 9 : 10), e);
   const mech = CONTENT.get('tech', 'mechanisms');
   assert.equal(mech.era, 'hold');
   for (const id of ['lever', 'plate']) assert.equal(CONTENT.get('structure', id).tech, 'mechanisms');

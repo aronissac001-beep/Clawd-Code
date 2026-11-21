@@ -222,10 +222,12 @@ for (const D of [1, 20]) test(`confinement: on a Lockup cell bed for 2-5 days at
     const sv = J.servingOf(s, a.id);
     if (sv && since === null) since = s.tick;
     if (sv && a.job && a.job.type === 'confine') inCell++;
-    if (sv) maxDays = Math.max(maxDays, (s.tick - start) / TICKS_PER_DAY);
+    if (sv && sv.caseId === k1.id) maxDays = Math.max(maxDays, (s.tick - start) / TICKS_PER_DAY);
     if (t % TICKS_PER_HOUR === 0) assert.ok(s.col.some((c) => holdsOn(s, c)));
   }
-  assert.equal(J.servingOf(s, a.id), null, 'served');
+  // served (Z2b: theft and assault are crimes now, so a later break may open a new case: only this one must be over)
+  const sv = J.servingOf(s, a.id);
+  assert.ok(sv === null || sv.caseId !== k1.id, 'served');
   assert.ok(maxDays <= 5, `confined ${maxDays.toFixed(2)} days`);
   assert.ok(inCell > TICKS_PER_DAY, `in the cell ${inCell} ticks`);
   console.log(`confined ${maxDays.toFixed(2)} days, ${(inCell / TICKS_PER_DAY).toFixed(2)} days in the cell job`);

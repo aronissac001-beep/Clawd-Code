@@ -152,9 +152,11 @@ test('Ember-touched: a met demand produces a named artifact, a level and "Made a
   assert.equal(s.colony.ember, null);
   assert.ok(s.chron.some((e) => e[2] === 'chron_artifact'));
 });
-test('Ember-touched: an unmet demand leads to a major break on day 5', () => {
+test('Ember-touched: an unmet demand leads to a major break at the deadline', () => {
   const { s, c } = emberColony();
-  embertouch.startEmber(s, c, 'smithing');
+  // the data deadline is 10 days; a stopped test colony would reach a mood break of its own by then, so this
+  // checks the deadline path with a 5-day deadline
+  embertouch.startEmber(s, c, 'smithing').deadline = s.tick + 5 * TICKS_PER_DAY;
   calm(s, 6 * TICKS_PER_DAY, () => s.colony.ember === null);
   const brk = c.breakState;
   assert.ok(brk && brk.sev === 'major', `a major break (${brk && brk.id})`);

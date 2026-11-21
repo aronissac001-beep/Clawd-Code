@@ -17,8 +17,9 @@ import { DATA as RESEARCH } from '../research.js';
 // Z2.4 (3.10): the bench add-ons and the winch (js/data/addons.js STRUCTURES), every hold's from Stage 2: no tier
 // gate (F27; `band` is the rank they were written for)
 const bandOf = (tech) => { const t = RESEARCH.tech.find((x) => x.id === tech), e = t && RESEARCH.era.find((x) => x.id === t.era); return e ? e.tier : 'camp'; };
-// (their art: the nearest kit structure until D draws them; the icons in addons.js are menu icons)
-const ADDON_ART = { cutting_yard: 'struct.mason', cask_cellar: 'struct.barrelrack', quench_trough: 'struct.trough', armourer_stand: 'struct.weaponrack', slag_pit: 'struct.emberpit', alloy_crucible: 'struct.charkiln', ember_forge: 'struct.forge', tap_stand: 'struct.cask', hardening_vat: 'struct.trough', silk_frame: 'struct.loom', glazing_kiln: 'struct.kiln', vault_kiln: 'struct.kiln', winch: 'struct.well' };
+// (their art: struct.<id>, drawn by kit2.js's Z2 parts; the icons in addons.js are menu icons)
+const ADDON_ART = Object.fromEntries(['cutting_yard', 'cask_cellar', 'quench_trough', 'armourer_stand', 'slag_pit', 'alloy_crucible', 'ember_forge', 'tap_stand',
+  'hardening_vat', 'silk_frame', 'glazing_kiln', 'vault_kiln', 'winch'].map((id) => [id, `struct.${id}`]));
 const addonRows = ADDON_ROWS.filter((r) => r.cat === 'workshops').map(({ tier, ...r }) => ({ ...r, band: bandOf(r.tech), stage: '2', art: ADDON_ART[r.id] || r.art }));
 /** The winch (utility.js takes it: its rows must be cat 'utility'). */
 export const WINCH_ROWS = ADDON_ROWS.filter((r) => r.cat !== 'workshops').map(({ tier, ...r }) => ({ ...r, band: bandOf(r.tech), stage: '2', art: ADDON_ART[r.id] || r.art }));
@@ -58,9 +59,9 @@ export const DATA = {
     { id: 'watermill', name: 'Watermill', cat: 'workshops', kind: 'construct', size: [2, 2], cost: { wood: 80, block: 40, millstone: 1 }, work: 300, hp: 600, band: 'village', tech: 'waterworks',
       needs: ['riverEdge'], workbench: { workType: 'cook' }, mods: [{ key: 'work.bench', op: 'pct', value: 25, when: 'near' }], art: 'wheel', stage: '2',
       text: 'Grinds grain on the river, and its wheel drives benches next to it 25% faster.' },
-    { id: 'brewery', name: 'Brewery', cat: 'workshops', kind: 'construct', size: [2, 2], cost: { wood: 60, 'ingot:copper': 10 }, work: 150, hp: 300, band: 'hamlet', tech: 'brewing',
+    { id: 'brewery', name: 'Brewery', cat: 'workshops', kind: 'construct', size: [2, 2], cost: { wood: 60, block: 10 }, work: 150, hp: 300, band: 'camp', tech: 'brewing',
       workbench: { workType: 'cook' }, flags: ['flammable'], art: 'food', stage: '2', text: 'Boils grain, honey or fruit into wort for the casks.' },
-    { id: 'cask', name: 'Fermenting cask', cat: 'workshops', kind: 'construct', size: [1, 1], cost: { wood: 25 }, work: 40, hp: 100, band: 'hamlet', tech: 'brewing',
+    { id: 'cask', name: 'Fermenting cask', cat: 'workshops', kind: 'construct', size: [1, 1], cost: { wood: 25 }, work: 40, hp: 100, band: 'camp', tech: 'brewing',
       workbench: { workType: 'cook' }, flags: ['flammable'], art: 'crate', stage: '2', text: 'Load one wort: 4 days later it holds 6 drinks. Cool cellars age it well.' },
     // ---- Stage 2: wood ----
     { id: 'woodyard', name: 'Woodcutter\'s yard', cat: 'workshops', kind: 'construct', size: [3, 3], cost: { wood: 50 }, work: 120, hp: 300, band: 'camp',

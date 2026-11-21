@@ -354,7 +354,7 @@ function lostDead(s) {
   return best ? best[0] : null;
 }
 export const ENGRAVE_GIVER = Object.freeze({
-  id: 'engrave', work: 'craft', order: 6,
+  id: 'engrave', work: 'craft', order: -1,
   candidates(s, col, k) {
     if (!stage2() || lostDead(s) === null) return [];
     const out = [];

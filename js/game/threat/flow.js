@@ -34,6 +34,7 @@ import { TER } from '../core/grid.js';
 import { stage2 } from '../people/defs.js';
 import { skyZAt } from '../world/vertical.js';
 import * as HF from './hflow.js';
+import { inStockpile } from '../work/items.js';
 
 export const FLOW_UNREACHED = 0xffff;
 /** Field goals: the raid goals with a field, then 'edge' (dawn retreat: every open map-edge tile). */
@@ -234,15 +235,19 @@ export function edgeVoxels(s) {
 }
 
 /** Loot seeds [tile, start cost]: stacks (not corpses) by value, the richest at 0 (Stage 2), ascending by tile. */
+// (Z2b) R2 9.3: thieves walk the stockpile field. The stores' stacks seed it when the hold has any (in a fortress the
+// stores lie below, so thieves come down for them); loose stacks only when nothing is stored.
 function lootSeeds(s) {
-  const by = new Map();
+  const all = new Map(), kept = new Map();
   let top = 1;
   for (const it of s.items) {
     if (!it || it.k === 'corpse') continue;
     const d = def('item', it.k), v = Math.max(1, ((d && d.value) || 1) * it.n);
     const i = idx(it.x, it.y, it.z | 0);
-    by.set(i, (by.get(i) || 0) + v);
+    all.set(i, (all.get(i) || 0) + v);
+    if (!it.f && inStockpile(s, i)) kept.set(i, (kept.get(i) || 0) + v);
   }
+  const by = kept.size ? kept : all;
   for (const v of by.values()) if (v > top) top = v;
   return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([i, v]) => [i, MAX_LOOT_SEED - Math.floor((v * MAX_LOOT_SEED) / top)]);
 }

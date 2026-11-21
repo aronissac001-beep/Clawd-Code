@@ -9,7 +9,7 @@
  */
 export const SEIZE = Object.freeze({
   popPer: 5,
-  brooding: { minLvl: 4, chancePermille: 120, withinDays: 10, deadlineDays: 8, workH: 8, tokenN: 1 },
+  brooding: { minLvl: 4, chancePermille: 120, withinDays: 10, deadlineDays: 5, workH: 8, tokenN: 1 },
   whispered: { minLvl: 4, dreadAt: 40, dreadDays: 3, touchedPermille: 10, chancePermille: 150, workH: 8, takeStacks: 2, takeN: 10 },
   likedN: { block: 20, ingot: 8, wood: 30 },
   greyR: 4,
@@ -24,7 +24,7 @@ export const BROODING_DEMAND = Object.freeze({
   masonry: { block: 30, wood: 10, stone: 10 },
   tailoring: { leather: 6, hide: 2, wood: 10 },
   art: { block: 15, wood: 15, bone: 4 },
-  cooking: { meat: 10, hearthroot: 10, wood: 10 },
+  cooking: { meal: 8, wood: 10, block: 10 },
 });
 /** Hollow-whispered takes from the stores: item kinds it may seize, in order of preference. */
 export const WHISPER_TAKES = Object.freeze(['cutgem', 'ingot', 'block', 'bone', 'leather', 'cloth', 'wood', 'clay']);

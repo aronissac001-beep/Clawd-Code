@@ -160,12 +160,14 @@ export function damageFoe(s, foe, dmg, kind = 'blunt', src = null) {
 
 /** Drop what a foe carries (stolen goods) and its gear (loot: forbidden until the raid ends). */
 function dropGoods(s, foe) {
-  const i = foeTile(foe), x = i % W, y = (i / W) | 0;
+  // (Z2b) x, y and the level of the foe's voxel (on a fortress the level's rows used to land in y, off the map,
+  // and stolen goods, gear and trophies were lost)
+  const i = foeTile(foe), z = (i / PLANE) | 0, p = i - z * PLANE, x = p % W, y = (p / W) | 0;
   const live = foe.raid !== null ? liveRecord(s, foe.raid) : null;
-  if (foe.st && foe.st.carry) { put(s, foe.st.carry, x, y, {}); foe.st.carry = null; }
+  if (foe.st && foe.st.carry) { put(s, foe.st.carry, x, y, { z }); foe.st.carry = null; }
   const g = foeStats(foe.kind).gear;
   if (stage2() && g && def('item', g) && foe.nem === null) {
-    if (spawnItem(s, g, g === 'club' || g === 'shortbow' ? 'wood' : 'iron', 0, 1, x, y, { f: true }) >= 0 && live) {
+    if (spawnItem(s, g, g === 'club' || g === 'shortbow' ? 'wood' : 'iron', 0, 1, x, y, { f: true, z }) >= 0 && live) {
       if (!live.loot) live.loot = [];
       if (!live.loot.includes(i) && live.loot.length < 60) live.loot.push(i);
     }
@@ -193,7 +195,7 @@ export function killFoe(s, foe, killer = null, cause = 'wounds') {
   dropGoods(s, foe);
   each(BUS.kill, s, foe, killer);
   emit(s, 'died', { id: foe.id, cause, killer: killer && killer.id !== undefined ? killer.id : killer, kind: 'foe' });
-  if (foe.nem !== null && foe.nem !== undefined) slay(s, foe.nem, killer, [i % W, (i / W) | 0], spawnItem, foeStats(foe.kind).gear);
+  if (foe.nem !== null && foe.nem !== undefined) slay(s, foe.nem, killer, [(i % PLANE) % W, ((i % PLANE) / W) | 0, (i / PLANE) | 0], spawnItem, foeStats(foe.kind).gear);
   removeFoe(s, foe);
 }
 /** A reaver at 0 hp is downed: it lies where it fell, out of its raid (a captive when the raid ends). */

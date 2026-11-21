@@ -30,7 +30,8 @@ export const DATA = {
     { id: 'roofing', name: 'Roofing', era: 'kindling', cost: 60, text: 'Build roofs over open ground; cottages and the palisade.' },
     // ---- Hearth (Hamlet) ----
     { id: 'smithing', name: 'Smithing', era: 'hearth', cost: 250, text: 'Bronze, iron tools, axes, swords, helms, shields and iron bands.' },
-    { id: 'brewing', name: 'Brewing', era: 'hearth', cost: 150, text: 'The brewery and fermenting casks: ale, mead and berry wine.' },
+    // (Z2: Kindling, so a young hold's tavern has drink of its own; a Hearth-era brewery left a Camp's tavern dry)
+    { id: 'brewing', name: 'Brewing', era: 'kindling', cost: 100, text: 'The brewery and fermenting casks: ale, mead and berry wine.' },
     { id: 'milling', name: 'Milling', era: 'hearth', cost: 150, text: 'The windmill, flour and bread.' },
     { id: 'weaving', name: 'Weaving', era: 'hearth', cost: 150, text: 'The loom: linen and wool cloth.' },
     { id: 'tailoring', name: 'Tailoring', era: 'hearth', cost: 150, text: 'The tailor\'s bench: clothes, leather gear, bandages and carpets.' },

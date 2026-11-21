@@ -53,13 +53,7 @@ export const DATA = {
       text: 'Glazed ware: burial urns, a crypt slot without a sarcophagus.' },
     { id: 'vault_kiln', name: 'Vault kiln', bench: ['kiln'], form: 'structure', adds: { recipes: ['fire_keystones'] },
       text: 'Keystone bricks: a brick vault, a built vaulted roof that holds up a wider room.' },
-  ],
-};
-
-// Add-on rows STAGED with their recipes (js/data/recipes.js STAGED; their gear is in traded categories): G moves
-// them into DATA.addon at the Z2 switch. They count as add-ons everywhere else (VERB_OF, the audit, the logic).
-export const STAGED = {
-  addon: [
+    // ---- Z2 switch (append only): the add-ons once staged with their recipes ----
     { id: 'war_smith', name: 'Weaponsmith\'s set', bench: ['forge'], form: 'master', adds: { recipes: ['forge_warpick', 'forge_glaive'] },
       text: 'While the hold has a Master smith: the war pick and the glaive.' },
     { id: 'armourer_stand', name: 'Armourer\'s stand', bench: ['forge'], form: 'structure', adds: { recipes: ['forge_brigandine', 'forge_emberward', 'forge_emberhood'], rules: ['refit'] },
@@ -70,6 +64,10 @@ export const STAGED = {
       text: 'Tamed cave spiders spin silk on the frame; the loom weaves it into spidersilk.' },
   ],
 };
+
+// Add-on rows once STAGED (their recipes and gear were in traded categories): in DATA.addon since the Z2 switch; the
+// export stays, empty, for old readers.
+export const STAGED = { addon: [] };
 /** Every add-on row, live and staged (the logic and the audit read this). */
 export const ALL_ADDONS = Object.freeze([...DATA.addon, ...STAGED.addon]);
 
@@ -148,6 +146,9 @@ export const STRUCTURES = Object.freeze([
   addonRow('vault_kiln', 'Vault kiln', { brick: 40 }, 120, 'pottery'),
   // The winch and shaft (2.3; js/game/colony/verbs/winch.js): a hatch over an open-air column; stacks put on it
   // ride to the shaft's foot (and stacks put at the foot ride up), 2 s a level, up to 3 stacks a trip.
-  { id: 'winch', name: 'Winch and shaft', cat: 'utility', kind: 'construct', size: [1, 1], cost: { wood: 40, ironbands: 2 }, work: 120, hp: 250,
-    tech: 'supports', tier: 'camp', art: 'wheel', stage: '3', text: 'Build it over a shaft: stacks left on it ride to the foot, and stacks left at the foot ride up.' },
+  // Z2 gate fix: a Kindling-era build of timber and a cut-stone collar (Carpentry), so a fortress hauls with it from
+  // its first deep store; behind Support pillars and iron bands (Hearth era) it came after the stores it serves
+  // were full, and a hold that stays a Camp never had one.
+  { id: 'winch', name: 'Winch and shaft', cat: 'utility', kind: 'construct', size: [1, 1], cost: { wood: 40, block: 10 }, work: 120, hp: 250,
+    tech: 'carpentry', tier: 'camp', art: 'wheel', stage: '3', text: 'Build it over a shaft: stacks left on it ride to the foot, and stacks left at the foot ride up.' },
 ]);

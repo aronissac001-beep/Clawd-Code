@@ -10,6 +10,7 @@
 //              (noted hourly while a visit is live: s.st.rumour = [[day, traderId, worth]], st.rumourVid)
 //   hunger     the Hollow's hunger: always present, heavier as the Hearth grows
 //   winter     Deepcold, the end of Ashfall, the start of Thaw, and a cold snap
+//   carrion    (Z2b) raw meat, fish, carcasses and corpses in the hold (beasts any time of year)
 //   seep       the deep breach's own condition (raids2 BREACH_LOGIC.requires: a tunnel near the seep, or Hold)
 // Renown leans every weight (colony/renown.js causeLean: Trade x1.5 rumour, Arms x1.25 grievance).
 // Both lists are saved story state (plain JSON in s.st), so a load continues them exactly (F25, C13). The
@@ -82,6 +83,17 @@ export function noteRumours(s) {
   st.rumourVid = vid;
   if (st.rumour.length > 24) st.rumour.splice(0, st.rumour.length - 24);
 }
+/** (Z2b) The hold's carrion: raw meat and fish (units) plus carcasses and corpses (carrionBodyN each). */
+const CARRION_ITEMS = new Set(['meat', 'fish']), CARRION_BODIES = new Set(['carcass', 'corpse']);
+export function carrionOf(s) {
+  let n = 0;
+  for (const it of s.items) {
+    if (!it) continue;
+    if (CARRION_ITEMS.has(it.k)) n += it.n | 0;
+    else if (CARRION_BODIES.has(it.k)) n += K.carrionBodyN * Math.max(1, it.n | 0);
+  }
+  return n;
+}
 /** The Crown vaults (pre-history places) the hold has opened: [{ key, name, voxel }]. */
 export function openedVaults(s) {
   if (!s.L || !s.L.fog) return [];
@@ -122,6 +134,10 @@ export function computeCauses(s) {
   add('hunger', 'hollow', K.hungerBase + ((s.colony && s.colony.hearth && s.colony.hearth.lvl) | 0));
   // hard winter
   add('winter', ['thaw', 'highsun', 'ashfall', 'deepcold'][seasonOf(s.tick)], winterWeight(s));
+  // the scent of carrion (Z2b): beasts at the edges any time of year, once the camp has had its first season and a
+  // half (carrionFromDay: a three-colonist camp butchering its first deer is not yet a lure)
+  const cn = carrionOf(s);
+  if (dayOf(s.tick) >= K.carrionFromDay && cn >= K.carrionMin) add('carrion', 'carrion', Math.min(K.carrionMax, 1 + Math.floor((cn - K.carrionMin) / K.carrionStep)));
   // a woken seep
   const br = logicOf('deep_breach');
   if (br && br.requires && br.requires(s)) add('seep', 'seep', 4);
@@ -192,6 +208,7 @@ export function causeLine(s, cause) {
   if (kind === 'hunger') return t((s.colony && s.colony.hearth && s.colony.hearth.lvl | 0) >= 3 ? 'cause_hunger_bright' : 'cause_hunger');
   if (kind === 'winter') return t(weatherKind(s) === 'coldsnap' ? 'cause_winter_snap' : 'cause_winter');
   if (kind === 'seep') return t('cause_seep');
+  if (kind === 'carrion') return t('cause_carrion');
   const r = ROW[kind];
   return r ? t(r.line) : '';
 }
