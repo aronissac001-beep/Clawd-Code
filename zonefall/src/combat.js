@@ -51,6 +51,7 @@ export function damageStruct(o, amt, type = 'melee') {
 /** returns true if killed */
 export function hurt(a, dmg, src = {}) {
   if (!a || a.dead || a.def.invuln) return false;
+  if (a === G.player && G.settings && G.settings.devGod) return false; // dev toggle: god mode
   if (G.player && src.owner && src.owner !== a && (a === G.player || src.owner === G.player) && a.team !== 'haven') G.player.combatT = G.t; // the music knows you're fighting
   if (src.kind === 'melee' && src.owner && !src.owner.heli && airborne(a)) return false; // nothing on the ground can bite or club a pilot in the air
   // other players in co-op: their own game decides damage; my melee hits are sent to them

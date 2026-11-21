@@ -283,6 +283,8 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
 - **No run resets:** it's one persistent island. Dying drops your gear in a bag and you respawn at a sleeping bag or on a beach; nothing ends the game or wipes your base.
 
+- **Dev toggles** (Settings, at the bottom): **God mode** (no damage, hunger, thirst, bleeding, radiation or drowning) and **Infinite building** (building, upgrades, repairs and placeables cost nothing, no workbench needed, and your own base never decays or charges upkeep). AI survivors still pay. They only work on your own island, not as a co-op guest.
+
 ## Controls
 - **Touch:**
   - Drag on the left side to move. Push the stick all the way forward to sprint.
