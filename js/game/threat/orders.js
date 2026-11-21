@@ -19,7 +19,9 @@ import { registerApplier } from '../core/commands.js';
 import { colById, bldById } from '../core/state.js';
 import { W, PLANE, idx, tileOfW, ctrW, inB } from '../core/grid.js';
 const xyz = (i) => { const z = (i / PLANE) | 0, p = i - z * PLANE; return { x: p % W, y: (p / W) | 0, z }; };
-import { T, END, RUN, makeJob, keyTile, registerToil } from '../work/jobs.js';
+import { T, END, RUN, makeJob, keyTile, keyItem, registerToil } from '../work/jobs.js';
+import { awardXp } from '../people/skills.js';
+import { structDef } from '../core/content.js';
 import { beginJob, endJob } from '../work/reserve.js';
 import { foeById } from './raiders.js';
 import { stage2 } from '../people/defs.js';
@@ -27,7 +29,13 @@ import { stage2 } from '../people/defs.js';
 export const STAND = Object.freeze({ t: 'stand' });
 let toilOn = false;
 /** Register the 'stand' toil (idempotent). */
-export function installStandToil() { if (!toilOn) { registerToil('stand', () => RUN); toilOn = true; } }
+export function installStandToil() {
+  if (toilOn) return;
+  registerToil('stand', () => RUN);
+  // Z2.5 drill (3.8): a drilling soldier gains Melee or Archery XP (the normal daily cap) every tick it drills
+  registerToil('drill', (s, col, job, toil) => { job.dr = (job.dr | 0) + 1; if ((s.tick + col.id) % 10 === 0) awardXp(s, col, toil.sk || 'melee', 10); return RUN; });
+  toilOn = true;
+}
 export function resetStandToil() { toilOn = false; }
 
 /** Tile of an order target ({x, y} tile, or {id, kind}), or -1. */
@@ -77,7 +85,7 @@ export function formationTile(s, x, y, k, z = 0) {
 /** Where a Retreat goes: the first tile (lowest index) of a Shelter zone (zone type 'shelter', once A adds
  *  it to ZONE_TYPES), else beside the Hearth. */
 export function shelterTile(s) {
-  const sh = s.zones.filter((z) => z && z.type === 'shelter').map((z) => z.id);
+  const sh = s.zones.filter((z) => z && (z.type === 'refuge' || z.type === 'shelter')).map((z) => z.id);
   if (sh.length) { const L = s.L.zone; for (let i = 0; i < L.length; i++) if (L[i] && sh.includes(L[i])) { const p = xyz(i); return p.z ? p : { x: p.x, y: p.y }; } }
   const hb = s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null;
   return hb ? (hb.z ? { x: hb.x + 1, y: hb.y + 3, z: hb.z } : { x: hb.x + 1, y: hb.y + 3 }) : null;
@@ -103,14 +111,64 @@ export function giveOrder(s, col, kind, target, k = 0) {
   return holdHere(s, col) ? null : 'cannot start the order'; // hold, sally: stand (Stage 3 adds the sally)
 }
 
+// ---- Z2.5 military orders (EMBERCROWN-FORTRESS.md 3.8) ----------------------------------------------------
+// Jobs the military system (people/draft.js) gives carry by: 'mil' and a key mk; orders the player gives one
+// colonist at a time carry by: 'p' and are left alone until they end. Every order works on any level.
+/** A goto-then-stand military order of `kind` ('station', 'patrol', 'guard', 'retreat') to tile t. */
+export function milOrder(s, col, kind, t, extra = {}) {
+  installStandToil();
+  if (col.job) endJob(s, col, END.CANCEL);
+  col.path = null;
+  if (!t || !inB(t.x, t.y, t.z | 0)) { const ok = holdHere(s, col); if (ok) Object.assign(col.job, { by: 'mil', ...extra }); return ok; }
+  const i = idx(t.x, t.y, t.z | 0);
+  return beginJob(s, col, makeJob('order', keyTile(i), [T.goto(i, false), STAND], { order: kind, hx: ctrW(t.x), hy: ctrW(t.y), foe: null, by: 'mil', ...extra }), []);
+}
+/** Fetch and put on a uniform piece: goto (toils.js reaches a blocking rack from beside it), pick it up, wear it (outfit.js), then stand. */
+export function equipOrder(s, col, it, adj = false) {
+  installStandToil();
+  if (col.job) endJob(s, col, END.CANCEL);
+  col.path = null;
+  const i = idx(it.x, it.y, it.z | 0);
+  const job = makeJob('order', keyItem(it.id), [T.goto(i, false), T.pickup(it.id, 1), { t: 'wear' }, STAND], { order: 'equip', hx: ctrW(it.x), hy: ctrW(it.y), foe: null, by: 'mil', mk: 'eq' });
+  return beginJob(s, col, job, [[keyItem(it.id), 1]]);
+}
+/** Drill at tile t (a training yard): goto, then the 'drill' toil (job.dr counts the ticks drilled). */
+export function trainOrder(s, col, t, sk = 'melee') {
+  installStandToil();
+  if (col.job) endJob(s, col, END.CANCEL);
+  col.path = null;
+  const i = idx(t.x, t.y, t.z | 0);
+  return beginJob(s, col, makeJob('order', keyTile(i), [T.goto(i, false), { t: 'drill', sk }], { order: 'train', hx: ctrW(t.x), hy: ctrW(t.y), foe: null, by: 'mil', mk: 'tr', dr: 0 }), []);
+}
+/** The doors (door flag) touching a Refuge zone, as their tiles { x, y, z }, by building id. */
+export function refugeDoors(s) {
+  const ids = s.zones.filter((z) => z && (z.type === 'refuge' || z.type === 'shelter')).map((z) => z.id);
+  if (!ids.length) return [];
+  const L = s.L.zone, out = [];
+  for (const b of s.bld) {
+    if (!b || (b.st !== undefined && b.st !== 'done')) continue;
+    const d = structDef(b.def);
+    if (!d || !d.flags || !d.flags.includes('door')) continue;
+    const z = b.z | 0;
+    let hit = false;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = b.x + dx, y = b.y + dy; if (inB(x, y, z) && ids.includes(L[idx(x, y, z)])) { hit = true; break; } }
+    if (hit) out.push({ x: b.x, y: b.y, z });
+  }
+  return out;
+}
+let squadOrderFn = null;
+/** people/draft.js hands over its squad-order applier (an `order` with `squad`; avoids an import cycle). */
+export function bindSquadOrder(fn) { squadOrderFn = fn; }
+
 export function installOrderCommands() {
   installStandToil();
   registerApplier('order', (s, c) => {
+    if (c.squad !== undefined && c.squad !== null) return squadOrderFn ? squadOrderFn(s, c) : { ok: false, reason: 'squads are not ready' };
     for (const id of c.colIds) if (!colById(s, id).drafted) return { ok: false, reason: 'draft them first' };
     if ((c.kind === 'move' || c.kind === 'attack') && targetTile(s, c.target) < 0) return { ok: false, reason: 'no such target' };
     if (c.kind === 'attack' && !(c.target && c.target.kind === 'foe')) return { ok: false, reason: 'attack a hostile' };
     const ids = c.colIds.slice().sort((a, b) => a - b);
-    for (let k = 0; k < ids.length; k++) { const r = giveOrder(s, colById(s, ids[k]), c.kind, c.target, k); if (r) return { ok: false, reason: r }; }
+    for (let k = 0; k < ids.length; k++) { const col = colById(s, ids[k]); const r = giveOrder(s, col, c.kind, c.target, k); if (r) return { ok: false, reason: r }; if (col.job) col.job.by = 'p'; }
     return { ok: true };
   });
 }
