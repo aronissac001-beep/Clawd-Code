@@ -26,7 +26,7 @@ test('stage switch: the shipped UI plays Stage 2', () => {
   assert.equal(STAGE, '2');
 });
 
-test('Architect: every Stage 2 buildable (not a zone, not the Hearth) is on exactly one Build tab; locks name the tier or the tech', () => {
+test('Architect: every Stage 2 buildable (not a zone, not the Hearth) is on exactly one Build tab; locks name the tech (F27: no tier locks)', () => {
   const s = fresh('UI2-1');
   const want = all('structure').filter((d) => availableIn(d, '2') && d.kind !== 'zone' && d.kind !== 'designation' && !(d.flags || []).includes('start'));
   const seen = new Map();
@@ -36,10 +36,10 @@ test('Architect: every Stage 2 buildable (not a zone, not the Hearth) is on exac
   assert.deepEqual(missing, [], 'missing from the Architect');
   assert.deepEqual(twice, [], 'on two tabs');
   assert.equal(BUILD_TABS.length, 11);
-  // a Hamlet structure at Camp names the tier; a researched structure names its tech
-  const ham = want.find((d) => d.tier === 'hamlet');
-  assert.match(lockedWhy(s, ham), /Needs Hamlet/);
-  const tech = want.find((d) => d.tier === 'camp' && d.tech && d.tech !== 'masonry' && d.tech !== 'carpentry' && d.tech !== 'cooking');
+  // Z2.9 (F27): a Hamlet-band structure at Camp is not tier-locked; a researched structure names its tech
+  const ham = want.find((d) => (d.band || d.tier) === 'hamlet');
+  assert.doesNotMatch(lockedWhy(s, ham) || '', /Needs Hamlet/);
+  const tech = want.find((d) => (d.band || d.tier) === 'camp' && d.tech && d.tech !== 'masonry' && d.tech !== 'carpentry' && d.tech !== 'cooking');
   if (tech) assert.match(lockedWhy(s, tech) || 'free', /research|free/);
   // Orders: Harvest, Hunt, Tame and Smooth are live at Stage 2
   for (const id of ['harvest', 'hunt', 'tame', 'smooth']) assert.ok(ORDERS.find((o) => o.id === id).tool, id);

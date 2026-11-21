@@ -10,6 +10,9 @@
 // at 20,000 (was 25,000). A careful 5-7 colonist hold has about 6,000 at day 25 and 20,000 by day 60-70
 // (items at full value, buildings at half); at the doc's figures no seed reached Hamlet by day 25 or
 // Village by day 70 (14.8 G).
+// Z2.9 (F27): ranks, not unlocks. A rank changes who arrives (migrants, nobles, caravans), the threat
+// scale, the research eras and how many Waystones stand; it gates no structure (js/data/structures/*.js
+// rows carry a `band` label, not a `tier` gate).
 export const DATA = {
   tier: [
     { id: 'camp', name: 'Camp', abbr: 'C', i: 0, wealth: 0, colonists: 0, hearth: 1, waystones: 1, text: 'Kindling era, small Hollow hordes, beasts and thieves.' },

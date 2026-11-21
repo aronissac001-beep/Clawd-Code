@@ -313,9 +313,9 @@ test('K: lore banks and is spent first; gates block a tech structure until it is
   assert.equal(r1.ok, false); assert.match(r1.reason, /Charcoal/);
   research.learn(s, 'charcoal');
   assert.ok(applyCommand(s, { t: 'place', def: 'charkiln', x: p[0], y: p[1], rot: 0 }).ok);
-  // a Hamlet structure waits for the tier
+  // Z2.9 (F27): ranks, not unlocks - a Hamlet-band structure never waits for the tier
   const r2 = applyCommand(s, { t: 'place', def: 'stove', x: p[0] + 4, y: p[1], rot: 0 });
-  assert.match(r2.reason || '', /Hamlet/);
+  assert.doesNotMatch(r2.reason || '', /Hamlet/);
   // the first ore discovers Bloomery smelting (free)
   emit(s, 'oreFound', { i: 0, ore: 4 });
   ledger.tapEvents(s);

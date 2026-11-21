@@ -8,6 +8,8 @@
 // simple meal, the bloomery's three smelts and the forge's pick and spear (roast waits for meat, Stage 2).
 // Stage 2 (14.8 row G, 6.4): the base recipes of every Camp, Hamlet and Village bench; the smelts
 // take any smelting fuel ({ cat: 'fuel' }: coal or charcoal). Specialisation recipes are Stage 3.
+// Z2.9 (F27): the furniture that was rank-gated as a structure (double bed, bunk, long table, infirmary
+// bed, cradle) is paced by its maker's skill instead (minSkill 2-4); the sarcophagus and tapestry already were.
 export const DATA = {
   recipe: [
     // ---- Carpenter's bench (Woodcraft) ----
@@ -56,11 +58,11 @@ export const DATA = {
     { id: 'make_cot', name: 'Cot', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'cot', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 60, minSkill: 0, quality: true, tech: 'carpentry', xp: 600, stage: '2' },
     { id: 'make_doublebed', name: 'Double bed', bench: ['carpenter'], in: [{ k: 'wood', n: 60 }], out: [{ k: 'doublebed', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 180, minSkill: 0, quality: true, tech: 'carpentry', xp: 1800, stage: '2' },
+      skill: 'woodcraft', work: 180, minSkill: 3, quality: true, tech: 'carpentry', xp: 1800, stage: '2' },
     { id: 'make_bunk', name: 'Bunk', bench: ['carpenter'], in: [{ k: 'wood', n: 50 }], out: [{ k: 'bunk', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 160, minSkill: 0, quality: true, tech: 'carpentry', xp: 1600, stage: '2' },
+      skill: 'woodcraft', work: 160, minSkill: 2, quality: true, tech: 'carpentry', xp: 1600, stage: '2' },
     { id: 'make_longtable', name: 'Long table', bench: ['carpenter'], in: [{ k: 'wood', n: 60 }], out: [{ k: 'longtable', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 150, minSkill: 0, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
+      skill: 'woodcraft', work: 150, minSkill: 3, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
     { id: 'make_stool', name: 'Stool', bench: ['carpenter'], in: [{ k: 'wood', n: 8 }], out: [{ k: 'stool', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 25, minSkill: 0, quality: true, tech: 'carpentry', xp: 250, stage: '2' },
     { id: 'make_bench', name: 'Bench', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'bench', n: 1, matFrom: 0 }],
@@ -72,9 +74,9 @@ export const DATA = {
     { id: 'make_endtable', name: 'End table', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'endtable', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 50, minSkill: 0, quality: true, tech: 'carpentry', xp: 500, stage: '2' },
     { id: 'make_cradle', name: 'Cradle', bench: ['carpenter'], in: [{ k: 'wood', n: 25 }], out: [{ k: 'cradle', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 70, minSkill: 0, quality: true, tech: 'carpentry', xp: 700, stage: '2' },
+      skill: 'woodcraft', work: 70, minSkill: 4, quality: true, tech: 'carpentry', xp: 700, stage: '2' },
     { id: 'make_medbed', name: 'Infirmary bed', bench: ['carpenter'], in: [{ k: 'wood', n: 40 }, { k: 'cloth', n: 10 }], out: [{ k: 'medbed', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 150, minSkill: 0, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
+      skill: 'woodcraft', work: 150, minSkill: 3, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
     { id: 'make_club', name: 'Club', bench: ['carpenter'], in: [{ k: 'wood', n: 10 }], out: [{ k: 'club', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 30, minSkill: 0, quality: true, tech: 'carpentry', xp: 300, stage: '2' },
     { id: 'make_woodshield', name: 'Wooden shield', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'woodshield', n: 1, matFrom: 0 }],
@@ -92,9 +94,9 @@ export const DATA = {
     { id: 'stone_shelf', name: 'Stone shelf', bench: ['mason'], in: [{ cat: 'blocks', n: 25 }], out: [{ k: 'shelf', n: 1, matFrom: 0 }],
       skill: 'masonry', work: 70, minSkill: 0, quality: false, tech: 'masonry', xp: 700, stage: '2' },
     { id: 'stone_doublebed', name: 'Stone double bed', bench: ['mason'], in: [{ cat: 'blocks', n: 60 }], out: [{ k: 'doublebed', n: 1, matFrom: 0 }],
-      skill: 'masonry', work: 180, minSkill: 0, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
+      skill: 'masonry', work: 180, minSkill: 3, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
     { id: 'stone_longtable', name: 'Stone long table', bench: ['mason'], in: [{ cat: 'blocks', n: 70 }], out: [{ k: 'longtable', n: 1, matFrom: 0 }],
-      skill: 'masonry', work: 180, minSkill: 0, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
+      skill: 'masonry', work: 180, minSkill: 3, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
     { id: 'stone_stool', name: 'Stone stool', bench: ['mason'], in: [{ cat: 'blocks', n: 10 }], out: [{ k: 'stool', n: 1, matFrom: 0 }],
       skill: 'masonry', work: 30, minSkill: 0, quality: true, tech: 'masonry', xp: 300, stage: '2' },
     { id: 'make_sarcophagus', name: 'Sarcophagus', bench: ['mason'], in: [{ cat: 'blocks', n: 60 }], out: [{ k: 'sarcophagus', n: 1, matFrom: 0 }],

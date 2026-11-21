@@ -15,9 +15,9 @@ const upTo2 = (d) => S.availableIn(d, '2');
 const CHV = ['camp', 'hamlet', 'village'];
 
 test('Stage 2 content: about 90 Camp to Village structures, 60+ recipes, items of 6.2, 20 deeds, 30 advice rules', () => {
-  const st = all('structure').filter((d) => upTo2(d) && CHV.includes(d.tier));
+  const st = all('structure').filter((d) => upTo2(d) && CHV.includes(d.band || d.tier));
   assert.ok(st.length >= 90, `structures ${st.length}`);
-  for (const t of CHV) assert.ok(st.some((d) => d.tier === t), t);
+  for (const t of CHV) assert.ok(st.some((d) => (d.band || d.tier) === t), t);
   assert.ok(all('recipe').filter(upTo2).length >= 60);
   assert.ok(all('item').length >= 95);
   assert.equal(all('deed').length, 20);

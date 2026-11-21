@@ -432,7 +432,7 @@ export function makePolicy(s) {
     const cmds = [];
     for (const [d, cond, key = d] of BENCHES) {
       const sd = structDef(d);
-      if (Q.placed.has(key) || !sd || (sd.tech && !hasTech(s, sd.tech)) || (sd.tier && tierIndex(sd.tier) > Q.tier) || !cond(Q)) continue;
+      if (Q.placed.has(key) || !sd || (sd.tech && !hasTech(s, sd.tech)) || ((sd.band || sd.tier) && tierIndex(sd.band || sd.tier) > Q.tier) || !cond(Q)) continue;
       const [w, h] = sizeOf(structDef(d), 0);
       const r = site(w, h, 6, 6);
       Q.placed.set(key, r);
@@ -451,7 +451,7 @@ export function makePolicy(s) {
       for (const [key, r] of Q.placed) if (r) { const d = (BENCHES.find((x) => (x[2] || x[0]) === key) || [])[0]; if (d) want.set(d, (want.get(d) || 0) + 1); }
       for (const [d, n] of want) {
         const sd = structDef(d);
-        if (!sd || (sd.tech && !hasTech(s, sd.tech)) || (sd.tier && tierIndex(sd.tier) > Q.tier)) continue;
+        if (!sd || (sd.tech && !hasTech(s, sd.tech)) || ((sd.band || sd.tier) && tierIndex(sd.band || sd.tier) > Q.tier)) continue;
         if (s.bld.filter((b) => b && b.def === d).length >= n) continue;
         const [w, h] = sizeOf(sd, 0);
         const r = site(w, h, 6, 6);
