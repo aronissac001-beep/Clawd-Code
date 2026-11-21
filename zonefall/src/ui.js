@@ -1235,7 +1235,7 @@ export const UI = {
     }
     const items = el('div', 'bitems');
     for (const t of this.catItems(bm.cat)) {
-      const def = PIECES[t] || DOORS[t] || HIGHWALLS[t] || DEPLOY[t]; const tier = PIECES[t] ? bm.tier : null; const cost = Build.costOf(t, tier || 'twig');
+      const def = PIECES[t] || DOORS[t] || HIGHWALLS[t] || DEPLOY[t]; const tier = PIECES[t] ? bm.tier : null; const cost = Build.playerCost(t, tier || 'twig');
       const ok = canAfford(p, cost);
       const b = el('button', 'bi' + (bm.type === t ? ' on' : '') + (ok ? '' : ' poor'));
       b.innerHTML = '<img src="' + glyphURL(t) + '"><span>' + (def.name || t) + '</span><small>' + Object.entries(cost).map(([k, v]) => '<i>' + v + ' ' + shortName(k) + '</i>').join(' ') + '</small>'; // one chip per resource: they wrap instead of running off the button
@@ -1321,7 +1321,7 @@ export const UI = {
       const t = Build.target(bm.type, x, z, bm.ry, bm.cursor ? bm.cursor.y : undefined); const key = JSON.stringify(t); if (done.has(key)) continue; done.add(key);
       if (dist(p.x, p.z, x, z) > 16) continue;
       if (!Build.check(bm.type, t).ok) continue;
-      if (!canAfford(p, Build.costOf(bm.type, bm.tier))) { this.toast('Not enough resources'); break; }
+      if (!canAfford(p, Build.playerCost(bm.type, bm.tier))) { this.toast('Not enough resources'); break; }
       if (tryPlace(p, bm.type, t, bm.tier)) placed++;
     }
     if (placed) this.renderBuildBar();
@@ -1333,7 +1333,7 @@ export const UI = {
     const lad = DEPLOY[bm.type] && DEPLOY[bm.type].ladder;
     const key = bm.type + '|' + bm.tier + (lad && !t.none ? '|' + Math.round((t.top - t.y0) * 10) : '');
     if (!this.ghost || this.ghost.key !== key) { this.clearGhost(); this.ghost = { key, obj: lad && !t.none && GM && GM.makeLadder ? ghostify(GM.makeLadder(t.top - t.y0)) : makeGhost(bm.type, bm.tier) }; G.scene.add(this.ghost.obj); }
-    const o = this.ghost.obj; const ok = chk.ok && canAfford(G.player, Build.costOf(bm.type, bm.tier));
+    const o = this.ghost.obj; const ok = chk.ok && canAfford(G.player, Build.playerCost(bm.type, bm.tier));
     setGhostColor(o, ok);
     const pose = Build.ghostPose(bm.type, t);
     if (pose) { o.position.set(pose.x, pose.y, pose.z); o.rotation.y = pose.ry; if (bm.type === 'foundation' && chk.level !== undefined) o.position.y = chk.level; }
@@ -1360,20 +1360,20 @@ export const UI = {
     const A = (label, fn, cls, dis) => { const b = el('button', cls || '', label); b.disabled = !!dis; b.onclick = () => { fn(); this.renderBuildBar(); this.refreshAll(); }; acts.appendChild(b); };
     if (o.sk === 'piece' && PIECES[o.type]) {
       const i = TIERS.indexOf(o.tier);
-      for (let k = i + 1; k < TIERS.length; k++) { const t = TIERS[k]; const cost = Build.costOf(o.type, t); A('→ ' + TIER[t].name + ' (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); Build.upgrade(o, t); }, k === i + 1 ? 'primary' : '', !canAfford(p, cost)); }
+      for (let k = i + 1; k < TIERS.length; k++) { const t = TIERS[k]; const cost = Build.playerCost(o.type, t); A('→ ' + TIER[t].name + ' (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); Build.upgrade(o, t); }, k === i + 1 ? 'primary' : '', !canAfford(p, cost)); }
       // upgrade the whole building
       const all = Build.allPieces().filter(q => q && q.owner === 'player' && PIECES[q.type] && TIERS.indexOf(q.tier) < TIERS.indexOf(o.tier === 'armored' ? 'armored' : TIERS[Math.min(4, i + 1)]));
       if (i < 4 && all.length > 1) {
-        const tgt = TIERS[i + 1]; const tot = {}; for (const q of all) { if (TIERS.indexOf(q.tier) >= i + 1) continue; for (const [a, b] of Object.entries(Build.costOf(q.type, tgt))) tot[a] = (tot[a] || 0) + b; }
+        const tgt = TIERS[i + 1]; const tot = {}; for (const q of all) { if (TIERS.indexOf(q.tier) >= i + 1) continue; for (const [a, b] of Object.entries(Build.playerCost(q.type, tgt))) tot[a] = (tot[a] || 0) + b; }
         A('Upgrade all to ' + TIER[tgt].name + ' (' + Object.entries(tot).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, tot)) { this.toast('Not enough resources'); return; } spend(p, tot); for (const q of all) if (TIERS.indexOf(q.tier) < i + 1) Build.upgrade(q, tgt); }, '', !canAfford(p, tot));
       }
     }
-    if (o.hp < o.maxhp) { const base = o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier); const cost = {}; for (const [a, b] of Object.entries(base)) cost[a] = Math.max(1, Math.ceil(b * 0.5 * (1 - o.hp / o.maxhp))); A('Repair (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); o.hp = o.maxhp; Sfx.build(); }, '', !canAfford(p, cost)); }
+    if (o.hp < o.maxhp) { const base = Build.devBuild() ? {} : o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier); const cost = {}; for (const [a, b] of Object.entries(base)) cost[a] = Math.max(1, Math.ceil(b * 0.5 * (1 - o.hp / o.maxhp))); A('Repair (' + Object.entries(cost).map(([a, b]) => b + ' ' + shortName(a)).join(' ') + ')', () => { if (!canAfford(p, cost)) { this.toast('Not enough resources'); return; } spend(p, cost); o.hp = o.maxhp; Sfx.build(); }, '', !canAfford(p, cost)); }
     if (o.sk === 'door') A('Flip hinge', () => { o.flip = !o.flip; o.mesh.root.rotation.y += Math.PI; });
     if (o.sk === 'deploy' && o.type !== 'ladder') A('Rotate', () => { o.ry = (o.ry + Math.PI / 2) % (Math.PI * 2); o.mesh.rotation.y = -o.ry; });
     if (o.sk === 'piece' && o.type === 'stairs') A('Rotate', () => { o.dir = ((o.dir || 0) + 1) % 4; Build._rebuild(o); });
     A('Remove (50% refund)', () => {
-      const base = o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier);
+      const base = Build.devBuild() ? {} : o.sk === 'door' ? DOORS[o.kind].cost : o.sk === 'deploy' ? DEPLOY[o.type].cost : Build.costOf(o.hw || o.type, o.tier);
       for (const [a, b] of Object.entries(base)) give(p, a, Math.floor(b * 0.5 * (o.hp / o.maxhp)));
       if (o.sk === 'door') { import('./doors.js').then(m => { m.removeDoor(o); if (o.piece) o.piece.door = null; Build.dirty = true; }); }
       else if (o.sk === 'deploy') { if (o.inv) Live.dropInv(o.x, o.z, o.inv, 'bag', 900); if (o === Build.tc) { this.toast('Tool Cupboard removed — your land is unclaimed', 'bad'); } Build.removeDeploy(o, true); }
@@ -1499,11 +1499,13 @@ export const UI = {
       <label>Doors close behind you <input type="checkbox" id="s-door"></label>
       <label>Gun flashlight at night <input type="checkbox" id="s-fl"></label>
       <label>Smashed barrels go straight to your pockets <input type="checkbox" id="s-al"></label>
+      <label>Dev: god mode (no damage, hunger or thirst) <input type="checkbox" id="s-god"></label>
+      <label>Dev: infinite building (free, no workbench, no upkeep) <input type="checkbox" id="s-dbuild"></label>
       <label>Something look broken? <button id="s-repair" class="mini">Repair (reload fresh)</button></label>
       </div>` + (host ? '' : '<button id="s-back">Back</button>');
     const q = s => box.querySelector(s);
-    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-mus').value = S.music ?? 0.55; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false; q('#s-al').checked = S.autoLoot !== false;
-    const save = () => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.music = +q('#s-mus').value; Music.setLevel(S.music); S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; S.autoLoot = q('#s-al').checked; Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
+    q('#s-gfx').value = S.gfx; q('#s-snd').checked = S.sound; q('#s-vol').value = S.volume; q('#s-mus').value = S.music ?? 0.55; q('#s-sens').value = S.sens || 1; q('#s-fov').value = S.fov || 72; q('#s-inv').checked = !!S.invert; q('#s-aa').checked = S.aimAssist !== false; q('#s-door').checked = S.autoClose !== false; q('#s-fl').checked = S.flashlight !== false; q('#s-ink').checked = S.ink !== false; q('#s-al').checked = S.autoLoot !== false; q('#s-god').checked = !!S.devGod; q('#s-dbuild').checked = !!S.devBuild;
+    const save = (ev) => { S.gfx = q('#s-gfx').value; S.sound = q('#s-snd').checked; S.volume = +q('#s-vol').value; S.music = +q('#s-mus').value; Music.setLevel(S.music); S.sens = +q('#s-sens').value; S.fov = +q('#s-fov').value; S.invert = q('#s-inv').checked; S.aimAssist = q('#s-aa').checked; G.rend.setFov(S.fov); S.autoClose = q('#s-door').checked; S.flashlight = q('#s-fl').checked; S.ink = q('#s-ink').checked; G.rend.inkOn = S.ink; S.autoLoot = q('#s-al').checked; S.devGod = q('#s-god').checked; S.devBuild = q('#s-dbuild').checked; if (G.player && S.devGod) { G.player.hp = G.player.maxhp; G.player.rad = 0; } if (ev && ev.target && (ev.target.id === 's-god' || ev.target.id === 's-dbuild')) this.toast((S.devGod ? 'God mode ON' : 'God mode off') + ' · ' + (S.devBuild ? 'infinite building ON' : 'infinite building off'), 'good'); Sfx.enabled = S.sound; Sfx.setVolume(S.volume); Save.writeSettings(S); if (G.rend.level !== S.gfx) G.rend.setLevel(S.gfx); };
     box.querySelectorAll('select,input').forEach(e => e.onchange = save);
     q('#s-repair').onclick = async () => { // drop cached files + service worker, keep saves, reload from the network
       try { if (G.mode === 'play') G.game.save(); } catch (e) { }

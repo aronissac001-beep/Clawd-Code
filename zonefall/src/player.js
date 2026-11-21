@@ -140,12 +140,13 @@ export function updatePlayer(p, dt) {
   // ---- status
   const iron = (G.run.perks.includes('iron_gut') ? 0.65 : 1) * (1 - Buffs.val(p, 'fed')); // meat stew: hunger and thirst drain slower
   p.food = Math.max(0, p.food - dt * 0.065 * iron); p.water = Math.max(0, p.water - dt * 0.085 * iron);
+  if (G.settings && G.settings.devGod) { p.food = Math.max(p.food, 90); p.water = Math.max(p.water, 90); p.bleed = 0; p.o2 = 22; }
   if (p.food <= 0) hurt(p, dt * 0.5, { kind: 'starve' }); if (p.water <= 0) hurt(p, dt * 0.6, { kind: 'thirst' });
   if (p.food > 40 && p.water > 40 && p.bleed <= 0 && p.rad < 30) p.hp = Math.min(p.maxhp, p.hp + dt * (0.22 + (p.food > 80 && p.water > 80 ? 0.25 : 0)));
   if (p.artFx.regen) p.hp = Math.min(p.maxhp, p.hp + dt * p.artFx.regen);
   const radIn = Live.radAt(p.x, p.z) + (p.artFx.radRate || 0);
   const radRes = Math.min(0.97, inv.radRes() + (p.artFx.radRes || 0) + Buffs.val(p, 'radres'));
-  if (radIn > 0) { p.rad = Math.min(100, p.rad + radIn * (1 - radRes) * dt); if (chance(dt * radIn * 1.5)) Sfx.geiger(Math.min(1, radIn / 8)); }
+  if (radIn > 0 && !(G.settings && G.settings.devGod)) { p.rad = Math.min(100, p.rad + radIn * (1 - radRes) * dt); if (chance(dt * radIn * 1.5)) Sfx.geiger(Math.min(1, radIn / 8)); }
   else p.rad = Math.max(0, p.rad - dt * 0.6);
   if (p.rad > 30) hurt(p, dt * (p.rad - 30) / 45, { kind: 'rad' });
   if (p.bleed > 0) { p.bleed -= dt; hurt(p, dt * 1.4, { kind: 'bleed' }); if (chance(dt * 2) && G.fx) G.fx.decal(p.x, p.z, 'blood', 0.2); }
@@ -601,10 +602,10 @@ export function buildCostFor(type, tier) { return Build.costOf(type, tier); }
 export function canAfford(p, cost) { for (const k in cost) if (haveCount(p, k) < cost[k]) return false; return true; }
 export function tryPlace(p, type, t, tier) {
   const def = PIECES[type] || DOORS[type] || HIGHWALLS[type] || DEPLOY[type];
-  if (def.wb && def.wb > Build.wbTier(p.x, p.z) && !DOORS[type]) { G.ui.toast('Needs Workbench T' + def.wb + ' nearby'); return null; }
-  if (DOORS[type] && def.wb && def.wb > Build.wbTier(p.x, p.z)) { G.ui.toast('Needs Workbench T' + def.wb + ' nearby'); return null; }
+  if (def.wb && def.wb > Build.wbTier(p.x, p.z) && !DOORS[type] && !Build.devBuild()) { G.ui.toast('Needs Workbench T' + def.wb + ' nearby'); return null; }
+  if (DOORS[type] && def.wb && def.wb > Build.wbTier(p.x, p.z) && !Build.devBuild()) { G.ui.toast('Needs Workbench T' + def.wb + ' nearby'); return null; }
   const chk = Build.check(type, t); if (!chk.ok) { G.ui.toast(chk.why); Sfx.deny(); return null; }
-  const cost = Build.costOf(type, tier);
+  const cost = Build.playerCost(type, tier);
   if (!canAfford(p, cost)) { G.ui.toast('Not enough resources'); Sfx.deny(); return null; }
   // gates: a gate needs a gateway in a high wall; placing a gate on a plain high wall converts it
   spend(p, cost);

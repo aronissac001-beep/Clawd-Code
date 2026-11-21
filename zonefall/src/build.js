@@ -569,6 +569,10 @@ export const Build = {
     }
   },
   // ---------------------------------------------------------------- costs
+  /** dev toggle (Settings): build for free, no workbench needed, no upkeep or decay for your own base */
+  devBuild() { return !!(G.settings && G.settings.devBuild) && !G.netGuest; },
+  /** what YOU pay for a piece / upgrade (free with the dev toggle); bots still pay costOf */
+  playerCost(type, tier) { return this.devBuild() ? {} : this.costOf(type, tier); },
   costOf(type, tier) {
     if (PIECES[type]) { const c = scaleCost(TIER[tier].cost, PIECES[type].mult); return G.run && G.run.perks.includes('engineer') ? scaleCost(c, 0.8) : c; }
     if (HIGHWALLS[type]) return HIGHWALLS[type].cost;
@@ -952,7 +956,7 @@ export const Build = {
     const clock = G.clock ?? 0; const prev = this._upkClock ?? clock; this._upkClock = clock;
     let days = ((clock - prev) % 1 + 1) % 1; if (days > 0.5) days = 0; // a big jump (load / skip) isn't charged
     const owners = new Map(); // owner -> list of cupboards
-    for (const d of this.deploys) if (d.type === 'tc' && !d.dead && d.inv && (d.owner === 'player' || d.bot)) { if (!owners.has(d.owner)) owners.set(d.owner, []); owners.get(d.owner).push(d); }
+    for (const d of this.deploys) if (d.type === 'tc' && !d.dead && d.inv && ((d.owner === 'player' && !this.devBuild()) || d.bot)) { if (!owners.has(d.owner)) owners.set(d.owner, []); owners.get(d.owner).push(d); }
     const unpaid = new Map(); // tc -> Set(res)
     for (const list of owners.values()) for (const tc of list) {
       const u = this.upkeep(tc); const acc = tc.state.upk || (tc.state.upk = {}); const miss = new Set();
@@ -968,6 +972,7 @@ export const Build = {
     // decay
     for (const p of this.allPieces()) {
       if (p.owner !== 'player' && !(p.owner && p.owner.startsWith && p.owner.startsWith('bot:'))) continue;
+      if (p.owner === 'player' && this.devBuild()) continue;
       if (G.t - p.placedAt < 90) continue;
       const [x, z] = this.pieceXZ(p); const tc = this.tcFor(p.owner, x, z);
       const miss = tc ? unpaid.get(tc) || NONE : null;
