@@ -20,6 +20,22 @@ export const DATA = {
     { id: 'flax', name: 'Flax', kind: 'crop', days: 9, yield: { flax: 8 }, minTemp: 4, sow: true },
     { id: 'herb', name: 'Healing herb', kind: 'wild', days: 8, yield: { herbs: 4 }, minTemp: 2, sow: true },
     { id: 'glowcap', name: 'Glowcap', kind: 'wild', days: 7, yield: { glowcap: 6 }, minTemp: 4, sow: true, underground: true, dark: true },
+    // Stage Z2.7 (EMBERCROWN-FORTRESS.md 2.10, 3.7; append only): the cavern flora of the Glowcap Hollows and the
+    // Sunless Mere. `underground` plants need no light and grow (and are sown) on cave loam (plants.js caveLoam).
+    // Greyshank is the giant grey fungus of Cavern I: felled like a tree, it yields shankwood (plants.js CAVE.mat
+    // until the plant schema has `mat`). Mere-reed is the Mere's cloth fibre (flax until a reed item exists);
+    // shore lichen glows faintly on the Mere's shores (light 1 once light.js reads plant light).
+    { id: 'greyshank', name: 'Greyshank', kind: 'tree', days: 24, yield: { wood: 18 }, minTemp: 2, sow: false, underground: true },
+    { id: 'merereed', name: 'Mere-reed', kind: 'wild', days: 9, yield: { flax: 6 }, minTemp: 2, sow: true, underground: true, perennial: true },
+    { id: 'lichen', name: 'Shore lichen', kind: 'wild', days: 12, yield: { herbs: 1 }, minTemp: 0, sow: false, underground: true, perennial: true },
+  ],
+};
+
+// Stage Z2.7 rows STAGED for the Z2 switch (G moves them into DATA.plant, after the rows above, when the dimroot item
+// leaves items.js STAGED): dimroot is the Mere's brewing tuber, a cave crop.
+export const STAGED = {
+  plant: [
+    { id: 'dimroot', name: 'Dimroot', kind: 'crop', days: 8, yield: { dimroot: 10 }, minTemp: 2, sow: true, underground: true },
   ],
 };
 

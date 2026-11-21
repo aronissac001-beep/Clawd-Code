@@ -117,7 +117,7 @@ export function makeDeep(s, base) {
       for (let x = x0; x <= x0 + 2 && ok; x++) {
         const i = idx(x, y0, zS), t = T[i];
         if (!TER_BUILDABLE[t] || !TER_PASSABLE[t] || s.rt.occ[i] >= 0 || s.L.zone[i] || s.L.plant[i] || s.L.desig[i]) ok = false;
-        for (let z = zS - SHAFT_LEVELS + 1; z < zS && ok; z++) if (!TER_MINEABLE[T[idx(x, y0, z)]]) ok = false;
+        for (let z = zS - SHAFT_LEVELS + 1; z < zS && ok; z++) if (!TER_MINEABLE[T[idx(x, y0, z)]] || (s.L.fluid && s.L.fluid[idx(x, y0, z)])) ok = false;   // fluid (an aquifer) stops a stair stack
       }
       if (!ok) continue;
       // the rooms below: rock with a margin

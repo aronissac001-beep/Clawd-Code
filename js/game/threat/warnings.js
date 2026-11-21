@@ -67,7 +67,7 @@ function fill(v, s, raid, plan, members) {
   if (rank >= 3 && members) v.comp = composition(members);
   return v;
 }
-const blank = (id, inc, stage, arriveTick) => ({ id, inc, name: incidentName(inc), stage, arriveTick, hours: 0, chip: '', edge: null, size: null, types: null, route: null, comp: null, onMap: null, prey: null });
+const blank = (id, inc, stage, arriveTick) => ({ id, inc, name: incidentName(inc), stage, arriveTick, hours: 0, chip: '', edge: null, size: null, types: null, route: null, comp: null, onMap: null, prey: null, why: null });
 
 /** Every warned or live threat, soonest first. */
 export function threatViews(s) {
@@ -81,6 +81,7 @@ export function threatViews(s) {
     const v = blank(e.id, e.inc, e.stage, e.arriveTick);
     v.hours = Math.max(0, Math.ceil((e.arriveTick - s.tick) / TICKS_PER_HOUR));
     v.chip = `${v.name}: ${v.hours} h`;
+    v.why = e.why || null;
     v.prey = e.cast && e.cast.prey !== undefined ? e.cast.prey : null;
     out.push(fill(v, s, raid, plan, plan ? plan.members : null));
   }
@@ -101,5 +102,5 @@ export function threatChip(s) { const v = threatViews(s); return v.length ? v[0]
 export function omenText(s, v) {
   const inc = incidentDef(v.inc);
   const t = (inc && variants(inc.letter)[0]) || `${v.name} in {hours} hours.`;
-  return t.replace('{edge}', v.edge ? v.edge.word : 'edge').replace('{hours}', String(v.hours));
+  return `${t.replace('{edge}', v.edge ? v.edge.word : 'edge').replace('{hours}', String(v.hours))}${v.why ? ' ' + v.why : ''}`;
 }

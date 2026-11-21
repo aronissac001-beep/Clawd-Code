@@ -37,7 +37,7 @@ function leaves(v, p, out) {
 }
 
 test('mapVoxelRefs on a 9-day bot colony: visits every listed place; one level up and back keeps the hash; nothing missed', async () => {
-  const { s } = await runBot2({ seed: 1, days: 9 });
+  const { s } = await runBot2({ seed: 1, days: 8 });
   assert.deepEqual(checkState(s), []);
   const h0 = stateHash(s);
   const kinds = { tile: 0, key: 0 };

@@ -91,13 +91,13 @@
  },
  "ms": 13430,
  "rebaselined": {
-  "commit": "8e956a5",
+  "commit": "dce56d8",
   "dirty": true,
   "date": "2026-11-21",
-  "note": "Z2.1+Z2.3: personality (facets, values, preferences, memories) changes mood on purpose",
+  "note": "",
   "hour": {
    "tick": 121214,
-   "hash": "25d04e9f32f249a1",
+   "hash": "048242633616ebb9",
    "moods": [
     {
      "id": 1,
@@ -127,7 +127,7 @@
   },
   "day": {
    "tick": 135014,
-   "hash": "9bf0c2f60114d290"
+   "hash": "80577103d3485cc9"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

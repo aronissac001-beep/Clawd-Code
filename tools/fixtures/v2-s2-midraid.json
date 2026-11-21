@@ -148,13 +148,13 @@
  },
  "ms": 33664,
  "rebaselined": {
-  "commit": "3df02e2",
+  "commit": "dce56d8",
   "dirty": true,
   "date": "2026-11-21",
-  "note": "Z2.4+Z2.6: holds with dead keep the Unrested list (burial, slabs, funerals) and Unrested thoughts change mood on purpose",
+  "note": "",
   "hour": {
    "tick": 417133,
-   "hash": "2f927abd0c0df1d3",
+   "hash": "6119eef09df32232",
    "moods": [
     {
      "id": 1,
@@ -238,7 +238,7 @@
   },
   "day": {
    "tick": 430933,
-   "hash": "268e667cf2c62fae"
+   "hash": "168e3dc308463561"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

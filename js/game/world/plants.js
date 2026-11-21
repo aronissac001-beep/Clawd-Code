@@ -42,20 +42,50 @@
 // 1) that hold a plant: plantClusters(s), a pure function of the plant layer, cached per runtime object and
 // kept exact by the plant write hook (as claims.js keeps its map), so 64 clusters are visited, not 1,280.
 // A visit adds the growth of the list's length in ticks.
+//
+// Underground life (Stage Z2.7; EMBERCROWN-FORTRESS.md 2.9, 2.10, 3.7). At D > 1:
+//   caveLoam(s, i)        true for cave loam: an underground (cover >= 1) voxel of cave moss, tilled ground, or a mined
+//                         soil floor (rough floor of loam or clay). `underground` plants (glowcap, greyshank, mere-reed,
+//                         shore lichen, dimroot) need no light, and are sown on cave loam as well as fertile ground.
+//   `dark` plants (glowcaps) grow only in the dark or the gloam: light <= GROW.darkMax (1, the glow of glowcaps,
+//                         glowbeetles and shore lichen), never beside a torch.
+//   Cavern spreading      a mature wild underground plant (CAVE.spread) may drop a seedling on a free neighbour of its
+//                         habitat (cave moss; the Mere's shores; the foot of a cliff), at most CAVE.clusterMax plants per
+//                         cluster, so the caverns stay alive after the hold harvests them. Pure: a hash of (tile, tick).
+//   seedCavernFlora(s)    the cavern flora the first mapgen3 did not place (greyshank in the Hollows; mere-reed, shore
+//                         lichen and dimroot in the Mere), a pure function of the seed and the world, written once by
+//                         js/game/animals/caverns.js (its herd record keeps the flag). Returns the count planted.
+//   plantYield            also carries the plant's material (greyshank: shankwood) as `mat`.
 
-import { W, H, N, D, PLANE, CW, CH, CLUSTER, CLUSTERS, TER, TER_FERTILE, ROOF } from '../core/grid.js';
+import { W, H, N, D, PLANE, CW, CH, CLUSTER, CLUSTERS, TER, TER_FERTILE, ROOF, zS } from '../core/grid.js';
+import { seedOf } from '../core/rand.js';
 import { coverAt } from './vertical.js';
 import { onTileWrite } from './terrain.js';
 import { TICKS_PER_DAY } from '../core/time.js';
 import { registerSystem, tickSystems } from '../core/bus.js';
-import { plantDef, isTreeCode } from './defs.js';
+import { plantDef, isTreeCode, plantCode, stoneId } from './defs.js';
+import { FL } from './pass.js';
 import { setPlant, setGrowth, tempAt } from './terrain.js';
 import { worldStage2 } from './worldrec.js';
 import { growthPct } from './weather.js';
-import { WORLD } from '../../data/worldgen.js';
+import { WORLD, GEN3 } from '../../data/worldgen.js';
+import { installSeeps } from './seeps.js';
 
 /** Tuning (moves to balance.js WORLD with G). */
-export const GROW = Object.freeze({ seedPermille: 2, chopWork: 30, minChopWork: 10, halfGrown: 128, harvestWork: 12, sowWork: 8, regrowFrom: 0 });
+export const GROW = Object.freeze({ seedPermille: 2, chopWork: 30, minChopWork: 10, halfGrown: 128, harvestWork: 12, sowWork: 8, regrowFrom: 0, darkMax: 1 });
+/**
+ * Cavern life (Z2.7). spread: plant id -> habitat of its seedlings; mat: a yield's material (until the plant schema
+ * has `mat`); flora: the one-time seeding, permille per habitat voxel by cavern.
+ */
+export const CAVE = Object.freeze({
+  spreadPermille: 2, clusterMax: 16,
+  spread: Object.freeze({ glowcap: 'moss', greyshank: 'moss', merereed: 'shore', lichen: 'cliff' }),
+  mat: Object.freeze({ greyshank: 'shankwood' }),
+  flora: Object.freeze({
+    hollows: Object.freeze([['greyshank', 'moss', 25]]),
+    mere: Object.freeze([['merereed', 'shore', 300], ['lichen', 'cliff', 60], ['dimroot', 'floor', 25]]),
+  }),
+});
 
 function hashT(i, t) {
   let h = (Math.imul(i | 0, 0x9e3779b1) ^ Math.imul(t | 0, 0x85ebca77)) >>> 0;
@@ -75,7 +105,9 @@ export function plantYield(s, i) {
   const item = keys[0], full = d.yield[item] | 0, g = s.L.growth[i];
   let n = Math.floor((full * g) / 255);
   if (g >= GROW.halfGrown && n < 1) n = 1;
-  return n > 0 ? { item, n } : null;
+  if (n <= 0) return null;
+  const mat = d.mat || CAVE.mat[d.id];
+  return mat ? { item, n, mat } : { item, n };
 }
 
 /** Felling work in game minutes at speed 1.0: a sapling takes less. */
@@ -113,14 +145,14 @@ export function canSow(s, i, code) {
   if (!d || !d.sow) return 'not a sown plant';
   if (L.plant[i]) return 'something grows here';
   const t = L.terrain[i];
-  if (!TER_FERTILE[t] && t !== TER.TILLED) return 'the ground is not fertile';
+  if (!TER_FERTILE[t] && t !== TER.TILLED && !(d.underground && caveLoam(s, i))) return 'the ground is not fertile';
   if (L.floor[i]) return 'a floor covers the soil';
   if (s.rt.occ[i] >= 0) return 'a building stands here';
   if (s.rt.itemAt[i] >= 0) return 'an item lies here';
   if (!d.underground && (D > 1 ? coverAt(s, i) !== 0 : L.roof[i] !== ROOF.OPEN)) return 'it needs open sky';
   if (d.minTemp !== undefined && tempAt(s, i) < d.minTemp) return 'too cold to sow';
   if (worldStage2() && L.blight[i] > 0) return 'the soil is blighted';
-  if (d.dark && s.rt.light && s.rt.light[i] > 0) return 'it grows only in the dark';
+  if (d.dark && s.rt.light && s.rt.light[i] > GROW.darkMax) return 'it grows only in the dark';
   return null;
 }
 export function sowPlant(s, i, code) {
@@ -195,11 +227,13 @@ export function plantsSystem(s) {
           }
         }
         if (st2 && L.blight[i] >= 64) continue;
-        if (d.dark && s.rt.light[i] > 0) continue;
+        if (d.dark && s.rt.light[i] > GROW.darkMax) continue;
         let add = gain(i, s.tick, n, d.days);
         if (wPct !== 100 && openSky(i)) add = Math.floor((add * wPct + (hashT(i, s.tick ^ 0x3c6ef372) % 100)) / 100);
         const ng = g + add;
         setGrowth(s, i, ng > 255 ? 255 : ng);
+      } else if (D > 1 && CAVE.spread[d.id] && coverAt(s, i) > 0) {
+        if ((hashT(i, s.tick ^ 0x1b873593) % 1000) < CAVE.spreadPermille) caveSpread(s, i, code, d, base, x, y);
       } else if (d.kind === 'tree' && (hashT(i, s.tick ^ 0x5bd1e995) % 1000) < GROW.seedPermille) {
         // reseed one of the 8 neighbours, picked by the same hash
         const k = hashT(i, s.tick ^ 0x27d4eb2d) & 7;
@@ -214,6 +248,77 @@ export function plantsSystem(s) {
     }
   }
 }
+// ---- Underground life (Z2.7) ------------------------------------------------------------------------------
+let soilMats = null;
+const soilMat = (m) => { if (!soilMats) soilMats = [stoneId('loam'), stoneId('clay')].filter((k) => k > 0); return soilMats.includes(m); };
+/** Cave loam (2.2, 2.9): an underground voxel of cave moss, tilled ground or a mined soil floor (loam, clay). */
+export function caveLoam(s, i) {
+  if (D === 1 || coverAt(s, i) === 0) return false;
+  const t = s.L.terrain[i];
+  return t === TER.MOSS || t === TER.TILLED || ((t === TER.ROUGH || t === TER.DIRT) && soilMat(s.L.mat[i]));
+}
+const waterAt = (s, j) => { const f = s.L.fluid; return !!f && (f[j] & FL.DEPTH) !== 0 && (f[j] & FL.EMBER) === 0; };
+/** Is voxel j (plane x, y of level base) free natural ground of a habitat ('moss' | 'shore' | 'cliff' | 'floor')? */
+function habitatOk(s, j, hab, x, y) {
+  const L = s.L, t = L.terrain[j];
+  if (L.plant[j] || L.floor[j] || L.zone[j] || L.desig[j] || s.rt.occ[j] >= 0 || s.rt.itemAt[j] >= 0 || waterAt(s, j)) return false;
+  if (t !== TER.MOSS && t !== TER.ROUGH) return false;
+  if (hab === 'moss') return t === TER.MOSS;
+  if (hab === 'floor') return true;
+  const want = hab === 'shore' ? (k) => waterAt(s, k) : (k) => L.terrain[k] === TER.ROCK;
+  if (x > 0 && want(j - 1)) return true;
+  if (x < W - 1 && want(j + 1)) return true;
+  if (y > 0 && want(j - W)) return true;
+  return y < H - 1 && want(j + W);
+}
+function caveSpread(s, i, code, d, base, x, y) {
+  const e = clCache.get(s.rt);
+  if (e && e.count[clusterOfI(i)] >= CAVE.clusterMax) return;
+  const k = hashT(i, s.tick ^ 0x27d4eb2d) & 7;
+  const DX = [0, 1, 0, -1, 1, 1, -1, -1], DY = [-1, 0, 1, 0, -1, 1, 1, -1];
+  const nx = x + DX[k], ny = y + DY[k];
+  if (nx < 0 || ny < 0 || nx >= W || ny >= H) return;
+  const j = base + ny * W + nx;
+  if (!habitatOk(s, j, CAVE.spread[d.id], nx, ny) || coverAt(s, j) === 0) return;
+  if (d.dark && s.rt.light && s.rt.light[j] > GROW.darkMax) return;
+  if (d.minTemp !== undefined && tempAt(s, j) < d.minTemp) return;
+  setPlant(s, j, code, 0);
+}
+const caveZ = (rel) => (rel === undefined ? -1 : zS + rel);
+/** The levels of Caverns I and II: { hollows: [floor, ledge], mere: [floor, ledge] } (empty at D = 1). */
+export function cavernLevels() {
+  if (D === 1) return {};
+  const out = {};
+  for (const id of ['hollows', 'mere']) {
+    const C = GEN3.caverns[id], zs = [caveZ(C.floor), caveZ(C.ledge)].filter((z) => z >= 0 && z < D);
+    if (zs.length) out[id] = zs;
+  }
+  return out;
+}
+/** The cavern flora mapgen3 did not place (once per colony; caverns.js holds the flag). Returns the count planted. */
+export function seedCavernFlora(s) {
+  if (D === 1) return 0;
+  const lv = cavernLevels(), sd = seedOf(s.seed) ^ 0x6a09e667;
+  let n = 0;
+  for (const [cid, rows] of Object.entries(CAVE.flora)) {
+    for (const z of lv[cid] || []) {
+      const base = z * PLANE;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = base + y * W + x;
+        if (coverAt(s, i) === 0) continue;
+        let r = hashT(i, sd) % 1000;
+        for (const [id, hab, pm] of rows) {
+          if (r >= pm) { r -= pm; continue; }
+          const code = plantCode(id);
+          if (code && habitatOk(s, i, hab, x, y)) { setPlant(s, i, code, 128 + (hashT(i, sd ^ 0x3c6ef372) & 127)); n++; }
+          break;
+        }
+      }
+    }
+  }
+  return n;
+}
+
 /** A seedling never lands next to a building or in a zone (stockpiles, farms) or on a designation. */
 function plantSeedable(s, j) {
   return !s.L.zone[j] && !s.L.desig[j];
@@ -222,6 +327,7 @@ function plantSeedable(s, j) {
 let plantHooked = false;
 export function installPlants() {
   if (!plantHooked) { plantHooked = true; onTileWrite((s, i, layer, before, after) => { if (D > 1 && layer === 'plant') plantWritten(s, i, before, after); }); }
+  installSeeps();   // Z2.7: seep lining (seeps.js), installed with the plants until terrain.js installs it itself
   if (tickSystems().some((x) => x.slot === 'plants' && x.name === 'growth')) return;
   registerSystem('plants', 'growth', plantsSystem, 0);
 }

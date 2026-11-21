@@ -13,13 +13,15 @@
 // itself. penGuard (slot 'path', right after A*) drops a fresh path that would take a penned animal
 // out of its pen before movement takes a step on it.
 
-import { W, H, idx, TER_WATER, tz } from '../core/grid.js';
+import { W, H, idx, TER_WATER, tz, PLANE } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { bldById } from '../core/state.js';
 import { compOf } from '../world/terrain.js';
 import { requestPath, cancelPath, pathPending, GOAL } from '../systems/pathing.js';
-import { animTile } from './spawn.js';
+import { animVoxel } from './spawn.js';
 import { penOf, penTiles, penPathOk } from './pens.js';
+import { isCaveDweller, cavernOfZ, caveGoalOk } from './caverns.js';
+import { cavernLevels } from '../world/plants.js';
 
 export const THINK_EVERY = 20;
 export const AI = Object.freeze({ wanderR: 10, tameR: 7, grazeMin: 150, grazeMax: 600, fleeTiles: 10 });
@@ -37,11 +39,27 @@ function nearTile(s, x, y, r, from) {
   }
   return -1;
 }
+/**
+ * Z2.7: a cavern creature's wander goal, on its own cavern's two levels (the other level one time in three), natural
+ * unbuilt ground only (caverns.caveGoalOk), in the walk component of `from`; or -1.
+ */
+function caveTile(s, a, x, y, r, from) {
+  const zs = cavernLevels()[cavernOfZ(a.z | 0)] || [a.z | 0], comp = compOf(s, from, 0);
+  for (let k = 0; k < 6; k++) {
+    const z = zs.length > 1 && roll(s, 3) === 0 ? zs.find((v) => v !== (a.z | 0)) : a.z | 0;
+    const nx = x + roll(s, 2 * r + 1) - r, ny = y + roll(s, 2 * r + 1) - r;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const i = idx(nx, ny, z);
+    if (caveGoalOk(s, a.kind, i) && compOf(s, i, 0) === comp) return i;
+  }
+  return -1;
+}
 const hearthTile = (s) => { const h = s.colony.hearth; const b = h && h.id !== null ? bldById(s, h.id) : null; return b ? idx(b.x + 1, b.y + 1, b.z | 0) : -1; };
+const yOf = (i) => ((i % PLANE) / W) | 0;
 
 /** Where an animal wants to go next, or -1 (stay). */
 function goalFor(s, a) {
-  const at = animTile(a), ax = at % W, ay = (at / W) | 0;
+  const at = animVoxel(a), ax = at % W, ay = yOf(at);
   const pen = a.tame ? penOf(s, a) : null;
   if (pen) {
     const t = penTiles(s, pen.id);
@@ -51,13 +69,14 @@ function goalFor(s, a) {
   }
   if (a.tame) {
     const h = hearthTile(s);
-    if (h >= 0) return nearTile(s, h % W, (h / W) | 0, AI.tameR, at);
+    if (h >= 0) return nearTile(s, h % W, yOf(h), AI.tameR, at);
   }
+  if (isCaveDweller(a)) return caveTile(s, a, ax, ay, AI.wanderR, at);
   return nearTile(s, ax, ay, AI.wanderR, at);
 }
 /** Run from tile `from` (an attacker): a tile about FLEE_TILES away on the far side. */
 export function fleeFrom(s, a, from) {
-  const at = animTile(a), ax = at % W, ay = (at / W) | 0, fx = from % W, fy = (from / W) | 0;
+  const at = animVoxel(a), ax = at % W, ay = yOf(at), fx = from % W, fy = yOf(from);
   const dx = Math.sign(ax - fx) || 1, dy = Math.sign(ay - fy) || 1;
   const tx = Math.max(0, Math.min(W - 1, ax + dx * AI.fleeTiles)), ty = Math.max(0, Math.min(H - 1, ay + dy * AI.fleeTiles));
   const g = nearTile(s, tx, ty, 3, at);
@@ -77,7 +96,7 @@ export function animalThink(s, a) {
   if (a.path || pathPending(s, 'a', a.id)) return;
   if (st.mode === 'flee' && s.tick < st.until) return;
   const pen = a.tame ? penOf(s, a) : null;
-  const outside = pen && s.L.zone[animTile(a)] !== pen.id;
+  const outside = pen && s.L.zone[animVoxel(a)] !== pen.id;
   if (!outside && st.mode !== 'wander' && s.tick < st.until) return;
   if (st.mode === 'wander' && !outside) { st.mode = 'graze'; st.until = s.tick + AI.grazeMin + roll(s, AI.grazeMax - AI.grazeMin); return; }
   const g = goalFor(s, a);
@@ -98,7 +117,7 @@ export function wildSystem(s) {
 export function penGuard(s) {
   for (const a of s.anim) {
     if (!a.tame || a.pen === null || !a.path || a.path.i !== 0) continue;
-    if (s.L.zone[animTile(a)] !== a.pen) continue;   // walking back in: any path
+    if (s.L.zone[animVoxel(a)] !== a.pen) continue;   // walking back in: any path
     if (!penPathOk(s, a, a.path)) { a.path = null; if (a.st) { a.st.mode = 'graze'; a.st.until = s.tick + 40; } }
   }
 }

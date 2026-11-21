@@ -34,7 +34,7 @@
 //   and funeral -> laid_to_rest (+2).
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY, phaseOf } from '../core/time.js';
-import { W, H, idx, tx, ty, ctrW, tileOfW, clamp } from '../core/grid.js';
+import { W, H, D as DEPTH, PLANE, idx, tx, ty, ctrW, tileOfW, clamp } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { nextId } from '../core/state.js';
 import { newFoe, newRaid } from '../core/schema.js';
@@ -95,11 +95,13 @@ export function corpses(s) {
 }
 
 // ---- Husks ---------------------------------------------------------------------------------------------------
-/** A Husk on the map at world (x, y), as a one-member raid. Returns the foe. */
-export function raiseHusk(s, x, y) {
+/** A Husk on the map at world (x, y) on level z, as a one-member raid. Returns the foe. */
+export function raiseHusk(s, x, y, z = 0) {
   const hp = 40;
-  const raid = newRaid(nextId(s, 'raid'), HUSK_INCIDENT, { pts: 20, edge: { i: clamp(tileOfW(y), 0, H - 1) * W + clamp(tileOfW(x), 0, W - 1), side: 'n' }, goal: 'core', stage: 'active' });
-  const f = newFoe(nextId(s, 'foe'), 'husk', { raid: raid.id, x, y, hp: { hp, max: hp }, st: { prey: null, bt: null } });
+  const raid = newRaid(nextId(s, 'raid'), HUSK_INCIDENT, { pts: 20, edge: { i: (DEPTH > 1 ? (z | 0) * PLANE : 0) + clamp(tileOfW(y), 0, H - 1) * W + clamp(tileOfW(x), 0, W - 1), side: 'n' }, goal: 'core', stage: 'active' });
+  const init = { raid: raid.id, x, y, hp: { hp, max: hp }, st: { prey: null, bt: null } };
+  if (DEPTH > 1) init.z = z | 0;   // the level it rose on (a fortress husk rose on level 0 before)
+  const f = newFoe(nextId(s, 'foe'), 'husk', init);
   raid.members.push(f.id);
   s.foes.push(f); s.foes.sort((a, b) => a.id - b.id);
   s.raids.push(raid); s.raids.sort((a, b) => a.id - b.id);
@@ -112,11 +114,11 @@ function sawRise(s, x, y) {
 }
 /** The Grey Taint takes a colonist (health.js): dead without a corpse, a Husk in their place. */
 export function turn(s, col) {
-  const x = col.x, y = col.y;
+  const x = col.x, y = col.y, z = col.z | 0;
   col.hp.turned = true;
   kill(s, col, 'taint', null);
   addThoughtAll(s, 'turned', col.id);
-  raiseHusk(s, x, y);
+  raiseHusk(s, x, y, z);
 }
 
 // ---- Death records (14.8 J soak: no state growth beyond caps) ------------------------------------
@@ -168,7 +170,7 @@ export function deathSystem(s) {
       const x = ctrW(it.x), y = ctrW(it.y);
       destroyStack(s, it.id);
       dropKey(rec.corpses, colId);
-      raiseHusk(s, x, y);
+      raiseHusk(s, x, y, it.z | 0);
       sawRise(s, x, y);
     }
   }
