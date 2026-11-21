@@ -224,7 +224,21 @@ export function mountTitle(root, api) {
         try { const s0 = await api.continueColony(c.id); if (!s0) { status.textContent = `${c.name} is missing from this browser's storage.`; busy(false); return; } status.textContent = ''; view = 'main'; api.enter(s0, { resumed: true }); }
         catch (e) { status.textContent = `${c.name} could not be opened: ${e.message}`; busy(false); }
       });
-      list.append(b);
+      // Delete (owner request): tap once to arm, tap again to delete for good; arming lapses after 4 s
+      const del = h('button.ec-btn.ec-colony-del', { type: 'button', 'data-act': 'colony-delete', 'aria-label': `Delete ${c.name}` }, h('span.ec-btn-label', { text: 'Delete' }));
+      let disarm = null;
+      onTap(del, async () => {
+        if (del.dataset.sure !== '1') {
+          del.dataset.sure = '1'; del.classList.add('bad'); del.querySelector('.ec-btn-label').textContent = 'Delete for good';
+          status.textContent = `Tap "Delete for good" to delete ${c.name}. This cannot be undone; export it first if you want a backup.`;
+          disarm = setTimeout(() => { delete del.dataset.sure; del.classList.remove('bad'); del.querySelector('.ec-btn-label').textContent = 'Delete'; }, 4000);
+          return;
+        }
+        clearTimeout(disarm);
+        try { await deleteColony(c.id); status.textContent = `${c.name} is deleted.`; refresh(); }
+        catch (e) { status.textContent = `${c.name} could not be deleted: ${e.message}`; }
+      });
+      list.append(h('div.ec-colony-row', null, b, del));
     }
     list.append(back());
   }

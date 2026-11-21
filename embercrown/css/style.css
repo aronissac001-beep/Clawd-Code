@@ -71,6 +71,11 @@ body.ec-game #title, body.ec-game #screens { display: none; }
 .ec-btn.pressed, .ec-btn:active { transform: translateY(1px); }
 .ec-btn-label { font-size: calc(18px * var(--ts)); font-weight: 650; }
 .ec-btn-sub { font-size: calc(14px * var(--ts)); color: var(--dim); }
+.ec-colony-row { display: flex; gap: 8px; align-items: stretch; }
+.ec-colony-row > .ec-btn:first-child { flex: 1 1 auto; min-width: 0; }
+.ec-colony-del { flex: 0 0 auto; width: auto; min-width: 88px; min-height: 44px; padding: 4px 10px; }
+.ec-colony-del.bad { background: linear-gradient(#8a3a2e, #5e241c); border-color: #e08a70; }
+.ec-colony-del .ec-btn-label { font-size: calc(15px * var(--ts)); }
 @media (orientation: landscape) and (max-height: 500px) {
   .ec-title-col { width: min(720px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; align-items: center; text-align: left; }
   .ec-title-head, .ec-title-pitch { grid-column: 1; }
