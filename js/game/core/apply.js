@@ -123,7 +123,7 @@ export function checkPlace(s, defId, x, y, rot = 0, z = null) {
     if (s.rt.occ[i] >= 0) return 'something is already there';
     if (isFloor && s.L.floor[i] === floorIdOf(defId)) return 'that floor is already laid';
   }
-  const r = firstHook(BUS.canPlace, s, d, x, y, rot);
+  const r = firstHook(BUS.canPlace, s, d, x, y, rot, AZ);   // Z2: the level (add-ons, the winch)
   return r && r.ok === false ? r.reason || 'cannot build there' : null;
 }
 

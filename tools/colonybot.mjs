@@ -72,6 +72,26 @@ async function v3Seed(seed, days) {
   if (v2bad.length) checks.push({ name: 'the bot ran clean', ok: false, detail: v2bad.join('; ') });
   return { seed, days, bot: 'v3', ok: checks.every((c) => c.ok), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z1: { ...r.z1, checks: undefined }, deepNotes: r.deepNotes, tickP95: Math.max(...r.metrics.series.map((x) => x.tickP95 || 0)) };
 }
+/** One v4 seed (Stage Z2), in this process: the plain result. */
+async function v4Seed(seed, days) {
+  const { saveBlob } = await import('../js/game/save/colonysave.js');
+  const { runBot4, TARGETS_Z2 } = await import('./lib/bot4.mjs');
+  const onDay = (s, d, row) => { if (d % 25 === 0 && has('--progress')) process.stderr.write(`  [v4 seed ${seed}] day ${d}: ${row.alive}/${row.total} colonists, tick p95 ${row.tickP95} ms\n`); };
+  const r = await runBot4({ seed, days, onDay, tickP95At: 0 });
+  let blobKB = null;
+  try { blobKB = +((await saveBlob(r.s)).length / 1024).toFixed(1); } catch (e) { blobKB = null; }
+  const z1 = r.z1.checks.filter((c) => c.name === 'colony alive' || c.name === 'zero starvation deaths');
+  // tick p95: the day-200 hold (the largest), as the soak reads it; the worst single day is reported beside it
+  const ser = r.metrics.series.filter((x) => x.tickP95 !== undefined), tickP95 = ser.length ? ser[ser.length - 1].tickP95 : null, tickWorst = Math.max(0, ...ser.map((x) => x.tickP95 || 0));
+  const checks = z1.concat(r.z2.checks);
+  checks.push({ name: `save < ${TARGETS_Z2.saveKB} KB`, ok: blobKB !== null && blobKB < TARGETS_Z2.saveKB, detail: `${blobKB} KB at day ${days}` });
+  const xp = r.metrics.xp || {};
+  checks.push({ name: 'no level 20 before day 100 (R2)', ok: xp.firstGrandmaster === null || xp.firstGrandmaster === undefined || xp.firstGrandmaster >= 100, detail: `first level 20: ${xp.firstGrandmaster ?? 'none'}; first Master ${xp.firstMaster ?? 'none'}` });
+  checks.push({ name: `tick p95 < ${TARGETS_Z2.tickP95} ms`, ok: tickP95 !== null && tickP95 < TARGETS_Z2.tickP95, detail: `${tickP95} ms on the last day (worst day ${tickWorst} ms; seeds run side by side)` });
+  const v2bad = r.metrics.checks.filter((c) => !c.ok && !c.info && !c.na).map((c) => `${c.name}: ${c.detail}`);
+  if (v2bad.length) checks.push({ name: 'the bot ran clean', ok: false, detail: v2bad.join('; ') });
+  return { seed, days, bot: 'v4', ok: checks.every((c) => c.ok || c.share || c.info || c.na), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z2: r.z2.report, deepNotes: r.deepNotes, tickP95, metrics: { colonists: r.metrics.colonists, deathCauses: r.metrics.deathCauses, xp: r.metrics.xp || null } };
+}
 const topRefused = (list) => { const m = new Map(); for (const [, t, why] of list) { const k = `${t}: ${why}`; m.set(k, (m.get(k) || 0) + 1); } return [...m].sort((a, b) => b[1] - a[1]).slice(0, 8); };
 
 /** Seeds in parallel child processes (each runs `--one`), or in this process when jobs <= 1. */
@@ -83,6 +103,7 @@ async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false
     const file = join(OUT_DIR, `.seed-${process.pid}-${k}.json`);
     const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : []), ...(difficulty ? [`--difficulty=${difficulty}`] : [])];
     if (arg('bot', 'v2') === 'v3') args.push('--bot=v3');
+    if (arg('bot', 'v2') === 'v4') args.push('--bot=v4');
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'] });
     p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
   });
@@ -121,7 +142,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (has('--one')) {
     // a child of --jobs: one v2 seed, written to --out
     const seed = parseSeeds(arg('seeds', '1'))[0];
-    const r = arg('bot', 'v2') === 'v3' ? await v3Seed(seed, +arg('days', 30)) : await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak'), difficulty: arg('difficulty', null) });
+    const r = arg('bot', 'v2') === 'v4' ? await v4Seed(seed, +arg('days', 200)) : arg('bot', 'v2') === 'v3' ? await v3Seed(seed, +arg('days', 30)) : await v2Seed(seed, +arg('days', 100), { storyteller, soak: has('--soak'), difficulty: arg('difficulty', null) });
     save(out, r);
     process.exit(0);
   }
@@ -164,6 +185,43 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(report.ok ? 0 : 1);
   }
   const seeds = parseSeeds(arg('seeds', '1-5'));
+  if (arg('bot', 'v2') === 'v4' || stage === 'z2') {
+    // Stage Z2 (Z2.11): bot v4 on fortresses for 200 days; each row holds on every seed unless it names its share
+    // ("3 of 5"); info rows and rows not reached in the run (na) are reported only
+    const days = +arg('days', 200);
+    const results = jobs <= 1 || seeds.length <= 1 ? await (async () => { const o = []; for (const sd of seeds) o.push(await v4Seed(sd, days)); return o; })() : await v2Seeds(seeds, days, { jobs });
+    if (has('--twice')) {
+      const again = jobs <= 1 || seeds.length <= 1 ? await (async () => { const o = []; for (const sd of seeds) o.push(await v4Seed(sd, days)); return o; })() : await v2Seeds(seeds, days, { jobs });
+      results.forEach((r, k) => { const ok = again[k].hash === r.hash && again[k].commands === r.commands; (r.checks || (r.checks = [])).push({ name: 'deterministic', ok, detail: `${r.hash} vs ${again[k].hash}` }); if (!ok) r.ok = false; });
+    }
+    for (const r of results) {
+      if (!r.checks) { console.log(`FAIL seed ${r.seed}: ${r.error}`); continue; }
+      console.log(`${r.ok ? 'ok  ' : 'FAIL'} seed ${r.seed}: ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), hash ${r.hash}, blob ${r.blobKB} KB, tick p95 max ${r.tickP95} ms`);
+      for (const c of r.checks) console.log(`      ${c.ok ? 'ok  ' : c.na ? 'n/a ' : c.info ? 'info' : c.share ? 'miss' : 'FAIL'} ${c.name}: ${c.detail}`);
+      const z = r.z2 || {};
+      console.log(`      report: renown [${(z.renown || []).join(', ')}], artifacts ${z.artifacts}, nobles [${(z.nobles || []).join('; ')}], births ${z.births}, cases ${z.cases}, sentences ${z.sentences}, petitions ${z.petitions ? `${z.petitions.yes}/${z.petitions.asked}` : '?'}, winch ${z.winchUses}, soldiers ${z.soldiersMax}, Annals ${z.annals}, mood@100 ${z.mood100}`);
+      if (has('--verbose')) { for (const n of r.deepNotes) console.log('      deep', n); console.log('      refused', JSON.stringify(r.refusedTop)); }
+    }
+    // the rows over the seeds
+    const names = [...new Set(results.flatMap((r) => (r.checks || []).map((c) => c.name)))];
+    const rows = names.map((name) => {
+      const cs = results.map((r) => (r.checks || []).find((c) => c.name === name)).filter(Boolean);
+      const m = name.match(/(\d) of 5/), need = m ? Math.min(+m[1], cs.length) : cs.length;
+      const met = cs.filter((c) => c.ok).length, info = cs.every((c) => c.info || c.na);
+      return { name, met, of: cs.length, need, ok: info || met >= need, info };
+    });
+    // R2: the first Master on day 25-60 (the median of the seeds, as the balance report reads it)
+    const ms = results.map((r) => r.metrics && r.metrics.xp ? r.metrics.xp.firstMaster : null).filter((x) => x !== null && x !== undefined).sort((a, b) => a - b);
+    const mMed = ms.length ? ms[ms.length >> 1] : null;
+    // (info here: the R2 row is the balance report's, on the v2 bot's D = 1 holds; a fortress's first Master is reported)
+    rows.push({ name: `first Master on day 25-60 (R2, median of the seeds: ${mMed}; the balance report holds the row)`, met: mMed !== null && mMed >= 25 && mMed <= 60 ? 1 : 0, of: 1, need: 1, ok: true, info: true });
+    console.log('\nZ2 gate rows (bot v4, seeds ' + seeds.join(',') + '):');
+    for (const x of rows) console.log(`  ${x.info ? 'info' : x.ok ? 'ok  ' : 'FAIL'} ${x.name}: ${x.met}/${x.of} (needs ${x.need})`);
+    const pass = rows.every((x) => x.ok) && results.every((r) => r.checks);
+    if (out) save(out, { stage: 'z2', bot: 'v4', days, seeds, pass, rows, results });
+    console.log(`colonybot v4 [Stage Z2 fortress, ${days} days]: ${rows.filter((x) => x.ok).length}/${rows.length} rows hold${pass ? ' - PASS' : ' - FAIL'}`);
+    process.exit(pass ? 0 : 1);
+  }
   if (arg('bot', 'v2') === 'v3' || stage === 'z1') {
     // Stage Z1 (E12): bot v3 on fortresses, the Z1 gate rows per seed
     const days = +arg('days', 30);

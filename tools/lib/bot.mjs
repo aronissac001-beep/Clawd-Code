@@ -58,6 +58,11 @@ export function setBotLevel(z) { LZ = z | 0; }
 export const botLevel = () => LZ;
 const idx = (x, y, z = LZ) => gidx(x, y, z);
 /** Give a command (in place) the bot's level wherever a rect, a place point, a door or an order target has none. */
+/** The 1 x 1 mine rect of voxel i, with its level on a fortress (on a D = 1 map it is the tile, as before). */
+export function oreRect(s, i) {
+  const pl = s.w * s.h, p = i % pl, x = p % W, y = (p / W) | 0;
+  return (s.d | 0) > 1 ? { x0: x, y0: y, x1: x, y1: y, z: (i / pl) | 0 } : { x0: x, y0: y, x1: x, y1: y };
+}
 export function levelCommand(c, z = LZ) {
   if (!z || !c) return c;
   if (c.rect && c.rect.z === undefined) c.rect.z = z;
@@ -81,6 +86,7 @@ const SCAN = TICKS_PER_MIN;          // haul bookkeeping cadence (1 game minute)
 // costByMat entry), and no blocks exist before a Mason's bench (reported to A and G).
 const WALL_MAT = 'wood';
 export const THINK = 60;
+const ORE_REACH_DEEP = 40;          // (Z2.11) a fortress's metal lies deep: a longer tunnel from the shaft's levels
 const ORE_REACH = 30;              // the longest tunnel the bot digs to a vein (tiles of rock)                    // the script looks at the colony every 60 ticks (3 s at 1x)
 
 // ---- layout helpers (read only) --------------------------------------------------------------------
@@ -441,11 +447,11 @@ export function makePlayer(s, stage = '1b', opts = {}) {
         }
         return path.reverse().concat(vein.slice(1)).filter((j) => !(s.L.desig[j] & DESIG.MINE));
       }
-      if (dist[i] >= ORE_REACH) continue;
+      if (dist[i] >= (s.d > 1 ? ORE_REACH_DEEP : ORE_REACH)) continue;
       const x = i % W;
       for (const j of [i - 1, i + 1, i - W, i + W]) {
         if (j < 0 || j >= n || prev[j] !== -2 || Math.abs((j % W) - x) > 1 || s.L.terrain[j] !== TER.ROCK) continue;
-        const jx = j % W, jy = (j / W) | 0;
+        const jx = j % W, jy = ((j % (s.w * s.h)) / W) | 0;   // (Z2.11: the row on its own level; a fortress's deep ores were never reached)
         if (jx < 2 || jy < 2 || jx > W - 3 || jy > H - 3) continue;
         prev[j] = i; dist[j] = dist[i] + 1; q.push(j);
       }
@@ -481,7 +487,7 @@ export function makePlayer(s, stage = '1b', opts = {}) {
       for (const k of ['coal', 'copper', 'tin', 'iron']) {
         const v = oreDig(depositId(k));
         if (!v) { note(`no ${k} vein within ${ORE_REACH} tiles`); continue; }
-        for (const i of v) if (!dug.has(i) && dug.add(i)) cmds.push({ t: 'designate', kind: 'mine', rect: { x0: i % W, y0: (i / W) | 0, x1: i % W, y1: (i / W) | 0 }, add: true });
+        for (const i of v) if (!dug.has(i) && dug.add(i)) cmds.push({ t: 'designate', kind: 'mine', rect: oreRect(s, i), add: true });
         note(`${k}: ${v.length} tiles to dig`);
       }
       return cmds;

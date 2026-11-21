@@ -20,8 +20,19 @@ import { weatherText } from '../game/world/weather.js';
 import { outdoorTemp } from '../game/world/temperature.js';
 import { peopleList } from './rolesui.js';
 import { STAGE } from './stage.js';
+// Stage Z2 (EMBERCROWN-FORTRESS.md 3.4-3.13): the Military tab and the hold's offices, justice, Annals, dead,
+// halls, renown, births and laws from the Hold tab
+import { militaryTab } from './military.js';
+import { openOffices } from './officesui.js';
+import { openJustice, lawsSwitch } from './justiceui.js';
+import { openAnnals } from './annals.js';
+import { openDead } from './burialui.js';
+import { hallsView } from '../game/colony/visitors.js';
+import { renownLines } from '../game/colony/renown.js';
+import { birthsOn } from '../game/people/family.js';
+import { whenOf } from '../game/colony/verbs/discovery.js';
 
-export const COLONY_TABS = Object.freeze(['People', 'Work', 'Schedule', 'Research', 'Stock', 'Chronicle', 'Hold']);
+export const COLONY_TABS = Object.freeze(['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']);
 const S2 = STAGE !== '1a' && STAGE !== '1b';
 const TAB_HELP = {
   People: 'Everyone in the hold with their roles. Tap a name to find them, a chip to change the role.',
@@ -30,7 +41,8 @@ const TAB_HELP = {
   Research: 'Scholars at a study turn lore into techs. Pick one; points left over are banked for the next.',
   Stock: 'Everything the colony owns, stored or not. Tap a kind to find a stack on the map.',
   Chronicle: 'The hold\'s history as it happened, and the deeds it is working toward.',
-  Hold: 'How far the hold has come: its tier, the Hearth, wealth, its friends and its enemies.',
+  Military: 'Squads, their uniforms and drills, and the alert: Peace, Muster or Shelter.',
+  Hold: 'How far the hold has come: its offices, laws, Annals and halls, its tier, the Hearth, wealth, friends and enemies.',
 };
 
 /** The Colony sheet (10.3). ui: per-open state (work page, grid on). */
@@ -44,6 +56,7 @@ export function openColony(ctx, tab = 'People') {
     else if (t === 'Research') researchTab(el, ctx);
     else if (t === 'Stock') stockTab(el, ctx);
     else if (t === 'Chronicle') chronicleTab(el, ctx);
+    else if (t === 'Military') militaryTab(el, ctx);
     else if (t === 'Hold') holdTab(el, ctx);
   }, { tabs: COLONY_TABS, tab: COLONY_TABS.includes(tab) ? tab : 'People' });
 }
@@ -187,6 +200,7 @@ function researchTab(el, ctx) {
     el.append(h('div.ec-research-cur', null, h('b', { text: `Researching ${cur.name}` }), h('span.ec-skill-bar', null, h('i', { style: { width: pct + '%' } })), h('span', { text: `${r.pts} of ${cost} lore` })));
   } else el.append(h('div.ec-cover.warn', { role: 'status' }, h('span', { html: icon('book') }), h('span', { text: `Nothing is being researched${s.colony.lore ? `: ${s.colony.lore} lore banked` : ''}. Pick a tech below.` })));
   if (!s.bld.some((b) => b && b.st === 'done' && (b.def === 'study' || b.def === 'scriptorium'))) el.append(h('p.ec-note', { text: 'Build a study (Build > Workshops) and give someone the Scholar role: lore comes from study hours.' }));
+  el.append(h('p.ec-note', { text: 'Some techs are also discovered by doing (digging, crafting, a vault tablet, a visiting scholar): hold a tech to see how.' }));
   for (const era of all('era')) {
     if (era.id === 'crown') continue;
     const open = eraOpen(s, era.id);
@@ -204,7 +218,7 @@ function researchTab(el, ctx) {
         if (locked) { ctx.toast(`${t.name}: the ${era.name || era.id} era opens at ${tier ? tier.name : era.tier}.`); return; }
         const res = ctx.send({ t: 'research', tech: t.id }, `Researching ${t.name}. ${t.text || ''}`.trim());
         if (res && res.ok) ctx.refreshSheet();
-      }, { longpress: () => ctx.toast(`${t.name}: ${t.text || ''}`) });
+      }, { longpress: () => { const w = whenOf(t.id); ctx.toast(`${t.name}: ${t.text || ''}${w && !known ? ` Or by doing: ${w.text}` : ''}`); } });
       grid.append(b);
     }
     el.append(grid);
@@ -272,6 +286,7 @@ function bar(label, have, need) {
 const short = (n) => (n >= 10000 ? Math.round(n / 1000) + 'k' : String(n));
 function holdTab(el, ctx) {
   const s = ctx.s;
+  if (S2) holdZ2(el, ctx);
   const tv = tierView(s);
   el.append(h('div.ec-hold-tier', null, h('span.ec-letter-ic', { html: icon('crown') }), h('div', null, h('b', { text: tv.name || 'Camp' }), h('p.ec-bio-d', { text: tv.text || '' }))));
   if (tv.next) {
@@ -334,6 +349,36 @@ function holdTab(el, ctx) {
     if (!nems.length) el.append(h('p.ec-note', { text: 'A raid leader who escapes, wounded or ransomed, remembers the hold, and comes back.' }));
     for (const n of nems) el.append(nemesisRow(ctx, n));
   }
+}
+// Z2: the hold's people and customs, first on the Hold tab (each opens its own screen)
+function holdZ2(el, ctx) {
+  const s = ctx.s;
+  const go = (label, act, fn) => { const b = h('button.ec-act', { type: 'button', 'data-act': act, text: label }); onTap(b, () => fn(ctx)); return b; };
+  el.append(h('h3.ec-sub', { text: 'The hold' }), h('div.ec-rchips.ec-hold-go', { style: { justifyContent: 'flex-start', flexWrap: 'wrap', gap: '6px' } },
+    go('Offices', 'hold-offices', openOffices), go('Justice', 'hold-justice', openJustice), go('Annals', 'hold-annals', (c) => openAnnals(c)), go('The dead', 'hold-dead', openDead)));
+  // renown: what the hold is known for (it steers who visits)
+  let rl = [];
+  try { rl = renownLines(s); } catch (_) { rl = []; }
+  const known = rl.filter((r) => r[4]).map((r) => r[1]);
+  const lead = rl.filter((r) => !r[4] && r[2] > 0).sort((a, b) => b[2] - a[2])[0];
+  el.append(h('p.ec-note', { text: known.length ? `Known for ${known.join(', ').toLowerCase()}. Renown steers who visits and who asks to stay.` : lead ? `Not yet known for anything; closest: ${lead[1].toLowerCase()} (${lead[2]} of ${lead[3]}).` : 'Not yet known for anything. Craft, grow, fight and build well to earn renown.' }));
+  // the halls and their visitors
+  let hv = [];
+  try { hv = hallsView(s); } catch (_) { hv = []; }
+  if (hv.length) {
+    el.append(h('h3.ec-sub', { text: 'Halls and visitors' }));
+    for (const x of hv) el.append(h('div.ec-thought.' + (x.count ? 'good' : 'bad'), null, h('span.ec-thought-n', { text: x.name }), h('span.ec-thought-w', { text: x.visitors.length ? x.visitors.map((v) => `${v.name} (${v.kind.toLowerCase()})`).join(', ') : x.count ? 'no visitors now' : 'none yet' }), h('b', { text: String(x.count) })));
+    el.append(h('p.ec-note', { text: 'A tavern, temple or library draws visitors; one who likes the hold may write asking to stay.' }));
+  }
+  // customs: births and the laws (each can be turned off)
+  el.append(h('h3.ec-sub', { text: 'Customs' }));
+  const on = birthsOn(s);
+  const row = h('div.ec-laws', { 'data-births': on ? 'on' : 'off' });
+  const b = h('button.ec-act', { type: 'button', 'data-act': 'births-toggle', text: on ? 'Stop births' : 'Allow births' });
+  onTap(b, () => { ctx.send({ t: 'births', on: !on }, on ? 'No more children will be born.' : 'Couples in a Fine bedroom may have children.'); ctx.refreshSheet(); });
+  row.append(h('h3.ec-sub', { text: 'Births', style: { margin: '0 0 2px' } }), h('p.ec-bio-d', { text: on ? 'On: a couple sharing a Fine bedroom may have a child (a chance each season).' : 'Off: no children are born.' }), h('div.ec-rchips', { style: { justifyContent: 'flex-start' } }, b));
+  el.append(row);
+  lawsSwitch(el, s, ctx, () => ctx.refreshSheet());
 }
 const AFFIX = { armoured: 'Armoured', swift: 'Swift', rallying: 'Rallying', burning: 'Burning' };
 /** One nemesis: name and epithet, what it is, its scar, grudge and returns. */

@@ -10,6 +10,8 @@
 // content label for menus and tests, never read by a placement gate); a row is paced by its materials,
 // its `tech` and, for furniture, its recipe's minSkill (js/data/recipes.js). A row that must wait for an
 // arrival (a noble's rooms) would keep `tier` with the `arrival` flag; none does yet.
+import { WINCH_ROWS } from './workshops.js';   // Z2.4: the winch and shaft (2.3)
+
 export const DATA = {
   structure: [
     { id: 'hearth', name: 'The Hearth', cat: 'utility', kind: 'construct', size: [3, 3], hp: 3000, band: 'camp', claim: true, claimR: 14,
@@ -47,5 +49,6 @@ export const DATA = {
       flags: ['lever'], art: 'lock', stage: '2', text: 'Opens, closes and locks up to 4 linked gates and doors from afar. A locked gate is a wall to hostiles until broken.' },
     { id: 'plate', name: 'Pressure plate', cat: 'utility', kind: 'construct', size: [1, 1], cost: { 'ingot:iron': 4, block: 4 }, work: 40, hp: 100, band: 'village', tech: 'mechanisms',
       flags: ['plate'], art: 'lock', stage: '2', text: 'When a hostile steps on it, its linked deadfalls, ember pits and gates fire.' },
+    ...WINCH_ROWS,
   ],
 };

@@ -26,6 +26,8 @@ import { nextPerks } from '../game/people/perks.js';
 import { strongest } from '../game/people/social.js';
 import { chronLine } from '../game/colony/chronicle.js';
 import { scheduleName } from '../game/people/roles.js';
+import { describe as psyDescribe, prefLines, goalLine } from '../game/people/personality.js';
+import { lifeStage, parentsOf, childrenOf } from '../game/people/family.js';
 /** F's ember record: met is the tick the demand was met, or -1 (null in older records). */
 const emberMet = (em) => typeof em.met === 'number' ? em.met >= 0 : !!em.met;
 
@@ -317,6 +319,23 @@ function bioTab(el, ctx, c) {
   const at = h('div.ec-attrs');
   ATTR_IDS.forEach((a, k) => at.append(h('div.ec-attr', null, h('span', { text: ATTR_NAME[a] || a }), h('b', { text: String(c.at[k]) }))));
   el.append(sec('Attributes', at));
+  // Z2 (3.2, 3.13): who they are inside, what they like, their life goal, and their family
+  const ctxS = ctx.s;
+  let psy = [], pref = null, goal = null;
+  try { psy = psyDescribe(ctxS, c); pref = prefLines(ctxS, c); goal = goalLine(ctxS, c); } catch (_) { psy = []; }
+  if (psy.length || pref || goal) {
+    el.append(sec('Personality', ...psy.slice(0, 6).map((t) => h('p.ec-bio-d.ec-psy', { text: t })),
+      pref && pref.likes.length ? h('p.ec-bio-d', { text: `Likes ${pref.likes.join(', ').toLowerCase()}.${pref.dislikes ? ` Dislikes ${pref.dislikes.toLowerCase()}.` : ''}` }) : null,
+      goal ? h('p.ec-bio-d', { text: `Life goal: ${goal.label}${goal.met ? ' (done)' : ''}.` }) : null));
+  }
+  const stage = lifeStage(c), nameOfId = (id) => { const o = ctxS.col.find((x) => x.id === id); return o ? o.name.split(' ')[0] : 'someone'; };
+  let par = [], kids = [];
+  try { par = parentsOf(ctxS, c.id); kids = childrenOf(ctxS, c.id) || []; } catch (_) { par = []; }
+  if (stage !== 'adult' || par.length || kids.length) {
+    el.append(sec('Family', stage !== 'adult' ? h('p.ec-bio-d', { text: stage === 'child' ? 'A child: plays and learns by watching, does no work, never soldiers.' : 'A teen: works at half speed, never soldiers.' }) : null,
+      par.length ? h('p.ec-bio-d', { text: `Child of ${par.map(nameOfId).join(' and ')}.` }) : null,
+      kids.length ? h('p.ec-bio-d', { text: `Children: ${kids.map((k) => nameOfId(typeof k === 'object' ? k.id : k)).join(', ')}.` }) : null));
+  }
   const bs = (c.bs || []).map((id) => def('backstory', id)).filter(Boolean);
   el.append(sec('Story', ...bs.map((b) => h('div.ec-bio-item', null, h('b', { text: `${b.slot === 'child' ? 'Childhood' : 'Adulthood'}: ${b.name}` }), h('p.ec-bio-d', { text: b.text || '' }),
     b.disables && b.disables.length ? h('p.ec-bio-warn', { text: `Will not ${b.disables.map((w) => ((def('worktype', w) || { name: w }).name).toLowerCase()).join(' or ')}.` }) : null))));

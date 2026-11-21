@@ -16,7 +16,7 @@ A colony builder for iPhone Safari (it also plays in any modern browser). This p
 ## Controls (touch)
 
 - Drag to pan, pinch to zoom, tap to select (colonists win the tap). Long-press for the context menu (Draft, Prioritise, Follow, Forbid, Bills).
-- The bottom bar opens **Build**, **Orders** (mine, chop, carve a hall, haul, cancel), **Zones** (stockpiles, fields, pens, burial ground) and **Colony** (people, work, schedule, research, stock, the Chronicle and the hold).
+- The bottom bar opens **Build**, **Orders** (mine, chop, carve a hall, haul, cancel), **Zones** (stockpiles, fields, pens, burial ground) and **Colony** (people, work, schedule, research, stock, military, the Chronicle and the hold).
 - In a tool, drag paints it and a long-press stroke erases. **Done** confirms; **Undo** steps back.
 - The speed control pauses or runs at 1x, 2x, 3x and 5x. The game pauses itself when you come back to it and when a major letter arrives.
 - The portraits along the top are your people: tap one for their card, then **Skills**, **Needs**, **Health**, **Gear** and the rest.
@@ -57,7 +57,69 @@ There are no perks to pick. A colonist **learns a perk by doing**: when their sk
 
 ## The Chronicle and the Annals
 
-Everything that matters is written down: arrivals and deaths, deeds the hold has done, perks learned, research, raids repelled, nemeses who swore to come back. Read it in **Colony > Chronicle**, by year. When a hold falls, its Chronicle becomes its **Annals**.
+Everything that matters is written down: arrivals and deaths, deeds the hold has done, perks learned, research, raids repelled, nemeses who swore to come back. Read it in **Colony > Chronicle**, by year. The longer history, with the vale's past and every figure, place and artifact, is the **Annals** (see below); a fallen hold keeps both.
+
+## The life of the hold
+
+### Who they are
+
+Every colonist is a person, not a set of numbers. Their card's **Bio** tab has a **Personality** section: a few plain lines ("Loves a good argument", "Values hard work"), what they like (a stone, a metal, a wood, a food, a creature) and dislike, and their **life goal** ("Make a masterwork", "Raise a family"). A colonist who likes granite is happier in a granite room; one who meets their goal is lifted for the rest of their life. They remember the seasons they lived through, and good and bad days stay with them in the **Needs** tab's thoughts.
+
+### Fevers of craft and artifacts
+
+Now and then a crafter is seized:
+- **Ember-touched**: they claim a bench and ask for materials (a card shows what they need). Bring them and they make a **named artifact**, which the Annals remember.
+- **Brooding**: after a friend, lover or kin dies, a crafter may ask for a token of the dead (something they owned or made, or a stone from their grave) and makes a memorial in their name.
+- **Hollow-whispered**: one who has lived too long in dread takes what they want and makes a grey thing that spreads unease.
+A hold of twenty expects a handful of artifacts over its life. Not meeting a demand in time leaves the crafter in a dark mood.
+
+### Offices and nobles
+
+**Colony > Hold > Offices** lists the hold's offices. As the hold grows they open: the **Steward** (keeps stock targets: "keep 40 meals" becomes a bill), the **Reckoner** (exact counts), the **Chief Healer**, the **Keeper of Records** (fuller Annals), the **Marshal** (squad training, uniforms and the alert) and, while the laws are on, the **Warden of Law**. Tap an office to appoint someone. Each office asks for something (an office room, a desk, an armoury rack), shown with a tick or a cross; unmet requests sour the holder after a while.
+
+At 15 colonists the colonists choose a **Thane** (the one they think best of), again at each Year's Turning. At the Hold rank with 20 colonists the Hearthwatch sends a **Lord or Lady of the Hold**. Nobles ask for fine rooms and give **mandates** ("make 3 iron helms in 10 days", "keep the silver"). Met mandates add renown; ignored ones upset the hold and can become a case for the Warden.
+
+### Renown
+
+The hold becomes **known for** what it does: smithing, growing, arms, delving, lore or trade (Colony > Hold shows it). Renown never opens buildings; it steers who visits and who asks to stay.
+
+### Halls, visitors and petitions
+
+A **tavern** (a room with a table and a dice table, stage or tap, with drink in store), a **temple** (a room with a shrine or altar) or a **library** (a study with shelves of books) draws **visitors**: travellers, bards, pilgrims, scholars, smiths and, once the deep is open, deep-traders. They are drawn standing in their hall. A visitor who has stayed a few days and whose skills match what the hold is known for may **petition to stay**: the letter asks, and **Yes** makes them a colonist with their own history in the Annals. Colony > Hold lists the halls and who is in them.
+
+### Families
+
+Two spouses sharing a **Fine** bedroom may have a child (a chance each season, at most one a year for each mother) as long as the hold has food and is under its limit. **Children** do not work or fight; they play and learn a little of what their parents do. **Teens** (12 to 15) work at half speed and never soldier. A colonist's Bio shows their parents and children. **Colony > Hold > Customs > Births** turns births off (on by default).
+
+### Squads and the alert
+
+**Colony > Military** holds the squads. Soldiers join a squad; each squad has a **uniform** (tap a slot to cycle what it asks for), a **training** count for the season (drills at a training yard, with a Marshal), and a **standing order**: **Station** (tap a spot), **Patrol** (tap 2 to 4 points, even on different levels), **Refuge** or **Relieve**. The **alert** sets the whole hold: **Peace** (soldiers work and drill), **Muster** (soldiers drop work, fetch their uniforms from the armoury racks and stand to) and **Shelter** (everyone else goes to the Refuge). "First Watch lacks 2 helms" says what to make.
+
+### Burial and the dead
+
+The dead want rest. Bury a body in a grave, or, when a body was never found (taken by the Hollow, burnt, fallen into the deep), build a **memorial slab** (Build > Civic) and a mason engraves the name. Until then friends and kin feel **Unrested**. **Colony > Hold > The dead** lists who rests and who does not, and where. Every grave and slab is a place in the Annals.
+
+### Crime and justice
+
+With the laws on (the default), a colonist who smashes something in a tantrum, or who breaks a noble's mandate, can be charged. **Colony > Hold > Justice** shows each **case**: the offender, the victim and the witnesses who saw it. The **Warden of Law** (an office that opens at 12 colonists) hears each case and gives a sentence that depends only on how bad it was and on the offender's record: a **labour fine** (extra hours of work) or **confinement** in a **Lockup** (a room with a **cell bed** and a door) for at most 5 days. Repeated serious offences can end in **exile** by letter, which you confirm. There are no beatings and no executions. The laws can be turned off (and on again) once a season: Colony > Hold > Customs > Laws, or the top of the Justice screen. With them off, nothing is a case.
+
+### The Annals
+
+**Colony > Hold > Annals** is the hold's history by **Years**, **Figures**, **Places** and **Artifacts**: founders and newcomers, the dead and how they died, nemeses, births, petitions, offices, artifacts, crimes and sentences, the levels opened, named rooms and tombs. It begins before the hold: the vale's **pre-history** (the old figures, the dormant beasts and the lairs under the mountain), the same for every hold on the same map. Tap a name to follow its links.
+
+### Workshops: add-ons, the winch and research by doing
+
+- **Add-ons** stand beside a bench and add one thing it can do: a **cutting yard** by a mason (ashlar blocks), a **quench trough** by a forge (tempering), a **slag pit** (melting down old gear), an **ember forge** beside an ember pool (no fuel, a better roll, embersteel), and more. A bench's Bills tab lists its add-ons.
+- **The winch** (Build > Utility, with Support pillars) stands over an open shaft (dig it with **Channel**): stacks left on its landing ride down to the shaft's foot, and stacks at the foot ride up, three at a time. Haulers use it on their own.
+- **Research by doing**: about a third of the techs can also be **discovered** by working a material, reading a lore tablet from a vault, or hosting a visiting scholar. Hold a tech in the Research tab to see how.
+
+### Every threat has a reason
+
+No threat comes for nothing. Each one names its cause in its warning letter and in the Annals: a grievance (a faction you wronged, a nemesis who swore to return), a rumour of the hold's wealth, the Hollow's hunger, a hard winter, a seep the hold woke. A hold that gives no cause sees fewer threats.
+
+### Life underground
+
+Cave loam grows **glowcaps**, **greyshank** (fungus timber), **mere-reed** and lichen with no sunlight; a grow zone on cave loam farms them. The caverns have their own creatures, who keep to their own levels. A wet **seep** in a wall can be lined to dry it.
 
 ## A hold can fall, and the fall stands
 
@@ -77,15 +139,31 @@ There is no win and no game over screen to retry from. A colony goes on as long 
 
 ## Settings
 
+The hold's own customs are set in the game, not here: **Colony > Hold > Customs** turns **Births** and the **Laws** off or on (the laws once a season).
+
 Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pauses (when a raid is near, on letters, when someone is down), an advanced work grid, two-finger tap to pause, battery saver, a left-handed layout, the back-up prompt, sound, music and volume.
 
-## What changed in this release (depth)
+## What changed in this release (the life of the hold)
+
+- Colonists have personalities, likes, life goals and memories (Bio tab), and fevers of craft make named artifacts and memorials.
+- Offices, the Thane and the Lord, mandates and noble requests (Colony > Hold > Offices).
+- The Annals of years, figures, places and artifacts, with the vale's pre-history (Colony > Hold > Annals).
+- Burial, memorial slabs and the Unrested (Colony > Hold > The dead).
+- Squads, uniforms, training and the alert (Colony > Military).
+- Families and children (births on by default; Colony > Hold > Customs).
+- Taverns, temples and libraries with visitors who may petition to stay.
+- Crime and justice with the Warden of Law and the Lockup (on by default; can be turned off once a season).
+- Renown, bench add-ons, the winch, research by doing, cavern farming, and a reason for every threat.
+- Buildings are paced by materials, research and skill, not by the hold's rank.
+- Colonies from the previous version load and continue: the new records start empty and fill as the hold lives on.
+
+## The release before (depth)
 
 - The world has levels: a new colony is 20 levels deep, with stairs, ramps, channels and built floors, and the Glowcap Hollows below. See *Levels and digging down*.
 - **Colonies from the previous version gain their depth when you continue them.** Your map becomes the surface level; the old mountain stands as real rock above it (tunnels keep their ceilings), and new levels lie below. One card says so the first time ("Your hold now has depth"), and the Chronicle records the day the hold learned the depth of the world. Everything on the map stays where it was.
 - A colony is not tick-for-tick the same after the upgrade, because the rules for paths, warmth and raids now work in depth. From then on it saves and loads exactly as before. Until its first save in the new format succeeds, the previous copy is kept, so a failed upgrade loses nothing.
 
-## The release before (Stage 2.9)
+## Earlier (Stage 2.9)
 
 - The old classic roguelite and its link are gone.
 - Perks are earned by deeds; nothing is ever picked.
@@ -94,4 +172,4 @@ Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pause
 - A fallen hold stays fallen and can be read as a Ruin.
 - Colonies saved by the previous version load and carry on. A colonist who was waiting on a perk choice settles into one of the pair, and the Chronicle says so ("Bryn settled into the ways of a Seam Follower").
 
-Coming next: deeper systems (moods of craft, offices, military squads, the Annals of years and figures), then caverns further down, great beasts and water (see EMBERCROWN-FORTRESS.md 8.4-8.6).
+Coming next: the deep fights back (threats across levels, caverns further down, great beasts), then water and its control (see EMBERCROWN-FORTRESS.md 8.5-8.6).

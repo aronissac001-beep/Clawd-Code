@@ -12,6 +12,17 @@
 // content label for menus and tests, never read by a placement gate); a row is paced by its materials,
 // its `tech` and, for furniture, its recipe's minSkill (js/data/recipes.js). A row that must wait for an
 // arrival (a noble's rooms) would keep `tier` with the `arrival` flag; none does yet.
+import { STRUCTURES as ADDON_ROWS } from '../addons.js';
+import { DATA as RESEARCH } from '../research.js';
+// Z2.4 (3.10): the bench add-ons and the winch (js/data/addons.js STRUCTURES), every hold's from Stage 2: no tier
+// gate (F27; `band` is the rank they were written for)
+const bandOf = (tech) => { const t = RESEARCH.tech.find((x) => x.id === tech), e = t && RESEARCH.era.find((x) => x.id === t.era); return e ? e.tier : 'camp'; };
+// (their art: the nearest kit structure until D draws them; the icons in addons.js are menu icons)
+const ADDON_ART = { cutting_yard: 'struct.mason', cask_cellar: 'struct.barrelrack', quench_trough: 'struct.trough', armourer_stand: 'struct.weaponrack', slag_pit: 'struct.emberpit', alloy_crucible: 'struct.charkiln', ember_forge: 'struct.forge', tap_stand: 'struct.cask', hardening_vat: 'struct.trough', silk_frame: 'struct.loom', glazing_kiln: 'struct.kiln', vault_kiln: 'struct.kiln', winch: 'struct.well' };
+const addonRows = ADDON_ROWS.filter((r) => r.cat === 'workshops').map(({ tier, ...r }) => ({ ...r, band: bandOf(r.tech), stage: '2', art: ADDON_ART[r.id] || r.art }));
+/** The winch (utility.js takes it: its rows must be cat 'utility'). */
+export const WINCH_ROWS = ADDON_ROWS.filter((r) => r.cat !== 'workshops').map(({ tier, ...r }) => ({ ...r, band: bandOf(r.tech), stage: '2', art: ADDON_ART[r.id] || r.art }));
+
 export const DATA = {
   structure: [
     { id: 'carpenter', name: "Carpenter's bench", cat: 'workshops', kind: 'construct', size: [2, 1], cost: { wood: 40 }, work: 60, hp: 200,
@@ -98,5 +109,6 @@ export const DATA = {
     { id: 'trainingyard', name: 'Training yard', cat: 'workshops', kind: 'construct', size: [4, 4], cost: { wood: 80 }, work: 180, hp: 300, band: 'village', tech: 'watchtowers',
       flags: ['flammable'], mods: [{ key: 'learn.melee', op: 'pct', value: 50, when: 'here' }, { key: 'learn.archery', op: 'pct', value: 50, when: 'here' }],
       art: 'sword', stage: '2', text: 'Soldiers spar and shoot at butts in their joy hours: Melee and Archery at half speed.' },
+    ...addonRows,
   ],
 };

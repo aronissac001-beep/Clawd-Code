@@ -41,6 +41,7 @@ export function snapshot(s, opts = {}) {
     fl: fieldLists(),
     meta: { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick, speed: s.speed },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st), rel: s.rel, chron: s.chron,
+    ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),   // Z2: the Annals (OPTIONAL_KEYS)
   };
   for (const [key, kind] of Object.entries(COLLECTIONS)) {
     if (key === 'items') ent.items = packItems(s.items);
@@ -64,6 +65,7 @@ function entitiesOfState(s) {
     fl: fieldLists(),
     meta: { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, d: s.d, zS: s.zS, tick: s.tick, speed: s.speed },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st), rel: s.rel, chron: s.chron,
+    ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),   // Z2: the Annals (OPTIONAL_KEYS)
   };
   for (const [key, kind] of Object.entries(COLLECTIONS)) {
     if (key === 'items') ent.items = packItems(s.items);
@@ -175,6 +177,7 @@ function build(ent, layers, runtime, fmt) {
     colony: colonyFromPlain(ent.colony), st: storyFromPlain(ent.st),
     col: [], items: [], bld: [], zones: [], anim: [], foes: [], raids: [],
     rel: ent.rel, chron: ent.chron,
+    ...(typeof ent.legend === 'string' && ent.legend ? { legend: ent.legend } : {}),
   };
   let rt, paths = null;
   if (fmt >= 2) {

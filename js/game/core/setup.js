@@ -57,10 +57,11 @@ export function installSim({ stage = '1a', reset = false, checks = false } = {})
   // stub mover is off.
   const removeChecks = installWork({ think: true, stubMove: false, checks });
   installMovement(setMover);
-  installPeople({ needs: at('1b'), mood: at('1b'), breaks: at('1b'), health: at('1b'), social: at('2'), ember: at('2') });
+  installPeople({ needs: at('1b'), mood: at('1b'), breaks: at('1b'), health: at('1b'), social: at('2'), ember: at('2'), family: at('2') });
   installThreat({ storyteller: at('1b'), raids: at('1b'), commands: true });
   if (at('1b')) installDefence({});
-  installColony({ tiers: at('1b'), ledger: at('1b'), research: at('2'), charters: at('3'), deeds: at('2') });
+  // Stage Z2: the hold verbs every hold has (1.2) and the depth systems (8.4) run from Stage 2
+  installColony({ tiers: at('1b'), ledger: at('1b'), research: at('2'), verbs: at('2'), deeds: at('2'), z2: at('2') });
   installAnimals({ ai: at('2'), giver: at('2') });
   // Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3): the hourly fall check, from 1b (when colonists can be downed and die)
   if (at('1b')) installFall();

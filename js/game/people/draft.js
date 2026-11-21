@@ -11,6 +11,7 @@
 // the soldier role (a new soldier joins squad 1). Craven colonists cannot be drafted under mood 40.
 
 import { registerApplier } from '../core/commands.js';
+import { canSoldier } from './family.js';
 import { colById } from '../core/state.js';
 import { END, requestThink, getMover } from '../work/jobs.js';
 import { endJob } from '../work/reserve.js';
@@ -28,6 +29,7 @@ export function draftVeto(s, col) {
   if (col.hp.dead) return 'they are dead';
   if (col.hp.down) return 'they are downed';
   if (col.breakState) return 'they are in a break';
+  if (!canSoldier(col)) return 'they are too young to fight';   // Z2 (3.13): children and teens never soldier
   if (stage2() && traitFlag(col, 'break.craven') && col.mood < 40 * FIX) return 'they are too frightened to fight';
   return null;
 }

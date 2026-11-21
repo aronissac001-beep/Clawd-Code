@@ -22,6 +22,7 @@
 //   herd_passing    6-12 deer come in at an edge (K's wild animals)
 //   lost_cache      a crate of goods by an edge road; starfall: a lumenite-bright crater with gems
 
+import { headCount } from '../people/family.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
 import { W, H, N, TER, ROOF, PLANE, D } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
@@ -241,7 +242,7 @@ function tierMigrants(s) {
   const tier = s.colony.tier | 0, cd = s.st.cooldowns, key = 'tier:migrants';
   if (tier < 1 || (cd[key] | 0) >= tier || !incidentDef('migrants')) return;
   cd[key] = tier;
-  const living = s.col.reduce((n, c) => n + (c.hp.dead ? 0 : 1), 0);
+  const living = headCount(s);   // Z2 (3.13): children count as half a head
   if (living >= (bal('caps').colonistsSoft || 30)) return;
   const at = (Math.floor(s.tick / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 10 * TICKS_PER_HOUR;
   scheduleIncident(s, 'migrants', at, at);

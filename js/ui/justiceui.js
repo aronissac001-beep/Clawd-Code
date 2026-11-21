@@ -45,7 +45,7 @@ export function lawsSwitch(el, s, ctx = null, redraw = null) {
   const row = h('div.ec-laws', { 'data-laws': v.on ? 'on' : 'off', style: { ...CARD, margin: '6px 0' } });
   row.append(h('h3.ec-sub', { text: 'Laws', style: { margin: '0 0 2px' } }), h('p.ec-bio-d', { text: v.on ? TEXT.lawsOn : TEXT.lawsOff }));
   if (ctx) {
-    const label = v.on ? 'Turn the laws off' : 'Keep the laws';
+    const label = v.on ? 'Turn laws off' : 'Keep the laws';
     row.append(h('div.ec-rchips', { style: { justifyContent: 'flex-start' } }, btn(label, 'laws-toggle', () => {
       send(ctx, { t: 'laws', on: !v.on }, v.on ? 'The laws are set aside.' : 'The laws are kept again.');
       if (redraw) redraw(); else { clear(el); lawsSwitch(el, s, ctx); }

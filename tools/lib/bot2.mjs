@@ -83,7 +83,7 @@ const idx = (x, y, z = botLevel()) => gidx(x, y, z);   // the bot's level (bot.m
 import { findDest } from '../../js/game/work/stockpiles.js';
 import { CHRON_CAP } from '../../js/game/colony/chronicle.js';
 import { LETTER_CAP } from '../../js/game/threat/letters.js';
-import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, rings, THINK } from './bot.mjs';
+import { makePlayer, makeMeter, botFound, bedRooms, idleHaul, median, findOpenSite, rectTiles, clampR, hearthOf, rings, THINK, oreRect } from './bot.mjs';
 
 const WORK_IDX = Object.fromEntries(WORK_IDS.map((w, i) => [w, i]));
 const SK = Object.fromEntries(SKILL_IDS.map((k, i) => [k, i]));
@@ -91,6 +91,8 @@ const SK = Object.fromEntries(SKILL_IDS.map((k, i) => [k, i]));
 // bench and quarry it could use (and an idle colonist's job search is the costliest system in the tick);
 // a player takes in the hands the hold can keep busy)
 export const POP_CAP = 16;
+/** Every drink the hold holds (the tavern's stock, visitors.js drinkStock). */
+const drinkHeld = (s) => { let n = 0; const st = (s.rt && s.rt.stock) || {}; for (const k of Object.keys(st)) { const d = def('item', k); if (d && d.food && d.food.kind === 'drink') n += st[k]; } return n; };
 
 /**
  * Stage 2 targets. Own (J, 14.8): the soak. The others are the 14.8 acceptance of other rows that
@@ -300,9 +302,9 @@ export function makePolicy(s) {
         // food: at "two days of food or under six colonists" seed 1 refused six joiners in a row from day 140
         // and shrank to 8 as its losses went unreplaced)
         const fd = foodDays(s);
-        const ok = Q.n + more <= POP_CAP && (fd >= 2 || Q.n < 10 || (more === 1 && fd >= 1)) && (!l.data.pursued || Q.n >= 5);
+        const ok = Q.n + more <= (Q.popCap || POP_CAP) && (fd >= 2 || Q.n < 10 || (more === 1 && fd >= 1)) && (!l.data.pursued || Q.n >= 5);
         ch = ok ? 0 : 1;
-      } else if (k === 'captive') ch = Q.n < POP_CAP ? 0 : l.choices.length - 1;
+      } else if (k === 'captive') ch = Q.n < (Q.popCap || POP_CAP) ? 0 : l.choices.length - 1;
       else if (k === 'heirloom') ch = totals(s, 'coins') >= ((l.data && l.data.price) || 0) + 100 ? 0 : 1;
       if (ch === null) continue;
       Q.answered.add(l.id);
@@ -348,6 +350,8 @@ export function makePolicy(s) {
         // iron for the forge's helms, shields and mail (the hold's veins run out by day ~100; the forge's
         // kit waits on ingots): a trader's ingots while the hold has under 80 of all kinds
         else if (e.k === 'ingot' && Q.stock('ingot') < 80) n = Math.min(e.n, 80 - Q.stock('ingot'));
+        // (bot v4, Z2.8: a tavern pours from the hold's drink; v4 sets Q.drinkWant, v2 never does)
+        else if (Q.drinkWant && d.food && d.food.kind === 'drink') n = Math.max(0, Q.drinkWant - drinkHeld(s));
         if (n > 0) want.push({ k: e.k, m: e.m, n: Math.min(n, e.n), v: d.value, gear: BUY_GEAR.has(e.k) });
       }
       want.sort((a, b) => (b.gear - a.gear) || b.v - a.v || (a.k < b.k ? -1 : 1));
@@ -547,7 +551,8 @@ export function makePolicy(s) {
       if (z && g.crop && z.crop !== g.crop) cmds.push({ t: 'zoneCfg', zoneId: z.id, patch: { crop: g.crop } });
     }
     const area = (crop) => Q.grows.filter((g) => g.crop === crop).reduce((a, g) => a + rectTiles(g.rect).length, 0) + (crop === 'hearthroot' ? 35 : 0);
-    const want = [['hearthroot', Math.max(90, Math.min(460, Q.n * 26))], ['herb', Q.day >= 6 ? 24 : 0], ['flax', Q.tech('weaving') ? 70 : 0], ['grain', Q.tech('brewing') || Q.tech('milling') ? 70 : 0]];
+    const want = [['hearthroot', Math.max(90, Math.min(Math.round(460 * (Q.growMul || 1)), Math.round(Q.n * 26 * (Q.growMul || 1))))],   // (v4 sets Q.growMul: a fortress winters on its stores)
+       ['herb', Q.day >= 6 ? 24 : 0], ['flax', Q.tech('weaving') ? 70 : 0], ['grain', Q.tech('brewing') || Q.tech('milling') ? 70 : 0]];
     for (const [crop, a] of want) {
       if (!def('crop', crop) && !all('plant').some((p) => p.id === crop)) continue;
       if (area(crop) >= a) continue;
@@ -597,7 +602,7 @@ export function makePolicy(s) {
       const v = api.oreDig(depositId(k));
       if (!v || !v.length) continue;
       note(`ore ${k}: ${v.length} tiles`);
-      return v.map((i) => ({ t: 'designate', kind: 'mine', rect: { x0: i % W, y0: (i / W) | 0, x1: i % W, y1: (i / W) | 0 }, add: true }));
+      return v.map((i) => ({ t: 'designate', kind: 'mine', rect: oreRect(s, i), add: true }));   // (Z2.11: with the vein's level on a fortress)
     }
     return [];
   }
@@ -729,7 +734,7 @@ export function makePolicy(s) {
   }
 
   return {
-    notes: P, Q,
+    notes: P, Q, api,
     step() {
       refresh();
       // beasts (manhunters, wolves) hunt the colonists themselves: hold inside a dug room, where its

@@ -9,7 +9,9 @@ import { COMMANDS, COMMAND_NAMES, validateCommand, applyCommand, registerApplier
 // (EMBERCROWN-FORTRESS.md 1.2, 1.4) removed the four pick and summon commands (REMOVED below).
 const DOC = ['designate', 'cancelRect', 'place', 'placeLine', 'stamp', 'carve', 'copyRoom', 'paste', 'deconstruct', 'zone', 'zoneCfg',
   'bill', 'role', 'prio', 'sched', 'soldier', 'draft', 'order', 'prioritise', 'forbid', 'upgrade', 'assign', 'outfit', 'research',
-  'letter', 'trade', 'caravan', 'garrison', 'vigil', 'feast'];
+  'letter', 'trade', 'caravan', 'garrison', 'vigil', 'feast',
+  // Z2 (EMBERCROWN-FORTRESS.md 7.4 C3 v3)
+  'squad', 'alert', 'office', 'stockTarget', 'petition', 'births', 'laws', 'warden'];
 const REMOVED = { spec: { bId: 0, spec: 'joiner' }, charter: { id: 'forgehold' }, perk: { colId: 1, perk: 'cave_sense' }, challenge: { lord: 'gloomwyrm' } };
 
 function world() {
@@ -51,6 +53,14 @@ const VALID = {
   garrison: { colId: 1, bId: 0 },
   vigil: { colId: 1, bId: 0 },
   feast: { roomId: 2 },
+  squad: { id: 1, add: [1], sched: [2, 2, 1, 0] },
+  alert: { level: 'muster' },
+  office: { id: 'steward', colId: 1 },
+  stockTarget: { k: 'meal', n: 40 },
+  petition: { visitorId: 3, accept: true },
+  births: { on: false },
+  laws: { on: true },
+  warden: { colId: null },
 };
 const INVALID = {
   designate: [{ kind: 'dig', rect: R, add: true }, { kind: 'mine', rect: { x0: 0, y0: 0, x1: 500, y1: 1 }, add: true }, { kind: 'mine', rect: R }],
@@ -70,7 +80,7 @@ const INVALID = {
   sched: [{ colId: 1, hours: [1, 2, 3] }],
   soldier: [{ colId: 1, on: 1 }],
   draft: [{ colIds: [], on: true }, { colIds: [1, 1], on: true }],
-  order: [{ colIds: [1], kind: 'move' }, { colIds: [1], kind: 'dance', target: { x: 1, y: 1 } }],
+  order: [{ colIds: [1], kind: 'move' }, { colIds: [1], kind: 'dance', target: { x: 1, y: 1 } }, { kind: 'hold' }, { colIds: [1], kind: 'patrol', target: { x: 1, y: 1 } }, { squad: 1, kind: 'patrol' }],
   prioritise: [{ colId: 1, target: { x: -1, y: 4 }, work: 'build' }],
   forbid: [{ on: true }],
   upgrade: [{ bId: 3 }],
@@ -83,6 +93,14 @@ const INVALID = {
   garrison: [{ colId: 1, bId: 44 }],
   vigil: [{ colId: 5, bId: 0 }],
   feast: [{ roomId: 'hall' }],
+  squad: [{ id: 0 }, { id: 1, sched: [1, 2] }],
+  alert: [{ level: 'panic' }],
+  office: [{ id: 'Steward!', colId: 1 }, { id: 'steward', colId: 99 }],
+  stockTarget: [{ k: 'meal', n: -1 }],
+  petition: [{ visitorId: 1, accept: 'yes' }],
+  births: [{ on: 1 }],
+  laws: [{}],
+  warden: [{ colId: 42 }],
 };
 
 test('every 13.3 command has a spec, and nothing else is a command', () => {

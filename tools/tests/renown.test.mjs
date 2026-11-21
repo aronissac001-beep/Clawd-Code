@@ -42,8 +42,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // and the staged items, recipes and add-on rows (traded categories: they join DATA at the Z2 switch)
 const REG = buildRegistry([...ENTRIES,
   { path: 'z24-staged.js', owner: 'G', mod: { DATA: { item: ITEMS_STAGED.item, recipe: RECIPES_STAGED.recipe, addon: DA.STAGED.addon } } },
-  { path: 'structures/workshops.js', owner: 'G', mod: { DATA: { structure: DA.STRUCTURES.filter((d) => d.cat === 'workshops') } } },
-  { path: 'structures/utility.js', owner: 'G', mod: { DATA: { structure: DA.STRUCTURES.filter((d) => d.cat === 'utility') } } }]);
+  // (Z2.11: the staged structure rows are in structures/workshops.js and utility.js now)
+]);
 
 function colony(seed = 'K-Z24', d = 1) {
   installSim({ stage: '2', reset: true });
@@ -263,7 +263,7 @@ test('Z2.4 add-ons: a structure add-on opens its recipes beside its bench only; 
   assert.ok(AD.addonOpen(s, forge, REG.get('recipe', 'make_embersteel')));
   assert.ok(AD.isEmberproof('emberward') && !AD.isEmberproof('mailshirt'));
   AD.uninstallAddons();
-  assert.ok(!BUS.canPlace.some((f) => f.name === 'placeHook'));
+  assert.ok(!BUS.canPlace.some((f) => f.name === 'addonPlaceHook'));
 });
 
 // ---- The winch -------------------------------------------------------------------------------------------------

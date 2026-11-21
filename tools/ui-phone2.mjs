@@ -14,6 +14,7 @@
 // game hours, A's fall check): "The Hearth goes cold" opens, the shell becomes the read-only ruin viewer
 // (commands refused, no tools), and on the title the Fallen card opens View the ruin and Export (and the
 // Annals); Settings > Storage lists the stored copies under Recover from a device problem.
+// Stage Z2 (8.4): the Military tab, and from the Hold tab the Offices, Justice, Annals and The dead screens.
 // Exit 0 clean, 1 problems, 2 the browser is not installed. Screenshots: tools/out/ui-phone2/.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -201,8 +202,10 @@ for (const vp of VPS) {
       }
       // the Colony sheet: every tab, the grid and the schedule editor
       await ev(() => window.__ecUI.shell.openColony('People'));
-      for (const t of ['People', 'Work', 'Schedule', 'Research', 'Stock', 'Chronicle', 'Hold']) {
+      for (const t of ['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']) {
         await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('colony-' + t.toLowerCase());
+        // Stage Z2: the Hold tab opens the Offices, Justice, Annals and dead screens (each with a Back)
+        if (t === 'Hold') for (const z of ['offices', 'justice', 'annals', 'dead']) { await tapSel(`[data-act=hold-${z}]`); await shot('z2-' + z); await ev(() => { const sh = window.__ecUI.shell; sh.openColony('Hold'); }); }
         if (t === 'Work') { await tapSel('[data-act=work-grid]'); await shot('colony-work-grid'); if (await page.locator('[data-act=grid-page-2]').count()) { await tapSel('[data-act=grid-page-2]'); await shot('colony-work-grid-care'); } await tapSel('[data-act=work-roles]'); }
         if (t === 'Schedule') { await tapSel('[data-act=sched-edit]'); await shot('colony-schedule-edit'); await tapSel('[data-act=sheet-back]'); }
         if (t === 'Research') { const before = await ev(() => window.__ecUI.shell.state.colony.research.cur); const tk = await page.locator('.ec-tech:not(.on):not(.locked)').first(); if (await tk.count()) { await tk.scrollIntoViewIfNeeded(); const bb = await tk.boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(150); } flows.research = [before, await ev(() => window.__ecUI.shell.state.colony.research.cur)]; }

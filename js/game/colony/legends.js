@@ -380,6 +380,8 @@ export function recordName(s, key) {
 /** One record as a line of text. */
 export function legendLine(s, rec) {
   if (rec.kind === 'e') {
+    // a crime or a sentence carries its own line (justice.js: who, what and the sentence)
+    if (rec.text && (rec.event === 'crime' || rec.event === 'sentence')) return rec.text;
     const a = recordName(s, rec.links[0]), b = rec.links[1] ? recordName(s, rec.links[1]) : rec.text || '';
     return fill('leg_ev_' + rec.event, { a: a || 'Someone', b });
   }

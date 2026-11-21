@@ -32,6 +32,7 @@
 // tools send their rectangles with its z, the rail and the alerts carry level badges and jump to the level,
 // Follow follows a colonist across levels, the alert stack sits above the capsule and the map button moves to
 // the top right (portrait). Long-press Orders reopens the last Orders tool (Recent). A D = 1 colony is unchanged.
+import { militaryTap, militaryPicking } from './military.js';
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets } from './layout.js';
 import { SpeedButton } from './speed.js';
@@ -776,6 +777,8 @@ export function mountShell(root, api) {
       const wpt = worldAt(p);
       if (ui.tool) { ui.tool.tap(tileZ(wpt.x, wpt.y)); showHint(); renderBar(); loop.poke(); return; }
       if (levels && levels.rulerOpen) { levels.closeRuler(); return; }
+      // Z2.5: a squad's Station or Patrol pick takes the tapped tile on the level shown
+      if (!ui.sheet && militaryPicking() && militaryTap(ctx, tileZ(wpt.x, wpt.y))) { loop.poke(); return; }
       if (ui.panel) { closePanel(); return; }
       if (ui.sheet) { closeSheet(); return; }
       const prev = ui.sel;

@@ -53,6 +53,8 @@ export const DATA = {
       mods: [{ key: 'mood.soldier', op: 'add', value: 1, when: 'room' }], art: 'banner', stage: '2', text: 'The hold\'s colours on a wall.' },
     { id: 'surgery', name: 'Surgery table', cat: 'civic', kind: 'construct', size: [2, 1], cost: { wood: 30, 'ingot:iron': 10 }, work: 90, hp: 200, band: 'village', tech: 'medicine2',
       roomRole: 'infirmary', mods: [{ key: 'tend.quality', op: 'pct', value: 25 }], art: 'heart', stage: '2', text: 'Doctors tend better here; surgery comes later.' },
+    { id: 'memorial_slab', name: 'Memorial slab', cat: 'civic', kind: 'construct', size: [1, 1], cost: { block: 10 }, work: 90, hp: 600, band: 'camp', beauty: 1,
+      art: 'struct.grave', stage: '2', text: 'A mason engraves the names of the lost here, six to a slab: a body that was never found is remembered and rests.' },
     { id: 'memorial', name: 'Memorial obelisk', cat: 'civic', kind: 'construct', size: [1, 1], cost: { block: 60 }, work: 240, hp: 1000, band: 'village', tech: 'sculpture', beauty: 4,
       mods: [{ key: 'mood.mourning', op: 'add', value: 2 }], art: 'beacon', stage: '2', text: 'Carved with the names of the dead: mourners feel 2 better.' },
     { id: 'observatory', name: 'Observatory', cat: 'civic', kind: 'construct', size: [3, 3], cost: { block: 120, glass: 12, 'ingot:bronze': 10 }, work: 600, hp: 900, band: 'village', tech: 'glassblowing',

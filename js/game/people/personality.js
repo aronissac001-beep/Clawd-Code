@@ -41,6 +41,7 @@ import { addThought, hasThought, removeThought } from './mood.js';
 import { ensurePeople, peopleRec, getKey, putKey, hash3 } from './peoplerec.js';
 import { kindOf, opinion, FRIEND_OP } from './social.js';
 import { deedCount } from './coldeeds.js';
+import { isEmberproof } from '../work/addons.js';
 import {
   FACETS, VALUES, FACET_TEXT, VALUE_TEXT, FACET_RULES, FACET_TAGS, VALUE_TAGS, PREF_POOLS, PREF_BY_ANC, PREF_SLOTS,
   PREF_RULES, GOALS, GOAL_RULES, MEMORY_OF, MEMORY_RULES, HEAT,
@@ -363,6 +364,9 @@ export function personalityDay(s) {
  * cool, an hour for an hour). `t` is the colonist's temperature, `dt` the ticks since the last call.
  */
 export function heatConditions(s, col, t, dt) {
+  // Z2.4: ember-proof gear keeps off Sweltering and Heatstroke
+  const sl = col.gear && col.gear.slots;
+  if (sl && Object.values(sl).some((p) => p && isEmberproof(typeof p === 'object' ? p.k : p))) t = Math.min(t, HEAT.hot);
   setCond(s, col, 'sweltering2', t > HEAT.hotter);
   setCond(s, col, 'sweltering', t > HEAT.hot && t <= HEAT.hotter);
   const hotNow = t > HEAT.stroke;

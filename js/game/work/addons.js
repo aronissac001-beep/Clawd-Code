@@ -131,10 +131,10 @@ export function addonPlaceWhy(s, d, x, y, rot = 0, z = null) {
   if (!ember) return 'an ember forge must stand beside an ember pool';
   return null;
 }
-const placeHook = (s, d, x, y, rot, z) => { const why = addonPlaceWhy(s, d, x, y, rot, z); return why ? { ok: false, reason: why } : null; };
+const addonPlaceHook = (s, d, x, y, rot, z) => { const why = addonPlaceWhy(s, d, x, y, rot, z); return why ? { ok: false, reason: why } : null; };
 /** Install the placement rule (idempotent). */
-export function installAddons() { if (!BUS.canPlace.includes(placeHook)) BUS.canPlace.push(placeHook); }
-export function uninstallAddons() { const k = BUS.canPlace.indexOf(placeHook); if (k >= 0) BUS.canPlace.splice(k, 1); }
+export function installAddons() { if (!BUS.canPlace.includes(addonPlaceHook)) BUS.canPlace.push(addonPlaceHook); }
+export function uninstallAddons() { const k = BUS.canPlace.indexOf(addonPlaceHook); if (k >= 0) BUS.canPlace.splice(k, 1); }
 
 /** Bench sheet lines (I): [[name, verb, open]] for every add-on of this bench, in data order. */
 export function addonLines(s, b) {

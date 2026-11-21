@@ -9,6 +9,7 @@
 // The job: claim the units and the destination tile, walk to the stack, pick up (capacity: 35 mass
 // x Might factor), top up with the same kind, material and quality within 3 tiles, carry, store.
 
+import { winchRoute, winchEnd } from '../colony/verbs/winch.js';
 import { idx, tx, ty, tz } from '../core/grid.js';
 import { emit } from '../core/events.js';
 import { NEXT, T, makeJob, registerToil, keyItem, keyTile, WORK, isUnreachable } from './jobs.js';
@@ -44,8 +45,18 @@ export function haulCandidate(s, col, id) {
 
 /** The haul job for stack `it`, or null when no destination can take it. */
 export function haulJob(s, col, it) {
-  const dest = findDest(s, col, it);
+  let dest = findDest(s, col, it);
   if (!dest) return null;
+  // Z2.4 the winch (2.3): a haul between the two ends' levels of a winch's shaft drops at the winch end on the
+  // stack's level and the winch carries it; a stack already waiting there is left to the winch. A stack the winch
+  // landed is hauled on as usual (it never rides back).
+  const from = idx(it.x, it.y, it.z | 0);
+  const wb = (s.colony.winch || s.bld.some((b) => b && b.def === 'winch')) ? winchRoute(s, from, dest.i) : null;
+  if (wb && !((s.colony.winch && s.colony.winch.landed[wb.id]) || []).includes(it.id)) {
+    const end = winchEnd(s, wb, it.z | 0);
+    if (end === from) return null;
+    if (end >= 0) dest = { i: end, merge: -1 };
+  }
   const room = dest.merge >= 0 ? stackLimit(it.k) - getItem(s, dest.merge).n : stackLimit(it.k);
   const want = Math.min(room, capUnits(col, it.k));
   const n = Math.min(want, freeCount(s, it.id, col.id));

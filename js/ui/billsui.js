@@ -7,6 +7,7 @@ import { def, all, structDef } from '../game/core/content.js';
 import { availableIn } from '../data/schema.js';
 import { STAGE } from './stage.js';
 import { untilTarget } from '../game/work/bills.js';
+import { addonLines } from '../game/work/addons.js';
 
 const MODES = Object.freeze([['count', 'Count'], ['until', 'Until'], ['forever', 'Forever']]);
 const ITEM = (k) => (def('item', k) || { name: k }).name;
@@ -46,6 +47,10 @@ export function billsTab(el, ctx, b, ui) {
   const send = (op, bill, ok) => { const r = ctx.send({ t: 'bill', op, bId: b.id, bill }, ok); ctx.refreshSheet(); return r; };
   if (b.st !== 'done') el.append(h('p.ec-note', { text: 'Bills start once the bench is built.' }));
   if (!b.bills.length) el.append(h('p.ec-note', { text: 'No bills. Add one and a crafter will work it.' }));
+  // Z2.4: the bench's add-ons (built beside it, or a master's set) and what each adds
+  let ad = [];
+  try { ad = addonLines(s, b); } catch (_) { ad = []; }
+  if (ad.length) el.append(h('p.ec-note.ec-addons', { text: 'Add-ons: ' + ad.map(([n, verb, on]) => `${n} (${on ? 'built' : 'not built'}${verb ? ': ' + verb : ''})`).join('; ') + '.' }));
   b.bills.forEach((bl, i) => {
     const r = def('recipe', bl.recipe) || { name: bl.recipe, in: [], out: [] };
     const auto = (structDef(b.def).workbench.autoBills || []).some((a) => a.recipe === bl.recipe);

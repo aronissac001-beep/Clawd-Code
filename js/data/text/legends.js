@@ -52,6 +52,7 @@ export const DATA = {
     { id: 'leg_ev_crime', text: 'A crime was done in the hold.', vars: [] },
     { id: 'leg_ev_sentence', text: 'The Warden of Law gave a sentence.', vars: [] },
     { id: 'leg_ev_arrived', text: '{a} came to the hold.', vars: ['a'] },
+    { id: 'leg_ev_renown', text: '{b}', vars: ['b'] },
   ],
 };
 
@@ -120,7 +121,7 @@ export const TABLES = Object.freeze({
   roomAdj: ['Ashen', 'Golden', 'Quiet', 'Deep', 'Ember', 'Silver', 'Bright', 'Long', 'Iron', 'Glowing', 'Grey', 'High', 'Warm', 'Starlit', 'Marble', 'Patient'],
   roomNoun: ['Light', 'Stone', 'Fires', 'Song', 'Lamps', 'Hours', 'Kings', 'Echoes', 'Rest', 'Embers', 'Mornings', 'Waters', 'Hammers', 'Roots', 'Banners', 'Memory'],
   // the hold's legend event types: a record stores 1 + the index (APPEND-ONLY)
-  eventTypes: ['founded', 'raid', 'siege', 'collapse', 'flood', 'death', 'office', 'prestige', 'birth', 'petition', 'tier', 'artifact', 'slain', 'level', 'beast', 'crime', 'sentence', 'arrived'],
+  eventTypes: ['founded', 'raid', 'siege', 'collapse', 'flood', 'death', 'office', 'prestige', 'birth', 'petition', 'tier', 'artifact', 'slain', 'level', 'beast', 'crime', 'sentence', 'arrived', 'renown'],
 });
 
 /** Screen and export words for the Annals (I's screen, js/ui/annals.js). */

@@ -38,6 +38,7 @@ import { TICKS_PER_HOUR } from '../core/time.js';
 import { onBurn } from '../world/fire.js';
 import { setWorldStage } from '../world/worldrec.js';
 import { TICKS_PER_DAY } from '../core/time.js';
+import { installFamily, familySystem } from './family.js';
 
 export * as colonists from './colonists.js';
 export * as skills from './skills.js';
@@ -72,7 +73,7 @@ const reg = (slot, name, fn, order = 0) => { if (!has(slot, name)) registerSyste
  * @param {{ needs?: boolean, mood?: boolean, breaks?: boolean, health?: boolean, social?: boolean,
  *           ember?: boolean, commands?: boolean, workHooks?: boolean }} [opts]
  */
-export function installPeople({ needs = false, mood = false, breaks = false, health = false, social = false, ember = false, commands = true, workHooks = true, stage = null } = {}) {
+export function installPeople({ needs = false, mood = false, breaks = false, health = false, social = false, ember = false, commands = true, workHooks = true, stage = null, family = false } = {}) {
   setPeopleStage(stage || (social ? '2' : needs || mood || breaks || health ? '1b' : '1a'));
   setWorldStage(peopleStage());
   bindLevelHook(perkOnLevel);
@@ -99,4 +100,6 @@ export function installPeople({ needs = false, mood = false, breaks = false, hea
     if (!offBurn) offBurn = onBurn(burnDamage);
   }
   if (commands) { installRoleCommands(); installDraftCommands(); installPerkCommands(); }
+  // Stage Z2 (3.13): births, children and teens (after the work hooks: installFamily wraps them)
+  if (family) { installFamily(); reg('social', 'family', familySystem, 30); }
 }
