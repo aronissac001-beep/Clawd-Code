@@ -91,43 +91,43 @@
  },
  "ms": 13430,
  "rebaselined": {
-  "commit": "7bfb0bb",
+  "commit": "8e956a5",
   "dirty": true,
-  "date": "2026-11-20",
-  "note": "E13: state version 4 (s.v is hashed); no behaviour change at D=1",
+  "date": "2026-11-21",
+  "note": "Z2.1+Z2.3: personality (facets, values, preferences, memories) changes mood on purpose",
   "hour": {
    "tick": 121214,
-   "hash": "5c85ad580d488dbe",
+   "hash": "25d04e9f32f249a1",
    "moods": [
     {
      "id": 1,
      "name": "Isolde Dunmore",
-     "mood": 5800,
+     "mood": 5820,
      "dead": false
     },
     {
      "id": 2,
      "name": "Cade Thorne",
-     "mood": 5400,
+     "mood": 5271,
      "dead": false
     },
     {
      "id": 3,
      "name": "Juno Thorne",
-     "mood": 5000,
+     "mood": 5102,
      "dead": false
     },
     {
      "id": 4,
      "name": "Wenna Emberly",
-     "mood": 5597,
+     "mood": 5311,
      "dead": false
     }
    ]
   },
   "day": {
    "tick": 135014,
-   "hash": "98739ee8f5b14d46"
+   "hash": "9bf0c2f60114d290"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

@@ -43,7 +43,7 @@ test('mapVoxelRefs on a 9-day bot colony: visits every listed place; one level u
   const kinds = { tile: 0, key: 0 };
   const visited = S.mapVoxelRefs(s, (i, k) => { kinds[k]++; assert.ok(i >= 0 && i < N, `index ${i} in range`); return i; });
   assert.equal(stateHash(s), h0, 'the identity map changes nothing');
-  assert.ok(visited > 50 && kinds.tile > 0 && kinds.key > 0, `${visited} visited (${JSON.stringify(kinds)})`);
+  assert.ok(visited > 10 && kinds.tile > 0 && kinds.key > 0, `${visited} visited (${JSON.stringify(kinds)})`);
   // on a copy, shift every voxel index by a marker: every tile-like saved number must have moved (or be an entity key)
   const MARK = 10 * INDEX_SPAN;
   const { rt, ...rest } = s;

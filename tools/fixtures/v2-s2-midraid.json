@@ -148,24 +148,24 @@
  },
  "ms": 33664,
  "rebaselined": {
-  "commit": "7bfb0bb",
+  "commit": "8e956a5",
   "dirty": true,
-  "date": "2026-11-20",
-  "note": "E13: state version 4 (s.v is hashed); no behaviour change at D=1",
+  "date": "2026-11-21",
+  "note": "Z2.1+Z2.3: personality (facets, values, preferences, memories) changes mood on purpose",
   "hour": {
    "tick": 417133,
-   "hash": "1a98b5a27bfa34a0",
+   "hash": "2bb8f8c51a8519a3",
    "moods": [
     {
      "id": 1,
      "name": "Isolde Dunmore",
-     "mood": 4414,
+     "mood": 4036,
      "dead": false
     },
     {
      "id": 2,
      "name": "Cade Thorne",
-     "mood": 4690,
+     "mood": 4312,
      "dead": false
     },
     {
@@ -177,31 +177,31 @@
     {
      "id": 4,
      "name": "Wenna Emberly",
-     "mood": 4356,
+     "mood": 3978,
      "dead": false
     },
     {
      "id": 5,
      "name": "Ruk Charmark",
-     "mood": 4445,
+     "mood": 4068,
      "dead": false
     },
     {
      "id": 6,
      "name": "Seren Briarleaf",
-     "mood": 5538,
+     "mood": 5160,
      "dead": false
     },
     {
      "id": 7,
      "name": "Thrain Hammerfall",
-     "mood": 4436,
+     "mood": 4058,
      "dead": false
     },
     {
      "id": 8,
      "name": "Tobin Coldwater",
-     "mood": 4136,
+     "mood": 3759,
      "dead": false
     },
     {
@@ -213,32 +213,32 @@
     {
      "id": 10,
      "name": "Muro Charmark",
-     "mood": 4191,
+     "mood": 3813,
      "dead": false
     },
     {
      "id": 11,
      "name": "Gisla Deepmantle",
-     "mood": 4114,
+     "mood": 3736,
      "dead": false
     },
     {
      "id": 12,
      "name": "Vekka Kilnheart",
-     "mood": 4816,
+     "mood": 4438,
      "dead": false
     },
     {
      "id": 13,
      "name": "Nyssa Dewmantle",
-     "mood": 4869,
+     "mood": 4492,
      "dead": false
     }
    ]
   },
   "day": {
    "tick": 430933,
-   "hash": "3a6a40755f817f2f"
+   "hash": "df28c21dc30f011f"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

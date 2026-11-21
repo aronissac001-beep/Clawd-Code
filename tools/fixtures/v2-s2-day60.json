@@ -195,18 +195,18 @@
  },
  "ms": 112180,
  "rebaselined": {
-  "commit": "7bfb0bb",
+  "commit": "8e956a5",
   "dirty": true,
-  "date": "2026-11-20",
-  "note": "E13: state version 4 (s.v is hashed); no behaviour change at D=1",
+  "date": "2026-11-21",
+  "note": "Z2.1+Z2.3: personality (facets, values, preferences, memories) changes mood on purpose",
   "hour": {
    "tick": 868200,
-   "hash": "6d1dd7e1b47cffd7",
+   "hash": "3a2f0ce191ce8667",
    "moods": [
     {
      "id": 1,
      "name": "Isolde Dunmore",
-     "mood": 5792,
+     "mood": 5811,
      "dead": false
     },
     {
@@ -224,7 +224,7 @@
     {
      "id": 4,
      "name": "Wenna Emberly",
-     "mood": 5663,
+     "mood": 5032,
      "dead": false
     },
     {
@@ -236,7 +236,7 @@
     {
      "id": 6,
      "name": "Seren Briarleaf",
-     "mood": 6442,
+     "mood": 6428,
      "dead": false
     },
     {
@@ -284,19 +284,19 @@
     {
      "id": 14,
      "name": "Zhanna Greytusk",
-     "mood": 4543,
+     "mood": 5110,
      "dead": false
     },
     {
      "id": 15,
      "name": "Nyssa Ashbough",
-     "mood": 5585,
+     "mood": 6152,
      "dead": false
     },
     {
      "id": 16,
      "name": "Durra Emberdelve",
-     "mood": 5685,
+     "mood": 5629,
      "dead": false
     },
     {
@@ -308,13 +308,13 @@
     {
      "id": 22,
      "name": "Zhanna Kilnheart",
-     "mood": 5981,
+     "mood": 6052,
      "dead": false
     },
     {
      "id": 23,
      "name": "Korvin Anvilborn",
-     "mood": 5478,
+     "mood": 5377,
      "dead": false
     },
     {
@@ -327,7 +327,7 @@
   },
   "day": {
    "tick": 882000,
-   "hash": "0da610c049bcd4da"
+   "hash": "08ba282bb91d653d"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

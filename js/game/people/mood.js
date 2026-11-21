@@ -16,6 +16,10 @@ import { NEED, activeNeeds } from './needs.js';
 import { pain } from './health.js';
 import { surroundings } from './surround.js';
 import { stage2 } from './defs.js';
+import { TICKS_PER_DAY } from '../core/time.js';
+import { tempAt } from '../world/terrain.js';
+import { colTile } from '../work/reserve.js';
+import { psyOf, thoughtPct, onThought, personalityHour, personalityDay, heatConditions } from './personality.js';
 
 export const MOOD_MAX = 100 * FIX;
 const clampMood = (v) => (v < 0 ? 0 : v > MOOD_MAX ? MOOD_MAX : v);
@@ -29,9 +33,11 @@ export function addThought(s, col, id) {
     if (t[0] !== id) continue;
     t[1] = ticks;
     if (d.stack) t[2] = Math.min(d.stack.max, t[2] + 1);
+    onThought(s, col, id, d);
     return true;
   }
   col.thoughts.push([id, ticks, 1]);
+  onThought(s, col, id, d);
   return true;
 }
 export function removeThought(col, id) {
@@ -49,10 +55,21 @@ export function thoughtValue(entry) {
   const pct = d.stack && k > 1 ? 100 + (k - 1) * d.stack.decay : 100;
   return Math.trunc((d.value * FIX * pct) / 100);
 }
+/**
+ * Mood points (x FIX) of one thought entry for this colonist (Z2, 3.2): the entry's value x the personality
+ * percent (Fancy on room and beauty thoughts, Reverence, the values on v_* tags; personality.js thoughtPct).
+ */
+export function thoughtValueFor(s, col, entry, psy = stage2() ? psyOf(s, col) : null) {
+  const v = thoughtValue(entry);
+  if (!psy || !v) return v;
+  const pct = thoughtPct(psy, def('thought', entry[0]));
+  return pct === 100 ? v : Math.trunc((v * pct) / 100);
+}
 /** The mood the colonist is heading for (x FIX). */
 export function moodTarget(s, col) {
   let v = (bal('needs').moodBase || 50) * FIX + (traitPct(col, 'mood.base') - 100) * FIX;
-  for (const t of col.thoughts) v += thoughtValue(t);
+  const psy = stage2() ? psyOf(s, col) : null;
+  for (const t of col.thoughts) v += thoughtValueFor(s, col, t, psy);
   return clampMood(v);
 }
 /** One smoothing step: a quarter of the gap, rounded away from zero, at least 1. */
@@ -99,6 +116,8 @@ export function refreshConditions(s, col) {
     setCondition(s, col, 'hearth_cold', !lit);
   }
   if (def('thought', 'in_pain')) setCondition(s, col, 'in_pain', pain(col) >= (bal('needs').painThought || 15));
+  // Z2 (2.6): Sweltering and Heatstroke from the temperature where they stand
+  if (stage2() && s.rt && s.rt.heat) heatConditions(s, col, tempAt(s, colTile(col)), bal('needs').moodSmoothEvery || 60);
 }
 let conditionsOn = false;
 /** Turn condition-thought upkeep on (installPeople with needs and mood, Stage 1b). */
@@ -108,6 +127,8 @@ export function setConditionThoughts(on) { conditionsOn = !!on; }
 export function moodSystem(s) {
   const every = bal('needs').moodSmoothEvery || 60;
   if (s.tick % every !== 0) return;
+  // Z2 (3.2): personality records, life goals and the seasonal memories, once a game day
+  if (conditionsOn && stage2() && s.tick % TICKS_PER_DAY < every) personalityDay(s);
   for (const col of s.col) {
     if (col.hp.dead) continue;
     if (conditionsOn) refreshConditions(s, col);
@@ -119,7 +140,7 @@ export function moodSystem(s) {
     }
     col.thoughts.length = w;
     // Stage 2: rooms, surroundings, traits, people and the body, once a game hour (staggered by id)
-    if (conditionsOn && stage2() && (s.tick + col.id * every) % (10 * every) === 0) surroundings(s, col);
+    if (conditionsOn && stage2() && (s.tick + col.id * every) % (10 * every) === 0) { surroundings(s, col); personalityHour(s, col); }
     col.mood = smoothStep(col.mood, moodTarget(s, col));
   }
 }

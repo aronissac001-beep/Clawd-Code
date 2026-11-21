@@ -19,7 +19,7 @@ import { STATE_VERSION } from '../../js/game/core/schema.js';
 
 const FIX = new URL('../fixtures/', import.meta.url);
 const NAMES = readdirSync(FIX).filter((f) => /^v2-s2-.*\.ecsave$/.test(f)).sort();
-const MOOD_DRIFT = 5 * 100;   // 5 mood points (mood is fixed-point x100, schema.js FIX)
+const MOOD_DRIFT = 8 * 100;   // 8 mood points (mood is fixed-point x100, schema.js FIX); was 5 until Z2.1: personality (facets, values, preferences) moves mood on purpose, up to 6.3 points on these fixtures
 
 test('the three Stage 2 fixtures are present (S9.0: day60, midraid, iron)', () => {
   for (const n of ['v2-s2-day60.ecsave', 'v2-s2-midraid.ecsave', 'v2-s2-iron.ecsave']) assert.ok(NAMES.includes(n), `${n} missing`);
@@ -54,7 +54,7 @@ for (const name of NAMES) {
       const m = c.hour.moods[k];
       assert.equal(m.mood, want.hour.moods[k].mood, `${m.name}: mood after 1 h`);
       assert.equal(m.dead, want.hour.moods[k].dead, `${m.name}: dead after 1 h`);
-      if (meta.rebaselined) assert.ok(Math.abs(m.mood - meta.continue.hour.moods[k].mood) <= MOOD_DRIFT, `${m.name}: mood within 5 of ${meta.commit}`);
+      if (meta.rebaselined) assert.ok(Math.abs(m.mood - meta.continue.hour.moods[k].mood) <= MOOD_DRIFT, `${m.name}: mood within ${MOOD_DRIFT / 100} of ${meta.commit}`);
     }
     assert.equal(c.hour.hash, want.hour.hash, 'stateHash after 1 h');
     assert.equal(c.day.hash, want.day.hash, 'stateHash after 1 day');

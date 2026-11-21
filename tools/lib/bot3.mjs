@@ -297,8 +297,9 @@ export function makeDeep(s, base) {
   const GROW_W = WORK_IDS.indexOf('grow');
   function famine() {
     if (s.tick % TICKS_PER_HOUR !== 0 || foodDays(s) >= 1 || s.raids.some((r) => r.stage === 'active')) return [];
-    // only while no grower can work (dead, down or in a break): a working grower harvests on its own
-    if (s.col.some((c) => !c.hp.dead && !c.hp.down && !c.drafted && !c.breakState && c.role && c.role[0] === 'grower')) return [];
+    // only while no grower can work (dead, down, in a break or kept in bed: Z2 gate, seed 3, a starving grower
+    // in bedrest for days beside ripe crops): a working grower harvests on its own
+    if (s.col.some((c) => !c.hp.dead && !c.hp.down && !c.drafted && !c.breakState && !(c.job && c.job.type === 'bedrest') && c.role && c.role[0] === 'grower')) return [];
     const cmds = [], taken = new Set();
     for (const c of s.col) {
       if (c.hp.dead || c.hp.down || c.drafted || c.breakState || disabledWork(c).includes(GROW_W) || c.sched[hourOf(s.tick)] !== 1) continue;

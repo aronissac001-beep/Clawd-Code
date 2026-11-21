@@ -69,8 +69,10 @@ for (const name of NAMES) {
     const d1Jobs = runJobs(d1, HOUR);
     const d1Moods = moods(d1);
     const d1Env = d1.col.map((c) => { const i = idx(tileOfW(c.x), tileOfW(c.y), 0); return { id: c.id, x: tileOfW(c.x), y: tileOfW(c.y), t: tempAt(d1, i), l: lightAt(d1, i) }; });
-    // the mood baseline: 078cb71's hour (sidecar), else this build's hour at D = 1
-    const base = (side.continue && side.continue.hour && side.continue.hour.moods) || d1Moods;
+    // the mood baseline: the sidecar's newest hour (the re-baseline when a later step changed mood on purpose,
+    // e.g. Z2.1 personality; else 078cb71's), else this build's hour at D = 1
+    const pick = (b) => b && b.hour && b.hour.moods;
+    const base = pick(side.rebaselined) || pick(side.continue) || d1Moods;
 
     const s = await loadBlob(bytes);
     const t0 = s.tick, pre = preMigration(s), was = { col: s.col.length, items: s.items.filter(Boolean).length };
