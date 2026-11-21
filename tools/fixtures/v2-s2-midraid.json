@@ -148,13 +148,13 @@
  },
  "ms": 33664,
  "rebaselined": {
-  "commit": "8e956a5",
+  "commit": "3df02e2",
   "dirty": true,
   "date": "2026-11-21",
-  "note": "Z2.1+Z2.3: personality (facets, values, preferences, memories) changes mood on purpose",
+  "note": "Z2.4+Z2.6: holds with dead keep the Unrested list (burial, slabs, funerals) and Unrested thoughts change mood on purpose",
   "hour": {
    "tick": 417133,
-   "hash": "2bb8f8c51a8519a3",
+   "hash": "2f927abd0c0df1d3",
    "moods": [
     {
      "id": 1,
@@ -238,7 +238,7 @@
   },
   "day": {
    "tick": 430933,
-   "hash": "df28c21dc30f011f"
+   "hash": "268e667cf2c62fae"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

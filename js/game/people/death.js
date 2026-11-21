@@ -15,6 +15,23 @@
 //   'husk_rising'): H's movement and combat run it like any raid; it carries no tension and no
 //   aftermath (that incident has no def). H may register incident logic 'husk_rising' to take over.
 //   Everyone near (10 tiles) gets "Saw the dead rise" -10; a turning gives everyone "One of us turned".
+// Stage Z2 (EMBERCROWN-FORTRESS.md 3.6, step Z2.6):
+//   The Unrested dead: s.colony.people.rest [[colId, diedTick]] lists the dead not yet laid to rest (made on
+//   the first death, or once from the dead already in s.col with a 5-day grace from that tick for older saves).
+//   A dead colonist leaves it when buried (any grave, sarcophagus or crypt, on any level), when named on a
+//   memorial slab, or when a Brooding memorial is made for them. Past REST_DAYS (5) days, each living friend,
+//   kin, lover or spouse of one still on the list holds "The dead are unrested" (-4, a reverence thought, so
+//   Reverence scales it); it lifts the hour the last of their dead is laid to rest, with "Laid to rest" (+2,
+//   a burial) or "Remembered in stone" (+2, a slab).
+//   Memorial slabs (SLAB_DEFS, Masonry): a mason (work 'craft', giver 'engrave') engraves the name of the
+//   longest-unrested dead whose body is lost (no corpse on the map or carried: risen, turned, burnt, fallen
+//   into ember). One slab names SLAB_CAP (6): s.colony.people.slabs [[bldId, [names]]].
+//   A funeral: burial in a Tomb room of Decent or better calls the dead one's friends and kin (giver
+//   'funeral', work 'haul', first) to stand by the tomb until FUNERAL_H (1) game hour after the burial, then
+//   "Mourned at a funeral" (+3). s.colony.people.funeral [bldId, deadId, endTick, [attended colIds]] | null.
+//   Every grave or slab that takes a name is a place record in the Annals (legend kind 't', its voxel).
+//   Thought ids the data may not hold yet fall back: unrested -> unburied (-4 reverence), remembered_stone
+//   and funeral -> laid_to_rest (+2).
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY, phaseOf } from '../core/time.js';
 import { W, H, idx, tx, ty, ctrW, tileOfW, clamp } from '../core/grid.js';
@@ -32,6 +49,10 @@ import { addThought, addThoughtAll } from './mood.js';
 import { relation, FRIEND_OP, forget } from './social.js';
 import { ensurePeople, peopleRec, getKey, putKey, dropKey } from './peoplerec.js';
 import { kill, bindTurn } from './health.js';
+import { def } from './defs.js';
+import { removeThought, hasThought } from './mood.js';
+import { addLegend } from '../colony/legends.js';
+import { roomInfo } from '../world/rooms.js';
 
 export const HUSK_INCIDENT = 'husk_rising';
 const D = PEOPLE.death;
@@ -42,6 +63,7 @@ export function onColonistKilled(s, victim) {
   if (!stage2() || !victim || !Array.isArray(victim.sk)) return;
   const rec = ensurePeople(s);
   victim.hp.diedT = s.tick;   // for the death-record cap (pruneDead)
+  putKey(restRec(s, rec), [victim.id, s.tick]);
   if (!victim.hp.turned) {
     const i = colTile(victim);
     spawnItem(s, 'corpse', null, 0, 1, tx(i), ty(i), { name: victim.name, maker: victim.id });
@@ -115,6 +137,7 @@ export function pruneDead(s) {
     .sort((a, b) => (a.hp.diedT ?? -1) - (b.hp.diedT ?? -1) || a.id - b.id)
     .slice(0, n - KEEP_DEAD);
   for (const c of old) {
+    if (rec.rest) dropKey(rec.rest, c.id);   // Z2: past the cap the oldest dead are forgotten, Unrested or not
     forget(s, c.id);
     s.col.splice(s.col.indexOf(c), 1);
   }
@@ -127,7 +150,9 @@ export function deathSystem(s) {
   if (!stage2() || s.tick % (D.corpseCheckH * TICKS_PER_HOUR) !== 0) return;
   pruneDead(s);
   const rec = s.colony.people;
-  if (!rec || !rec.corpses.length) return;
+  if (!rec) return;
+  restSystem(s, rec);
+  if (!rec.corpses.length) return;
   const night = phaseOf(s.tick) === 'night';
   for (const [colId] of rec.corpses.slice()) {
     const it = corpseOf(s, colId);
@@ -198,6 +223,9 @@ registerToil('bury', (s, col, job, toil) => {
   const deadId = c.maker;
   job.carry = null;
   dropKey(rec.corpses, deadId);
+  laidToRest(s, deadId, null);   // the burial toil gives laid_to_rest below
+  placeRecord(s, b);
+  maybeFuneral(s, b, deadId);
   addThought(s, col, 'buried_someone');
   for (const o of s.col) {
     if (o.hp.dead || o === col) continue;
@@ -207,11 +235,191 @@ registerToil('bury', (s, col, job, toil) => {
   return NEXT;
 });
 /** BUS.removed: a grave that is gone forgets its dead. */
-function onRemoved(s, b) { const rec = s.colony.people; if (rec) dropKey(rec.graves, b.id); }
+function onRemoved(s, b) {
+  const rec = s.colony.people;
+  if (!rec) return;
+  dropKey(rec.graves, b.id);
+  if (rec.slabs) dropKey(rec.slabs, b.id);
+  if (rec.funeral && rec.funeral[0] === b.id) rec.funeral = null;
+}
+
+// ---- Z2 (3.6): the Unrested dead, memorial slabs and funerals ---------------------------------------------
+export const REST_DAYS = 5, SLAB_CAP = 6, FUNERAL_H = 1;
+export const ENGRAVE_WORK = 600;   // one game hour of Masonry at speed 1.0
+/** Memorial slabs by structure id (the first the content has is used; the obelisk serves until the slab row lands). */
+export const SLAB_DEFS = Object.freeze(['memorial_slab', 'memorial']);
+const FUNERAL_TIERS = ['decent', 'fine', 'grand', 'majestic'];
+const tid = (id, alt) => (def('thought', id) ? id : alt);
+const T_UNREST = () => tid('unrested', 'unburied');
+const T_STONE = () => tid('remembered_stone', 'laid_to_rest');
+const T_FUNERAL = () => tid('funeral', 'laid_to_rest');
+const mourns = (r) => !!r && (r[0] >= FRIEND_OP || r[1] === 'kin' || r[1] === 'lover' || r[1] === 'spouse');
+
+/** The rest list, made on first need: the dead already in s.col (older saves) start a 5-day grace now. */
+function restRec(s, rec = ensurePeople(s)) {
+  if (!rec.rest) {
+    rec.rest = [];
+    if (!rec.slabs) rec.slabs = [];
+    if (rec.funeral === undefined) rec.funeral = null;
+    for (const c of s.col) if (c.hp.dead && !restedAlready(s, rec, c)) putKey(rec.rest, [c.id, s.tick]);
+  }
+  return rec.rest;
+}
+/** In a grave, on a slab or given a Brooding memorial already (older saves: by name). */
+function restedAlready(s, rec, c) {
+  const has = (list) => (list || []).some((g) => Array.isArray(g[1]) && g[1].includes(c.name));
+  return has(rec.graves) || has(rec.slabs) || (rec.memo || []).some((e) => e[1] === c.id);
+}
+/** The Unrested dead now: [{ colId, name, died, days, lost, unrested }] longest dead first. */
+export function restingList(s) {
+  const rec = peopleRec(s);
+  const out = [];
+  for (const [colId, died] of rec.rest || []) {
+    const c = s.col.find((x) => x.id === colId);
+    out.push({ colId, name: c ? c.name : 'a colonist', died, days: Math.floor((s.tick - died) / TICKS_PER_DAY), lost: bodyLost(s, colId), unrested: s.tick - died >= REST_DAYS * TICKS_PER_DAY });
+  }
+  out.sort((a, b) => a.died - b.died || a.colId - b.colId);
+  return out;
+}
+/** Days the longest-Unrested dead has made the living Unrested (0 when none): the bot report and the oracle. */
+export function unrestedDays(s) {
+  let worst = 0;
+  for (const [, died] of peopleRec(s).rest || []) worst = Math.max(worst, (s.tick - died) / TICKS_PER_DAY - REST_DAYS);
+  return worst;
+}
+const carriedBy = (s, colId) => s.col.some((c) => { const b = carried(c); return b && b.k === 'corpse' && b.maker === colId; });
+/** The body is lost: no corpse on the map and none being carried. */
+export const bodyLost = (s, colId) => !corpseOf(s, colId) && !carriedBy(s, colId);
+/** A dead colonist is laid to rest: off the list; the mourners lose Unrested and get `thought` (null: none). */
+export function laidToRest(s, deadId, thought) {
+  const rec = s.colony.people;
+  if (!rec || !rec.rest || !dropKey(rec.rest, deadId)) return false;
+  for (const o of s.col) {
+    if (o.hp.dead || !mourns(relation(s, o.id, deadId))) continue;
+    if (thought) addThought(s, o, thought);
+  }
+  refreshUnrest(s, rec);
+  return true;
+}
+/** Hourly (deathSystem): the backfill, Brooding memorials, and the Unrested thought on the mourners. */
+function restSystem(s, rec) {
+  if (!rec.rest) { if (!s.col.some((c) => c.hp.dead)) return; restRec(s, rec); }
+  for (const e of (rec.memo || [])) if (getKey(rec.rest, e[1])) dropKey(rec.rest, e[1]);
+  for (const [colId] of rec.rest.slice()) if (!s.col.some((c) => c.id === colId)) dropKey(rec.rest, colId);
+  if (rec.funeral && s.tick >= rec.funeral[2] + TICKS_PER_HOUR) rec.funeral = null;
+  refreshUnrest(s, rec);
+}
+function refreshUnrest(s, rec) {
+  const id = T_UNREST(), lim = REST_DAYS * TICKS_PER_DAY;
+  const due = rec.rest.filter((e) => s.tick - e[1] >= lim);
+  for (const c of s.col) {
+    if (c.hp.dead) continue;
+    const on = due.some((e) => e[0] !== c.id && mourns(relation(s, c.id, e[0])));
+    if (on && !hasThought(c, id)) addThought(s, c, id);
+    else if (!on && hasThought(c, id)) removeThought(c, id);
+    else if (on) { const t = c.thoughts.find((x) => x[0] === id); const d = def('thought', id); if (t && d && d.durationH > 0) t[1] = d.durationH * TICKS_PER_HOUR; }
+  }
+}
+/** The Annals place record of a burial site (legend kind 't', the site's voxel). Only once the state root holds
+ *  s.legend (A's schema field and K's legend wiring, Z2.3): until then nothing is written. */
+function placeRecord(s, b) {
+  if (typeof s.legend !== 'string') return;
+  try { addLegend(s, 't', idx(b.x, b.y, b.z | 0)); } catch (_) { /* the records are full */ }
+}
+/** A burial in a Tomb room of Decent+ calls a funeral (3.6). */
+function maybeFuneral(s, b, deadId) {
+  const ri = s.rt.room ? s.rt.room[idx(b.x, b.y, b.z | 0)] : 0;
+  if (!ri) return;
+  let inf = null; try { inf = roomInfo(s, ri); } catch (_) { inf = null; }
+  if (!inf || inf.role !== 'tomb' || !FUNERAL_TIERS.includes(inf.tier)) return;
+  startFuneral(s, b, deadId);
+}
+/** Call the dead one's friends and kin to the site for FUNERAL_H game hours. */
+export function startFuneral(s, b, deadId) {
+  const rec = ensurePeople(s);
+  restRec(s, rec);
+  rec.funeral = [b.id, deadId, s.tick + FUNERAL_H * TICKS_PER_HOUR, []];
+  return rec.funeral;
+}
+
+const isSlab = (b) => !!b && b.st === 'done' && SLAB_DEFS.includes(b.def);
+export const slabNames = (s, bId) => { const e = getKey(peopleRec(s).slabs || [], bId); return e ? e[1] : []; };
+/** The longest-unrested dead whose body is lost, or null. */
+function lostDead(s) {
+  const rec = peopleRec(s);
+  let best = null;
+  for (const e of rec.rest || []) if (bodyLost(s, e[0]) && (!best || e[1] < best[1] || (e[1] === best[1] && e[0] < best[0]))) best = e;
+  return best ? best[0] : null;
+}
+export const ENGRAVE_GIVER = Object.freeze({
+  id: 'engrave', work: 'craft', order: 6,
+  candidates(s, col, k) {
+    if (!stage2() || lostDead(s) === null) return [];
+    const out = [];
+    for (const b of s.bld) {
+      if (!isSlab(b) || slabNames(s, b.id).length >= SLAB_CAP || !openTarget(s, col, keyBld(b.id))) continue;
+      const st = standSpot(s, col, footprint(s, b));
+      if (st.i < 0) continue;
+      out.push({ key: keyBld(b.id), id: b.id, d: st.d, stand: st.i, plan: null });
+    }
+    out.sort((p, q) => p.d - q.d || p.key - q.key);
+    return out.slice(0, k);
+  },
+  valid(s, col, t) {
+    const b = s.bld[t.id], dead = lostDead(s);
+    if (!isSlab(b) || dead === null || slabNames(s, b.id).length >= SLAB_CAP) return false;
+    const toils = [T.goto(t.stand), T.work(ENGRAVE_WORK, { sk: 'masonry', key: keyBld(b.id) }), { t: 'engraveName', b: b.id, dead }];
+    t.plan = { job: makeJob('engraveName', keyBld(b.id), toils), claims: [[keyBld(b.id), 0]] };
+    return true;
+  },
+  make(s, col, t) { return t.plan; },
+  keyOf: (t) => t.key,
+});
+registerToil('engraveName', (s, col, job, toil) => {
+  const b = s.bld[toil.b];
+  const rec = s.colony.people;
+  if (!isSlab(b) || !rec || !rec.rest || !getKey(rec.rest, toil.dead) || slabNames(s, b.id).length >= SLAB_CAP) return NEXT;
+  const dead = s.col.find((c) => c.id === toil.dead);
+  if (!rec.slabs) rec.slabs = [];
+  const e = getKey(rec.slabs, b.id) || putKey(rec.slabs, [b.id, []]);
+  e[1].push(dead ? dead.name : 'a colonist');
+  laidToRest(s, toil.dead, T_STONE());
+  placeRecord(s, b);
+  return NEXT;
+});
+export const FUNERAL_GIVER = Object.freeze({
+  id: 'funeral', work: 'haul', order: 0,
+  candidates(s, col) {
+    const f = peopleRec(s).funeral;
+    if (!stage2() || !f || s.tick >= f[2] || f[3].includes(col.id) || col.drafted || !mourns(relation(s, col.id, f[1]))) return [];
+    const b = s.bld[f[0]];
+    if (!b) return [];
+    const st = standSpot(s, col, footprint(s, b));
+    return st.i < 0 ? [] : [{ key: keyBld(b.id), id: b.id, stand: st.i, d: st.d, plan: null }];
+  },
+  valid(s, col, t) {
+    const f = peopleRec(s).funeral;
+    if (!f || s.tick >= f[2] || f[3].includes(col.id)) return false;
+    const toils = [T.goto(t.stand, true), { t: 'mourn', until: f[2] }];
+    t.plan = { job: makeJob('funeral', t.key, toils), claims: [] };
+    return true;
+  },
+  make(s, col, t) { return t.plan; },
+  keyOf: (t) => t.key,
+});
+registerToil('mourn', (s, col, job, toil) => {
+  if (s.tick < toil.until) return RUN;
+  const f = s.colony.people && s.colony.people.funeral;
+  if (f && !f[3].includes(col.id)) { f[3].push(col.id); f[3].sort((a, b) => a - b); }
+  addThought(s, col, T_FUNERAL());
+  return NEXT;
+});
 
 export function installDeath() {
   bindTurn(turn);
   if (!BUS.kill.includes(onColonistKilled)) BUS.kill.push(onColonistKilled);
   if (!BUS.removed.includes(onRemoved)) BUS.removed.push(onRemoved);
   if (!BUS.workGivers.includes(BURY_GIVER)) BUS.workGivers.push(BURY_GIVER);
+  if (!BUS.workGivers.includes(ENGRAVE_GIVER)) BUS.workGivers.push(ENGRAVE_GIVER);
+  if (!BUS.workGivers.includes(FUNERAL_GIVER)) BUS.workGivers.push(FUNERAL_GIVER);
 }
