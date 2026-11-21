@@ -28,7 +28,7 @@
 //                         Requires the Hold tier, or a tunnel BREACH_DEPTH deep (the seep, Stage 3).
 
 import { TICKS_PER_DAY, TICKS_PER_HOUR, hourOf } from '../core/time.js';
-import { W, H, N, TER, ROOF } from '../core/grid.js';
+import { W, H, N, PLANE, TER, ROOF, tx, ty, tz } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { addThought } from '../people/mood.js';
 import { undraftAll } from '../people/draft.js';
@@ -101,7 +101,7 @@ export function riftSite(s) {
   for (let k = 0; k < N; k += 7) {
     const i = (off + k) % N;
     if (!s.L.blight[i] || s.rt.walkCost[i] === 0 || s.rt.occ[i] >= 0 || s.L.roof[i] >= ROOF.THIN) continue;
-    const d = Math.max(Math.abs((i % W) - hx), Math.abs(((i / W) | 0) - hy));
+    const d = Math.max(Math.abs(tx(i) - hx), Math.abs(ty(i) - hy));
     if (d < 20) continue;
     if (d > bd) { bd = d; best = i; }
   }
@@ -119,7 +119,9 @@ export const RIFT_LOGIC = Object.freeze({
     plan.lead = undefined;
     const r = spawnRaid(s, entry);
     const rf = riftOf(s, r);
-    if (rf && site >= 0) { rf.x = (site % W) * 32 + 16; rf.y = ((site / W) | 0) * 32 + 16; for (const id of r.members) { const f = foeById(s, id); if (f && f !== rf) { f.x = rf.x + ((f.id % 3) - 1) * 32; f.y = rf.y + 32; } } }
+    // (Z2b) the site is a voxel index on a fortress: x, y and the level come apart (before this the level's rows
+    // landed in y, so a Rift on a lower level sat off the map, could never be closed and held its raid open)
+    if (rf && site >= 0) { rf.x = tx(site) * 32 + 16; rf.y = ty(site) * 32 + 16; if (rf.z !== undefined || tz(site)) rf.z = tz(site); for (const id of r.members) { const f = foeById(s, id); if (f && f !== rf) { f.x = rf.x + ((f.id % 3) - 1) * 32; f.y = rf.y + 32; if (rf.z !== undefined) f.z = rf.z; } } }
     if (r.edge && site >= 0) r.edge = { side: r.edge.side, i: site };
     liveRecord(s, r.id).spawned = s.tick;
     return r.id;
@@ -137,8 +139,8 @@ export const RIFT_LOGIC = Object.freeze({
       const inc = incidentDef('hollow_horde');
       const pts = Math.floor(threatPoints(s) / 2);
       const { members } = composeRaid(s, raiderPool(inc, s), pts, Math.max(0, 80 - s.foes.length));
-      const ti = Math.floor(rf.y / 32) * W + Math.floor(rf.x / 32);
-      members.forEach((rid, k) => addMember(s, raid, { edge: { side: 'deep', i: ti }, members }, rid, k, null, [ti % W + ((k % 3) - 1), ((ti / W) | 0) + 1]));
+      const rz = rf.z | 0, ti = rz * PLANE + Math.floor(rf.y / 32) * W + Math.floor(rf.x / 32);
+      members.forEach((rid, k) => addMember(s, raid, { edge: { side: 'deep', i: ti }, members }, rid, k, null, [tx(ti) + ((k % 3) - 1), ty(ti) + 1, rz]));
       live.n0 = (live.n0 | 0) + members.length;
     }
   },

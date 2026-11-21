@@ -140,6 +140,14 @@ const STAGE2 = [
   ['memorial', 'stele', [], 'stone', 1, 1], ['observatory', 'shell', [], 'stone', 3, 3],
 ];
 for (const [id, base, props, tint, w, h] of STAGE2) add(`struct.${id}`, { kind: 'struct', base, props, tint, size: [w, h], stage: '2', label: id });
+// Stage Z2 (kit2.js, Z2_PARTS): the bench add-ons (one base drawn by key), the winch, the cell bed and the memorial slab.
+const STAGEZ2 = [
+  ['cutting_yard', 'addon', 'stone', 1, 1], ['cask_cellar', 'addon', 'wood', 1, 1], ['quench_trough', 'addon', 'stone', 1, 1], ['armourer_stand', 'addon', 'wood', 1, 1],
+  ['slag_pit', 'addon', 'stone', 1, 1], ['alloy_crucible', 'addon', 'stone', 1, 1], ['ember_forge', 'addon', 'stone', 2, 1], ['tap_stand', 'addon', 'wood', 1, 1],
+  ['hardening_vat', 'addon', 'wood', 1, 1], ['silk_frame', 'addon', 'wood', 1, 1], ['glazing_kiln', 'addon', 'stone', 1, 1], ['vault_kiln', 'addon', 'stone', 1, 1],
+  ['winch', 'winch', 'wood', 1, 1], ['cellbed', 'cellbed', 'stone', 1, 2], ['memorial_slab', 'slab', 'stone', 1, 1],
+];
+for (const [id, base, tint, w, h] of STAGEZ2) add(`struct.${id}`, { kind: 'struct', base, props: [], tint, size: [w, h], stage: '2', label: id });
 /** Stage 2 floors (the floor layer): road, bridge, tiled and carpet floors (ground.js paints them). */
 for (const [id, base, tint, label] of [['road', 'cobbles', 'stone', 'Road'], ['bridge', 'deck', 'wood', 'Bridge'], ['f_brick', 'bricks', 'stone', 'Tiled floor'], ['f_carpet', 'carpet', 'wood', 'Carpet']]) {
   add(`struct.${id}`, { kind: 'floor', base, tint, stage: '2', label });
@@ -234,6 +242,8 @@ export const KINDS = Object.freeze(['ground', 'floor', 'struct', 'item', 'zone',
 export const STAGE2_PARTS = Object.freeze(['shell', 'kiln', 'stove', 'mill', 'vat', 'rack', 'chest', 'bedroll', 'fence', 'bigdoor', 'field', 'tower', 'ballista', 'trap',
   'barricade', 'stele', 'beacon', 'bellpost', 'well', 'grave', 'bellows', 'switch', 'yard', 'statue', 'hanging', 'stall', 'fireplace', 'potwheel', 'desks', 'plot',
   'headframe', 'frame.seat', 'wares', 'wallmark', 'sign', 'bunkframe', 'cobbles', 'bricks', 'carpet', 'deck', 'beast', 'unit', 'crop']);
+/** The kit parts Stage Z2 added (kit2.js): the add-ons, the winch, the cell bed and the memorial slab. */
+export const Z2_PARTS = Object.freeze(['addon', 'winch', 'cellbed', 'slab']);
 /** Every kit part name a key uses (base and props); kit.js / ground.js / people.js / marks.js implement them all. */
 export const KIT_PARTS = Object.freeze([...new Set(Object.values(ART).flatMap((m) => [m.base, ...m.props]))].sort());
 

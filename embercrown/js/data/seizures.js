@@ -17,12 +17,14 @@ export const SEIZE = Object.freeze({
 
 /** Brooding demands by skill: 1-3 of these (rolled) plus a token of the dead. Keys as data/embertouch.js. */
 export const BROODING_DEMAND = Object.freeze({
-  smithing: { 'ingot:iron': 10, 'ingot:copper': 6, coal: 6 },
-  woodcraft: { wood: 30, leather: 2, beeswax: 2 },
-  masonry: { 'block:granite': 20, 'block:marble': 10, block: 20 },
-  tailoring: { cloth: 10, leather: 6, wool: 10 },
-  art: { block: 15, wood: 15, clay: 10 },
-  cooking: { meat: 10, berries: 10, honey: 4 },
+  // (Z2: generic materials any hold has or can make; a map need not hold granite, marble, copper or coal, and
+  // beeswax, wool and honey need hives and flocks a young hold may never keep)
+  smithing: { ingot: 10, wood: 15, block: 10 },
+  woodcraft: { wood: 30, leather: 2, block: 10 },
+  masonry: { block: 30, wood: 10, stone: 10 },
+  tailoring: { leather: 6, hide: 2, wood: 10 },
+  art: { block: 15, wood: 15, bone: 4 },
+  cooking: { meal: 8, wood: 10, block: 10 },
 });
 /** Hollow-whispered takes from the stores: item kinds it may seize, in order of preference. */
 export const WHISPER_TAKES = Object.freeze(['cutgem', 'ingot', 'block', 'bone', 'leather', 'cloth', 'wood', 'clay']);

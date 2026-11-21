@@ -21,7 +21,7 @@ import { needsSystem } from './needs.js';
 import { moodSystem, setConditionThoughts, addThoughtAll } from './mood.js';
 import { breaksSystem } from './breaks.js';
 import { healthSystem, loadHealthBalance, setSimpleHealth } from './health.js';
-import { installNeedJobs } from './needjobs.js';
+import { installNeedJobs, fleeFlames } from './needjobs.js';
 import { setPeopleStage } from './defs.js';
 import { socialSystem } from './social.js';
 import { emberSystem } from './embertouch.js';
@@ -97,7 +97,7 @@ export function installPeople({ needs = false, mood = false, breaks = false, hea
     installDeath();
     bindRumbleLead((s) => (withGrant(s, 'caveSense').length ? CAVE_SENSE_H * TICKS_PER_HOUR : 0));
     if (!offCave) offCave = onCaveIn(caveInDamage);
-    if (!offBurn) offBurn = onBurn(burnDamage);
+    if (!offBurn) offBurn = onBurn((s, i, ids) => { burnDamage(s, i, ids); fleeFlames(s, i, ids); });   // (Z2b) and step out
   }
   if (commands) { installRoleCommands(); installDraftCommands(); installPerkCommands(); }
   // Stage Z2 (3.13): births, children and teens (after the work hooks: installFamily wraps them)

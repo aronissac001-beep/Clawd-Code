@@ -116,7 +116,7 @@ export function slay(s, nemId, killer = null, at = null, spawnItem = null, gear 
   let kind = null;
   if (at && spawnItem) {
     kind = gear && def('item', gear) ? gear : def('item', 'bone') ? 'bone' : null;
-    if (kind) spawnItem(s, kind, kind === gear ? 'iron' : null, 0, 1, at[0], at[1], { name: `${n.name}'s ${GEAR_NAME[kind] || 'fang'}` });
+    if (kind) spawnItem(s, kind, kind === gear ? 'iron' : null, 0, 1, at[0], at[1], { name: `${n.name}'s ${GEAR_NAME[kind] || 'fang'}`, z: at[2] | 0 });
   }
   return kind;
 }

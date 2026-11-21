@@ -223,7 +223,7 @@ export const DATA = {
     { id: 'carcass', name: 'Carcass', cat: 'corpses', stack: 1, mass: 30, value: 20, tags: ['corpse', 'unique'], art: 'skull', text: 'A slain animal. A butcher cuts it into meat, hide, bone and tallow.' },
     { id: 'corpse', name: 'Corpse', cat: 'corpses', stack: 1, mass: 60, value: 0, tags: ['corpse', 'unique'], art: 'skull', text: 'Bury the dead, or they may rise as Husks.' },
     // ---- Stage Z2.4 (EMBERCROWN-FORTRESS.md 3.7, appended): the deep chains and the surviving add-ons ----
-    // (the chain items in traded categories, and the forge add-ons' gear, are STAGED below)
+    // (the chain items in traded categories and the forge add-ons' gear follow at the end of the list: Z2 switch)
     // Ember salts: steel and ember salts make embersteel at an ember forge
     { id: 'embersalts', name: 'Ember salts', cat: 'ore', stack: 50, mass: 1, value: 30, tags: ['deep'], art: 'flame', text: 'A crust from the ember layer. Steel and ember salts make embersteel at an ember forge.' },
     // Lye and soap
@@ -241,31 +241,7 @@ export const DATA = {
     // The Herbalist's set
     { id: 'calmingtea', name: 'Calming tea', cat: 'parts', stack: 10, mass: 1, value: 15, shelfD: 30, tags: ['component'], art: 'heart',
       text: 'The herbalist\'s tea: handed to a sulking or binging colonist, it ends a minor break.' },
-  ],
-  zonePreset: [
-    { id: 'all', name: 'All', cats: ['raw', 'materials', 'food', 'medicine', 'apparel', 'weapons', 'armour', 'tools', 'furniture', 'art', 'gems', 'coins', 'goods'], pri: 1,
-      text: 'Takes everything except chunks and corpses.' },
-    { id: 'raw', name: 'Raw', cats: ['raw'], pri: 1, text: 'Wood, stone, ore and other raw goods.' },
-    { id: 'goods', name: 'Workshop goods', cats: ['materials', 'furniture', 'tools'], pri: 1, text: 'Blocks, ingots and furniture waiting to be installed.' },
-    { id: 'store', name: 'Food store', cats: ['food'], pri: 2, text: 'Food and drink, at higher priority.' },
-    { id: 'armoury', name: 'Armoury', cats: ['weapons', 'armour', 'apparel'], pri: 1, text: 'Weapons, armour and clothes.' },
-    { id: 'dump', name: 'Dump', cats: ['chunks', 'corpses'], pri: 0, text: 'Chunks and corpses, out of the way.' },
-    // Stage 2
-    { id: 'medicine', name: 'Medicine', cats: ['medicine', 'herbs'], pri: 2, text: 'Herbs, bandages and salves, near the infirmary.' },
-    { id: 'valuables', name: 'Valuables', cats: ['gems', 'coins', 'art', 'goods'], pri: 1, text: 'Gems, coins, art and trade goods: keep them behind a door.' },
-  ],
-  outfit: [
-    { id: 'worker', name: 'Worker', allow: ['apparel', 'tools'] },
-    { id: 'soldier', name: 'Soldier', allow: ['apparel', 'armour', 'weapons'] },
-    { id: 'any', name: 'Any' },
-  ],
-};
-
-// Stage Z2.4 items STAGED for the Z2 switch (G moves them into DATA.item when the gate re-baselines): each is in a
-// category a trader sells (rawfood, drink, fibre, animal, weapons, armour), and a new kind there changes caravan
-// stock, so the v2 fixtures' continuation hashes. Every row validates against the item schema (renown.test).
-export const STAGED = {
-  item: [
+    // ---- Z2 switch (append only): the Stage Z2.4 items in traded categories (once STAGED) ----
     // Fungus brewing: drink for a hold that never sees the sun (dimroot ale is ale brewed from dimroot wort)
     { id: 'dimroot', name: 'Dimroot', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 15, food: { kind: 'raw', nutr: 3 }, tags: ['deep'], art: 'food',
       text: 'A pale cave tuber. Edible raw; a brewery makes ale wort of it.' },
@@ -288,4 +264,25 @@ export const STAGED = {
     { id: 'emberhood', name: 'Emberward hood', cat: 'armour', stack: 1, mass: 2, value: 600, mat: 'hide', slot: 'head', wear: { armour: 10, insul: 0 }, tags: ['unique', 'deep'], art: 'shield',
       text: 'The coat\'s hood: the face kept from the ember\'s breath.' },
   ],
+  zonePreset: [
+    { id: 'all', name: 'All', cats: ['raw', 'materials', 'food', 'medicine', 'apparel', 'weapons', 'armour', 'tools', 'furniture', 'art', 'gems', 'coins', 'goods'], pri: 1,
+      text: 'Takes everything except chunks and corpses.' },
+    { id: 'raw', name: 'Raw', cats: ['raw'], pri: 1, text: 'Wood, stone, ore and other raw goods.' },
+    { id: 'goods', name: 'Workshop goods', cats: ['materials', 'furniture', 'tools'], pri: 1, text: 'Blocks, ingots and furniture waiting to be installed.' },
+    { id: 'store', name: 'Food store', cats: ['food'], pri: 2, text: 'Food and drink, at higher priority.' },
+    { id: 'armoury', name: 'Armoury', cats: ['weapons', 'armour', 'apparel'], pri: 1, text: 'Weapons, armour and clothes.' },
+    { id: 'dump', name: 'Dump', cats: ['chunks', 'corpses'], pri: 0, text: 'Chunks and corpses, out of the way.' },
+    // Stage 2
+    { id: 'medicine', name: 'Medicine', cats: ['medicine', 'herbs'], pri: 2, text: 'Herbs, bandages and salves, near the infirmary.' },
+    { id: 'valuables', name: 'Valuables', cats: ['gems', 'coins', 'art', 'goods'], pri: 1, text: 'Gems, coins, art and trade goods: keep them behind a door.' },
+  ],
+  outfit: [
+    { id: 'worker', name: 'Worker', allow: ['apparel', 'tools'] },
+    { id: 'soldier', name: 'Soldier', allow: ['apparel', 'armour', 'weapons'] },
+    { id: 'any', name: 'Any' },
+  ],
 };
+
+// Stage Z2.4 items once STAGED: moved into DATA.item above at the Z2 switch (the export stays, empty, for old readers).
+export const STAGED = { item: [] };
+

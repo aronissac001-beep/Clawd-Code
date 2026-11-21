@@ -26,7 +26,7 @@
 
 import { FIX, SKILL_IDS } from '../core/schema.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR, dayOf } from '../core/time.js';
-import { tx, ty, TER } from '../core/grid.js';  // tx/ty: the bench distance
+import { tx, ty, tz, TER } from '../core/grid.js';  // tx/ty: the bench distance
 import { depositId, stoneId, plantCode } from '../world/defs.js';
 import { emit } from '../core/events.js';
 import { bldById } from '../core/state.js';
@@ -37,6 +37,7 @@ import { standSpot } from '../work/windex.js';
 import { footprint } from '../work/construct.js';
 import { spawnAt, take } from '../work/items.js';
 import { addChron } from '../colony/chronicle.js';
+import { hasTech } from '../colony/research.js';
 import { all, def, PEOPLE, stage2 } from './defs.js';
 import { addThought, removeThought, hasThought } from './mood.js';
 import { startBreakOf } from './breaks.js';
@@ -122,8 +123,21 @@ function likedKey(s, col) {
   const key = k === 'wood' && m.id === 'wood' ? 'wood' : `${k}:${m.id}`;
   // only what the hold can get: in stock now, or (stone and ore) still in its rock
   if (stockOf(s, k, k === 'wood' && m.id === 'wood' ? null : m.id) > 0) return key;
+  if (k === 'ingot' && !all('recipe').some((r) => (r.in || []).some((i) => i.mat === m.id) && (!r.tech || hasTech(s, r.tech)))) return null;
+  if (k === 'block' && !stoneNear(s, m.id)) return null;
   if (k === 'block' || k === 'ingot') return deepHeld(s, key) && key !== 'ingot:steel' && key !== 'ingot:bronze' ? key : null;
   return null;
+}
+/** Is stone `id` in unmined rock within 3 levels of the deepest level a colonist stands on? */
+function stoneNear(s, id) {
+  const st = stoneId(id);
+  if (!st) return false;
+  let lo = Infinity;
+  for (const c of s.col) if (!c.hp.dead) lo = Math.min(lo, tz(colTile(c)));
+  if (lo === Infinity) return false;
+  const L = s.L, N = L.terrain.length;
+  for (let i = 0; i < N; i++) if (L.terrain[i] === TER.ROCK && L.mat[i] === st && Math.abs(tz(i) - lo) <= 3) return true;
+  return false;
 }
 /** Roll the Ember demand: 2-3 ordinary materials (the first the liked one when it can be had) and one from the deep. */
 export function rollDemand(s, col, skill) {
@@ -220,7 +234,8 @@ function finish(s, em, col) {
   const mat = (em.demand.find((d) => d[1]) || [null, null])[1];
   const id = spawnAt(s, ak, mat, q, 1, i, { name, maker: col.id });
   const sk = col.sk[SKILL_IDS.indexOf(em.skill)];
-  if (sk[0] < 20) { sk[0]++; sk[1] = 0; }
+  // (Z2b) a seizure lifts the skill a level, but never to Grandmaster (20): that is earned at the bench (4.2)
+  if (sk[0] < 19) { sk[0]++; sk[1] = 0; }
   addThought(s, col, 'ember_made');
   removeThought(col, 'ember_touched');
   addChron(s, 'artifact', 'chron_artifact', { maker: col.name, item: name, kind: ak, colId: col.id });

@@ -25,6 +25,8 @@ export const TOP2 = {
   ballista: 8, trap: 3, barricade: 6, stele: 14, beacon: 10, bellpost: 18, well: 10, grave: 6, bellows: 4, switch: 10, yard: 10,
   statue: 18, hanging: 16, stall: 14, fireplace: 12, potwheel: 6, desks: 6, plot: 14, headframe: 26, 'frame.seat': 6,
   cobbles: 0, bricks: 0, carpet: 0, deck: 0,
+  // Z2 (Z2_PARTS): the bench add-ons, the winch, the cell bed and the memorial slab
+  addon: 12, winch: 16, cellbed: 6, slab: 14,
 };
 
 // ---- Shared pieces ----------------------------------------------------------------------------------
@@ -396,6 +398,98 @@ export const PARTS2 = {
   bricks(p, o) { const r = RAMP.red; p.rect(0, 0, 16, 16, r[0]); for (let y = 0; y < 16; y += 4) for (let x = (y & 4) ? -4 : 0; x < 16; x += 8) { p.rect(x + 1, y + 1, 7, 3, r[1]); p.hl(x + 1, y + 1, 7, r[2]); } },
   carpet(p, o) { const r = RAMP.plum; p.rect(0, 0, 16, 16, r[1]); p.dither(0, 0, 16, 16, r[0], 3); p.hl(0, 1, 16, P.gold); p.hl(0, 14, 16, P.gold); for (let x = 3; x < 16; x += 5) p.px(x, 8, P.ember1); },
   deck(p, o) { const r = RAMP.wood; p.rect(0, 0, 16, 16, P.deep); for (let x = 0; x < 16; x += 4) { p.rect(x, 0, 3, 16, r[2]); p.vl(x, 0, 16, r[3]); p.px(x + 1, 5, r[0]); p.px(x + 1, 12, r[0]); } },
+  // ---- Stage Z2 (keys.js Z2_PARTS): the bench add-ons, the winch, the cell bed and the memorial slab ----------
+  // One base for the add-ons, keyed by the add-on id: each is a small working fixture that reads as its verb at a
+  // glance (blocks under a saw, water in a trough, a crucible on coals, silk on a frame), lit from the top-left.
+  addon(p, o) {
+    const W = o.W, Hh = o.H, k = k_(o), w = RAMP.wood, dw = RAMP.darkwood, g = RAMP.granite;
+    const coals = (x, y, n) => { p.rect(x, y, n, 2, P.ember0); for (let i = 0; i < n; i += 2) p.px(x + i, y, i & 2 ? P.orange : P.ember1); };
+    if (k === 'cutting_yard') { // a stone on trestles under a frame saw, cut blocks stacked beside
+      p.vl(2, 6, 9, dw[0]); p.vl(12, 6, 9, dw[0]); block(p, 1, 3, 13, 5, g); p.vl(7, 3, 5, g[0]);
+      p.vl(4, -9, 12, w[1]); p.vl(10, -9, 12, w[1]); p.hl(4, -9, 7, w[2]); p.hl(4, 1, 7, P.slate3); for (let x = 5; x < 10; x += 2) p.px(x, 2, P.mist);
+      block(p, 10, 10, 5, 4, RAMP.pale); block(p, 11, 7, 4, 3, RAMP.pale); return;
+    }
+    if (k === 'cask_cellar') { // two casks racked, a third on top
+      p.hl(0, 14, 16, dw[0]); p.vl(1, 6, 9, dw[0]); p.vl(14, 6, 9, dw[0]);
+      for (const [x, y] of [[1, 7], [8, 7], [4, 0]]) { p.ellipse(x + 3, y + 3, 4, 3, dw[1]); p.ellipse(x + 3, y + 3, 2, 2, dw[2]); p.px(x + 2, y + 2, dw[3]); p.vl(x + 3, y, 7, P.slate1); p.px(x + 3, y + 3, P.gold); }
+      return;
+    }
+    if (k === 'quench_trough') { // a stone trough of dark water, a curl of steam
+      block(p, 0, 4, 16, 10, g); p.rect(2, 6, 12, 5, P.deep); p.dither(2, 6, 12, 5, P.water, 5); p.hl(3, 6, 4, P.shallow);
+      p.px(9, 3, P.mist); p.px(10, 1, P.slate3); p.px(9, -1, P.mist); p.line(11, 7, 15, -2, P.slate2); return;
+    }
+    if (k === 'armourer_stand') { // a cross-stand wearing a mail shirt and a helm
+      p.vl(7, -10, 25, dw[1]); p.hl(2, -5, 12, dw[1]); p.rect(5, 13, 6, 2, dw[0]);
+      p.rect(3, -4, 10, 11, RAMP.iron[1]); p.dither(3, -4, 10, 11, RAMP.iron[2], 6); p.hl(3, -4, 10, RAMP.iron[3]); p.vl(12, -4, 11, RAMP.iron[0]);
+      p.rect(5, -12, 6, 4, RAMP.steel[2]); p.hl(5, -12, 6, RAMP.steel[3]); p.hl(5, -9, 6, RAMP.steel[0]); return;
+    }
+    if (k === 'slag_pit') { // a stone-lipped pit of cooling slag, glowing at its heart, a rake laid across
+      p.ellipse(8, 9, 7, 5, g[1]); p.ellipse(8, 9, 5, 3, P.ink); p.dither(4, 7, 9, 5, P.ember0, 7);
+      p.px(7, 9, P.orange); p.px(9, 8, P.ember1); p.px(6, 10, P.ember1); p.line(1, 2, 14, 13, w[1]); p.hl(12, 12, 4, P.slate2); return;
+    }
+    if (k === 'alloy_crucible') { // a clay crucible on coals, two metals swirled in it
+      p.rect(3, 12, 10, 2, g[0]); coals(4, 10, 8);
+      for (let y = 1; y < 10; y++) { const hw = 3 + (y < 3 ? y : 3); p.hl(8 - hw, y, hw * 2, RAMP.red[0]); p.px(8 - hw, y, RAMP.red[1]); }
+      p.ellipse(8, 1, 5, 2, RAMP.red[1]); p.hl(5, 1, 3, P.gold); p.hl(8, 1, 3, P.mist); p.px(8, 0, P.flame); return;
+    }
+    if (k === 'ember_forge') { // a low stone hearth open to the ember below: no chimney, the glow comes up from the pool
+      block(p, 0, 0, W, Hh - 1, g); p.rect(3, 3, W - 6, Hh - 7, P.ink);
+      p.dither(3, 3, W - 6, Hh - 7, P.ember0, 10); p.hl(4, Hh - 6, W - 8, P.ember1); for (let x = 5; x < W - 5; x += 4) p.px(x, Hh - 7, P.orange);
+      p.px(W >> 1, 5, P.gold); p.px((W >> 1) + 3, 6, P.flame);
+      p.rect(W - 9, -5, 7, 3, RAMP.iron[2]); p.hl(W - 9, -5, 7, RAMP.iron[3]); p.rect(W - 7, -2, 3, 3, RAMP.iron[1]); return;
+    }
+    if (k === 'tap_stand') { // a cask on a trestle with a brass tap and a mug under it
+      p.vl(2, 8, 7, dw[0]); p.vl(13, 8, 7, dw[0]); p.hl(1, 8, 14, dw[1]);
+      p.ellipse(8, 3, 6, 5, dw[1]); p.ellipse(8, 3, 4, 3, dw[2]); p.vl(5, -2, 10, P.slate1); p.vl(11, -2, 10, P.slate1); p.px(6, 1, dw[3]);
+      p.rect(7, 7, 2, 2, P.gold); p.px(8, 9, P.gold); p.rect(6, 11, 4, 3, P.tan); p.hl(6, 11, 4, P.bone); return;
+    }
+    if (k === 'hardening_vat') { // a hooped vat of dark wax, a hide hung over its rim
+      p.rect(2, 2, 12, 12, dw[1]); p.vl(2, 2, 12, dw[2]); p.vl(13, 2, 12, dw[0]); p.hl(2, 5, 12, P.slate1); p.hl(2, 11, 12, P.slate1);
+      p.ellipse(8, 2, 6, 2, P.umber0); p.hl(5, 2, 3, P.umber2); p.rect(10, 0, 5, 9, RAMP.skin[1]); p.hl(10, 0, 5, RAMP.skin[2]); p.vl(14, 1, 8, RAMP.skin[0]); return;
+    }
+    if (k === 'silk_frame') { // a square frame strung with pale silk in a web, a spool below
+      p.rect(1, -8, 2, 22, w[1]); p.rect(13, -8, 2, 22, w[1]); p.hl(1, -8, 14, w[2]); p.hl(1, 6, 14, w[0]);
+      for (let x = 4; x < 13; x += 2) p.vl(x, -6, 11, (x >> 1) & 1 ? P.bone : P.mist);
+      p.line(3, -6, 12, 4, P.bone); p.line(12, -6, 3, 4, P.mist); p.ellipse(8, 11, 3, 2, P.bone); p.px(7, 10, P.slate3); return;
+    }
+    if (k === 'glazing_kiln') { // a squat round kiln with glazed pots cooling on its shoulder
+      for (let y = -2; y < Hh - 1; y++) { const hw = Math.min(7, 4 + ((y + 2) >> 1)); p.hl(8 - hw, y, hw * 2, RAMP.red[1]); p.px(8 - hw, y, RAMP.red[2]); p.px(7 + hw, y, RAMP.red[0]); }
+      p.rect(5, Hh - 7, 6, 5, P.ink); p.rect(6, Hh - 6, 4, 3, P.ember1); p.px(7, Hh - 5, P.gold);
+      p.rect(2, -6, 3, 4, P.teal); p.px(2, -6, P.mist); p.rect(11, -6, 3, 4, P.shallow); p.px(11, -6, P.bone); return;
+    }
+    if (k === 'vault_kiln') { // a kiln of fired brick under a keystone arch
+      block(p, 1, 2, 14, Hh - 3, RAMP.red); for (let y = 5; y < Hh - 2; y += 3) p.hl(2, y, 12, RAMP.red[0]);
+      for (let a = 0; a < 7; a++) { const x = Math.round(8 - Math.cos(a * 0.52) * 7), y = Math.round(2 - Math.sin(a * 0.52) * 7); p.rect(x - 1, y - 1, 2, 2, a === 3 ? P.gold : RAMP.red[2]); }
+      p.rect(5, Hh - 7, 6, 5, P.ink); p.rect(6, Hh - 6, 4, 3, P.ember1); return;
+    }
+    // (an add-on with no drawing of its own yet: a work trestle with a hammer)
+    board(p, 1, 4, 14, 4, w); p.vl(2, 8, 6, dw[0]); p.vl(13, 8, 6, dw[0]); p.line(5, 2, 10, -3, dw[1]); p.rect(9, -5, 4, 3, P.slate2);
+  },
+  // The winch and shaft: a timber A-frame over a dark hatch, a rope drum with a crank, the rope and a hook going down.
+  winch(p, o) {
+    const w = RAMP.wood, dw = RAMP.darkwood;
+    p.rect(2, 6, 12, 9, P.ink); p.dither(2, 6, 12, 9, P.night, 8); p.hl(2, 6, 12, dw[0]);
+    for (const x of [1, 14]) { p.vl(x, 5, 10, w[1]); p.px(x, 5, w[3]); }
+    p.line(1, -12, 4, 6, w[1]); p.line(14, -12, 11, 6, w[0]); p.hl(0, -12, 16, w[2]); p.hl(0, -11, 16, w[0]);
+    p.rect(3, -9, 10, 4, dw[1]); p.hl(3, -9, 10, dw[3]); for (let x = 4; x < 13; x += 2) p.px(x, -7, P.tan);
+    p.vl(13, -8, 4, P.slate2); p.hl(13, -5, 3, P.slate2); p.px(15, -5, P.slate3);
+    p.vl(8, -5, 15, P.tan); p.rect(7, 10, 3, 2, P.slate3); p.px(9, 12, P.slate2);
+  },
+  // The cell bed: a stone bunk with a thin blanket and an iron grille across its foot.
+  cellbed(p, o) {
+    const W = o.W, Hh = o.H, g = RAMP.granite;
+    block(p, 1, 1, W - 2, Hh - 2, g); block(p, 0, -3, W, 5, g);
+    p.rect(3, 3, W - 6, Hh - 10, RAMP.cold[2]); p.dither(3, 3, W - 6, Hh - 10, RAMP.cold[1], 5); p.rect(3, 3, W - 6, 4, P.mist);
+    p.hl(1, Hh - 6, W - 2, RAMP.iron[1]); for (let x = 2; x < W - 1; x += 3) p.vl(x, Hh - 9, 8, RAMP.iron[2]); p.hl(1, Hh - 9, W - 2, RAMP.iron[3]);
+  },
+  // The memorial slab: a broad upright stone carved with six name lines, a candle stub at its foot.
+  slab(p, o) {
+    const g = RAMP.pale;
+    p.rect(0, 12, 16, 3, RAMP.granite[0]); p.hl(0, 12, 16, RAMP.granite[2]);
+    block(p, 1, -9, 14, 21, g); p.hl(2, -9, 12, P.bone); p.px(1, -9, P.slate3); p.px(14, -9, P.slate3);
+    for (let y = -6; y < 10; y += 3) { p.hl(3, y, 4 + ((y + 6) % 4), RAMP.granite[1]); p.hl(9, y, 4 - ((y + 6) % 3), RAMP.granite[1]); }
+    p.rect(12, 13, 2, 2, P.bone); p.px(12, 12, P.flame);
+  },
 };
 
 /** Live flames on Stage 2 kits: [x, y, r] in world units from the footprint's top-left (kit.FLAME_AT form). */

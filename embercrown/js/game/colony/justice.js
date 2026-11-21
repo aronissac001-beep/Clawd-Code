@@ -59,6 +59,7 @@ import { satisfy } from '../people/needs.js';
 import { addOpinion, forget } from '../people/social.js';
 import { valueOf } from '../people/personality.js';
 import { leaveSquad } from '../people/draft.js';
+import { setCrimeHook } from '../people/needjobs.js';
 import { holdsOn } from './fall.js';
 import { legendEvent } from './legends.js';
 import { holderOf, officeOf, appoint, setMandateBrokenHook, APPOINTED } from './offices.js';
@@ -401,6 +402,7 @@ function wrapSmash(orig) {
 }
 /** Register the justice system, wrap the smash toil and the urgent hook, set the mandate hook (idempotent). */
 export function installJustice() {
+  setCrimeHook(reportCrime);   // (Z2b) F's break acts: theft and assault open cases
   const sm = toilHandler('smash');
   if (sm && !sm.justice) registerToil('smash', wrapSmash(sm));
   const h = thinkHooks();

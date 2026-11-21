@@ -28,16 +28,13 @@ export const DATA = {
     { id: 'greyshank', name: 'Greyshank', kind: 'tree', days: 24, yield: { wood: 18 }, minTemp: 2, sow: false, underground: true },
     { id: 'merereed', name: 'Mere-reed', kind: 'wild', days: 9, yield: { flax: 6 }, minTemp: 2, sow: true, underground: true, perennial: true },
     { id: 'lichen', name: 'Shore lichen', kind: 'wild', days: 12, yield: { herbs: 1 }, minTemp: 0, sow: false, underground: true, perennial: true },
-  ],
-};
-
-// Stage Z2.7 rows STAGED for the Z2 switch (G moves them into DATA.plant, after the rows above, when the dimroot item
-// leaves items.js STAGED): dimroot is the Mere's brewing tuber, a cave crop.
-export const STAGED = {
-  plant: [
+    // Z2 switch (append only): dimroot, the Mere's brewing tuber, a cave crop
     { id: 'dimroot', name: 'Dimroot', kind: 'crop', days: 8, yield: { dimroot: 10 }, minTemp: 2, sow: true, underground: true },
   ],
 };
+
+// Stage Z2.7 rows once STAGED: in DATA.plant since the Z2 switch (the export stays, empty, for old readers).
+export const STAGED = { plant: [] };
 
 /** Plant layer codes by id (index + 1). */
 export const PLANT_CODE = Object.freeze(Object.fromEntries(DATA.plant.map((p, i) => [p.id, i + 1])));

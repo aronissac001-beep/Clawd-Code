@@ -40,9 +40,13 @@ import { bldById } from '../core/state.js';
 import { structDef, hasFlag } from '../core/content.js';
 import { emit } from '../core/events.js';
 import { rnd } from '../core/rand.js';
-import { RUN, NEXT, HOLD, T, makeJob, registerToil, keyItem, keyBld, isReserved, myClaim, setThinkHooks, clearThinkHooks } from '../work/jobs.js';
+import { RUN, NEXT, HOLD, T, END, makeJob, registerToil, keyItem, keyBld, isReserved, myClaim, setThinkHooks, clearThinkHooks } from '../work/jobs.js';
+import { cheb } from '../core/grid.js';
+import { damage, PART } from './health.js';
+import { temperBreak } from './personality.js';
+import { hash3 } from './peoplerec.js';
 import { candidates as itemCandidates, freeCount } from '../work/items.js';
-import { colTile, beginJob } from '../work/reserve.js';
+import { colTile, beginJob, endJob } from '../work/reserve.js';
 import { reachableFrom, standSpot } from '../work/windex.js';
 import { footprint } from '../work/construct.js';
 import { bal, def, traitFlag, PEOPLE, stage2 } from './defs.js';
@@ -53,7 +57,7 @@ import { joyJob, wantsJoy, lowJoy } from './joy.js';
 import { roomThoughtsAfterSleep, roomThoughtsAfterMeal } from './surround.js';
 import { emberJob } from './embertouch.js';
 import { tempAt } from '../world/terrain.js';
-import { canBurn, ignite } from '../world/fire.js';
+import { canBurn, ignite, burning } from '../world/fire.js';
 import { removeBuilding } from '../core/apply.js';
 import { addOpinion } from './social.js';
 
@@ -245,8 +249,104 @@ export function sulkJob(s, col) {
   const wait = T.wait((N_().sulkWaitMin || 45) * TICKS_PER_MIN);
   return makeJob('sulk', -1, goal >= 0 ? [T.goto(goal), wait] : [wait], { brk: true });
 }
+// ---- Fire (Z2b): step out of the flames ----------------------------------------------------------------------------
+// A colonist standing on a burning tile (asleep, at a bench, beating the fire from a tile that caught) used to stay
+// there and burn: 4 a fire step until dead. In the 300-day soak (seed 1) a drought wildfire of 250 flames on day 298
+// took 7 of the 11 dead: the fire emergency walked every hauler into it and nobody stepped out. Now the first burn
+// ends what they were doing; they walk to the nearest tile clear of the flames and keep back for an hour. Passing through (a walk whose goal is not alight) is left alone: one burn, and on.
+// Drafted colonists stay under the player's orders; the downed cannot move (a rescuer carries them).
+const MOVE_TOILS = new Set(['goto', 'carry']);
+const FLEE_R = 8;
+const fireBeside = (s, x, y, z) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inB(x + dx, y + dy) && burning(s, idx(x + dx, y + dy, z))) return true; return false; };
+/** The nearest reachable tile out of the fire (ring scan to FLEE_R): best a tile that cannot burn with no flame beside
+ *  it, then one with no flame beside it, then any tile not alight; -1 when there is none. */
+export function fleeTileOf(s, col) {
+  const c = colTile(col), cx = tx(c), cy = ty(c), z = col.z | 0;
+  let clear = -1, open = -1;
+  for (let r = 1; r <= FLEE_R; r++) {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const x = cx + dx, y = cy + dy;
+      if (!inB(x, y)) continue;
+      const i = idx(x, y, z);
+      if (!passTile(s, i) || burning(s, i)) continue;
+      const beside = fireBeside(s, x, y, z);
+      if (beside && open >= 0) continue;
+      if (!reachableFrom(s, col, i)) continue;
+      if (!beside && !canBurn(s, i)) return i;
+      if (!beside && clear < 0) clear = i;
+      if (open < 0) open = i;
+    }
+    if (clear >= 0) return clear;
+  }
+  return open;
+}
+export function fleeFlames(s, tile, ids) {
+  if (!stage2()) return;
+  for (const id of ids) {
+    const col = s.col.find((x) => x.id === id);
+    if (!col || col.hp.dead || col.hp.down || col.drafted) continue;
+    const j = col.job;
+    if (j && j.type === 'fleeFire') continue;
+    const t0 = j && j.toils && j.toils[j.i];
+    if (t0 && MOVE_TOILS.has(t0.t) && t0.i >= 0 && !burning(s, t0.i)) continue;   // walking through
+    const to = fleeTileOf(s, col);
+    if (to < 0) continue;
+    if (col.job) endJob(s, col, END.INTERRUPT);
+    // a burnt colonist keeps back for an hour (a need job: the fire emergency does not call them back meanwhile)
+    beginJob(s, col, makeJob('fleeFire', -1, [T.goto(to), T.wait(TICKS_PER_HOUR)], { need: true }));
+  }
+}
+
+// ---- Crimes in a break (3.9; Z2b): theft and assault. Justice (colony/justice.js) sets the hook; without it (laws
+// off, or justice not installed) the acts still happen as break behaviour, without cases.
+let crimeHook = null;
+/** colony/justice.js hands over reportCrime(s, kind, offender, o). */
+export function setCrimeHook(fn) { crimeHook = fn; }
+const crime = (s, kind, col, o) => (crimeHook ? crimeHook(s, kind, col, o) : null);
+const ARTIFACT_Q = 5;   // legendary quality: an artifact
+/** Theft: a Greedy colonist in a break takes the nearest named item (an artifact, a memorial) to their bedroom. */
+export function theftJob(s, col) {
+  if (!traitFlag(col, 'thought.greedy') || col.bed === null || col.bed === undefined) return null;
+  const bed = bldById(s, col.bed);
+  if (!bed || bed.st !== 'done' || (bed.z | 0) !== (col.z | 0)) return null;
+  const bi = idx(bed.x, bed.y, bed.z | 0);
+  if (!reachableFrom(s, col, bi)) return null;
+  const c = colTile(col), cx = tx(c), cy = ty(c), R = PEOPLE.breaks.theftR || 30;
+  let best = null, bd = Infinity;
+  for (const it of s.items) {
+    if (!it || !it.name || it.f || (it.z | 0) !== (col.z | 0)) continue;
+    if (Math.max(Math.abs(it.x - bed.x), Math.abs(it.y - bed.y)) <= 2) continue;          // already in a bedroom by theirs
+    const d = Math.max(Math.abs(it.x - cx), Math.abs(it.y - cy));
+    if (d > R || d >= bd || isReserved(s, keyItem(it.id), col.id)) continue;
+    const i = idx(it.x, it.y, it.z | 0);
+    if (!reachableFrom(s, col, i)) continue;
+    bd = d; best = it;
+  }
+  if (!best) return null;
+  const i = idx(best.x, best.y, best.z | 0);
+  return makeJob('theft', keyItem(best.id), [T.reserve(keyItem(best.id), best.n), T.goto(i), T.pickup(best.id, best.n), T.carry(bi, true), T.drop(-1),
+    { t: 'stole', what: best.name, art: (best.q | 0) >= ARTIFACT_Q ? 1 : 0 }], { brk: true });
+}
+registerToil('stole', (s, col, job, toil) => {
+  if (col.breakState) col.breakState.stole = 1;
+  crime(s, 'theft', col, { what: toil.what, worse: !!toil.art });
+  return NEXT;
+});
+/** Assault: a Quick to anger colonist (temper 2+) in an insult spree or a Tantrum strikes the one they confront. */
+const ASSAULT_PARTS = ['torso', 'larm', 'rarm', 'lleg', 'rleg'];
+function assault(s, col, o) {
+  if (!o || o.hp.dead || o.hp.down || (temperBreak(s, col) | 0) < (PEOPLE.breaks.assaultTemper || 2)) return false;
+  const h = hash3(col.id, o.id, s.tick);
+  const [lo, hi] = PEOPLE.breaks.assaultDmg || [3, 6];
+  damage(s, o, PART[ASSAULT_PARTS[h % ASSAULT_PARTS.length]], 'blunt', lo + ((h >>> 4) % (hi - lo + 1)));
+  addOpinion(s, o.id, col.id, -(PEOPLE.breaks.assaultOp || 15));
+  crime(s, 'assault', col, { victim: o.id, worse: !!(o.hp.down || o.hp.dead) });
+  return true;
+}
 function breakJob(s, col) {
   const bs = col.breakState, d = def('break', bs.id);
+  if (stage2() && !bs.stole) { const j = theftJob(s, col); if (j) return j; }
   if (d && d.job === 'binge' && !bs.ate) { const j = eatJob(s, col, { binge: true }); if (j) return j; }
   const kind = d && d.job;
   const BR = PEOPLE.breaks;
@@ -322,6 +422,7 @@ registerToil('insult', (s, col, job, toil) => {
     const [lo, hi] = PEOPLE.breaks.insultOp;
     addOpinion(s, o.id, col.id, -(lo + Math.floor(rnd(s, 'main') * (hi - lo + 1))));
     addThought(s, o, 'insulted');
+    if (stage2() && cheb(tx(colTile(col)), ty(colTile(col)), tx(colTile(o)), ty(colTile(o))) <= 1 && (col.z | 0) === (o.z | 0)) assault(s, col, o);
   }
   if (col.breakState) col.breakState.done = (col.breakState.done | 0) + 1;
   return NEXT;

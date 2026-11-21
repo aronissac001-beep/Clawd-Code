@@ -19,11 +19,11 @@ export const DATA = {
     { id: 'spider', name: 'Cave spider', kind: 'cave', hp: 55, speed: 120, size: 2, tame: 12, hostile: true, pts: 30, butcher: { meat: 10 }, art: 'animal.wolf' },
     // ---- Stage Z2.7 (EMBERCROWN-FORTRESS.md 2.10): the cavern fauna of the Glowcap Hollows and the Sunless Mere. They
     // live at their dens (the pristine dormant rows) and never leave their cavern (js/game/animals/caverns.js). The
-    // beetle row above is the glowbeetle (tameable light). Blindfish keep to pools and shallows; the shellback's shell
-    // joins its butcher yield when the shell item leaves items.js STAGED (G, at the Z2 switch).
+    // beetle row above is the glowbeetle (tameable light). Blindfish keep to pools and shallows; the shellback yields its
+    // shell plates (since the Z2 switch).
     { id: 'great_spider', name: 'Great spider', kind: 'cave', hp: 140, speed: 110, size: 3, tame: 16, hostile: true, pts: 80, butcher: { meat: 24, bone: 4 } },
     { id: 'blindfish', name: 'Blindfish', kind: 'cave', hp: 8, speed: 90, size: 1, butcher: { fish: 3 } },
     { id: 'mire_leech', name: 'Mire leech', kind: 'cave', hp: 20, speed: 70, size: 1, hostile: true, pts: 10, butcher: { meat: 2 } },
-    { id: 'shellback', name: 'Shellback', kind: 'cave', hp: 110, speed: 70, size: 2, tame: 9, pts: 40, butcher: { meat: 20, bone: 4 } },
+    { id: 'shellback', name: 'Shellback', kind: 'cave', hp: 110, speed: 70, size: 2, tame: 9, pts: 40, butcher: { meat: 20, bone: 4, shell: 4 } },
   ],
 };

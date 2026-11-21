@@ -61,9 +61,14 @@ export const WORK = {
 // miner at full shifts was a Grandmaster on day 89 (Warden) and 97 (Steadfast) of seed 1, against the
 // 4.2 targets "first Grandmaster on day 110-200, no level 20 before day 100". Keen (x1.0) sets the first
 // Master (days 46-53 on seeds 2-5, all keen) and is unchanged; burning keeps its +3 joy an hour.
+// (Z2b) learnCapPct: passion x learning (Wits, ancestry, traits, an inspired teacher) never passes 175%. A burning,
+// Quick Learner, Wits 5 scholar at the research desk stacked to 199% and was a Grandmaster of Lore on day 96.6 of
+// seed 1 (v2, Z2 gate); the cap only touches such stacks (a keen Wits 6 colonist is 132%), so the first Master
+// (median day 46.6) is unchanged and Grandmaster stays a long road.
 export const SKILL = {
   speedBasePct: 60, speedPerLvlPct: 7, xpBase: 1100, xpGrowthPermille: 1280, dailyFullTicks: 3600, dailyAfterPct: 30,
   passionPct: [50, 100, 115], learnPerWitsPct: 8, miningPerMightPct: 3, darkWorkPct: 80, toolPct: { bronze: 5, iron: 10, steel: 15 },
+  learnCapPct: 175,
 };
 /** Quality rolls (5.8). */
 export const QUALITY = { rollSdX100: 250, tierBonus: 1, legendaryMinLvl: 16, legendaryChancePct: 10 };

@@ -69,6 +69,6 @@ export const PEOPLE = Object.freeze({
   // Death and burial (4.8): an unburied corpse in darkness for riseDays rises as a Husk at night.
   death: { riseDays: 2, corpseCheckH: 1, buryWork: 30 },
   // Ember-touched (4.5)
-  ember: { minLvl: 6, minMood: 30, minDay: 10, chancePermille: 15, afterMajorDays: 3, cooldownDays: 20, deadlineDays: 5, workH: 10, moodDays: 10,
+  ember: { minLvl: 6, minMood: 30, minDay: 10, chancePermille: 15, afterMajorDays: 3, cooldownDays: 20, deadlineDays: 10, workH: 10, moodDays: 10,
     unmetEvery: 24, touchedPct: 10, artifactQ: [4, 5] },
 });
