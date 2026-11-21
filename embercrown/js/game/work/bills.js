@@ -20,6 +20,7 @@
 // walk to the bench, work, then the products appear at the crafter's tile (quality rolled when the
 // recipe has quality; the material copied from ingredient matFrom).
 
+import { addonOpen, needsNoFuel, extraQualityRolls } from './addons.js';
 import { idx, tx, ty } from '../core/grid.js';
 import { BUS } from '../core/bus.js';
 import { emit } from '../core/events.js';
@@ -93,7 +94,9 @@ export function gatherIngredients(s, col, bench, bill) {
   const mats = bill.ingredients && bill.ingredients.mats && bill.ingredients.mats.length ? bill.ingredients.mats : null;
   const used = new Map();
   const out = [];
+  const noFuel = needsNoFuel(s, bench);   // Z2: a bench beside an ember forge burns no fuel
   for (const ing of r.in || []) {
+    if (noFuel && ing.cat === 'fuel') { out.push([]); continue; }
     const bucket = ing.k ? s.rt.idx.items[ing.k] : s.rt.idx.items['@' + ing.cat];
     if (!bucket) return null;
     const cands = [];
@@ -127,7 +130,7 @@ export function gatherIngredients(s, col, bench, bill) {
 export function workableBill(s, col, b) {
   for (let bi = 0; bi < b.bills.length; bi++) {
     const bill = b.bills[bi];
-    if (!billWanted(s, bill) || !billSkillOk(col, bill)) continue;
+    if (!billWanted(s, bill) || !billSkillOk(col, bill) || !addonOpen(s, b, recipeOf(bill))) continue;   // Z2: add-on recipes
     const picks = gatherIngredients(s, col, b, bill);
     if (picks) return { bi, picks };
   }
@@ -228,7 +231,8 @@ function spawnProducts(s, r, mats, col, b, x, y) {
     const unique = stackLimit(o.k) === 1;
     if (unique) {
       for (let k = 0; k < (o.n | 0); k++) {
-        const q = r.quality && col ? rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1) : 1;
+        let q = r.quality && col ? rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1) : 1;
+        if (r.quality && col) for (let e = extraQualityRolls(s, b); e > 0; e--) q = Math.max(q, rollQuality(s, r.skill ? skillLevel(col, r.skill) : 0, b.lvl | 0 || 1));   // Z2: the ember forge
         const id = spawn(s, o.k, m, q, 1, x, y, { maker: col ? col.id : null, z: b.z | 0 });
         emit(s, 'crafted', { itemId: id, k: o.k, q, colId: col ? col.id : null });
         if (q >= 4 && col) emit(s, 'masterwork', { itemId: id, colId: col.id });

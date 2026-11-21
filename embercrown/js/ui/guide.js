@@ -73,6 +73,7 @@ function stockBelow(s) {
   return false;
 }
 const END = { title: 'Your hold has begun', how: 'Dig deeper for coal and iron, keep the Hearth fed, and watch the chip at the top for the next omen.' };
+const LV_END = { title: 'The levels are yours', how: 'Dig down for coal, iron and the caverns below. Tap the level chip for the depth ruler: every level you have found.' };
 const WAIT = { title: 'Keep building', how: 'The coach returns when the first omen comes (day 2, at dusk). Dig, build and stock wood until then.' };
 // after the omen (play-test: the card still promised an omen that had already come)
 const WAIT_WARNED = { title: 'Ready the hold', how: 'Watch the chip at the top: the coach returns when the horde is close. Keep wood stocked for the Hearth and braziers.' };
@@ -83,12 +84,14 @@ function countDesig(s, bit) {
   for (let i = 0; i < D.length; i++) if (D[i] & bit) n++;
   return n;
 }
-const KEY = (s) => 'ec2.guide.' + (s.id || 'colony');
-function load(s) {
-  try { const v = JSON.parse(localStorage.getItem(KEY(s)) || 'null'); if (v && typeof v === 'object') return { done: Array.isArray(v.done) ? v.done : [], off: !!v.off, small: !!v.small }; } catch (_) { /* private mode */ }
+const KEY = (s, lv = false) => 'ec2.guide.' + (s.id || 'colony') + (lv ? '.lv' : '');
+/** A Stage 2 hold given depth at the fortress switch (migrate4 writes the Chronicle's depth line). */
+export const migratedHold = (s) => (s.d || 1) > 1 && Array.isArray(s.chron) && s.chron.some((e) => e && e[2] === 'chron_depth');
+function load(s, lv = false) {
+  try { const v = JSON.parse(localStorage.getItem(KEY(s, lv)) || 'null'); if (v && typeof v === 'object') return { done: Array.isArray(v.done) ? v.done : [], off: !!v.off, small: !!v.small }; } catch (_) { /* private mode */ }
   return { done: [], off: false, small: false };
 }
-function save(s, st) { try { localStorage.setItem(KEY(s), JSON.stringify(st)); } catch (_) { /* storage full or blocked: the guide simply starts again */ } }
+function saveSt(s, st, lv = false) { try { localStorage.setItem(KEY(s, lv), JSON.stringify(st)); } catch (_) { /* storage full or blocked: the guide simply starts again */ } }
 
 /**
  * Mount the guide card in root. ctx: the shell context (s, ui, startTool, openPanel). Returns
@@ -96,8 +99,13 @@ function save(s, st) { try { localStorage.setItem(KEY(s), JSON.stringify(st)); }
  */
 export function mountGuide(root, ctx) {
   const s = ctx.s;
-  const GUIDE_STEPS = stepsFor(D > 1);   // this colony's steps (shadows the module list)
-  const st = load(s);
+  // a migrated hold continued after its opening (the coach is over or was closed) gets the level steps alone, once,
+  // with no day limit (EMBERCROWN-FORTRESS.md 4.6: digging down is new to it); kept under its own key
+  const st0 = load(s);
+  const lvMode = D > 1 && migratedHold(s) && (st0.off || s.tick >= COACH_END_TICK);
+  const GUIDE_STEPS = lvMode ? LEVEL_STEPS : stepsFor(D > 1);   // this colony's steps (shadows the module list)
+  const st = lvMode ? load(s, true) : st0;
+  const save = (s0, v) => saveSt(s0, v, lvMode);
   const el = h('aside.ec-guide', { 'aria-label': 'Getting started', hidden: true });
   root.append(el);
   let shown = null;   // the step id (or 'end') on screen, so a check that changes nothing leaves the DOM
@@ -113,7 +121,7 @@ export function mountGuide(root, ctx) {
     for (let i = 0; i < last; i++) st.done.push(GUIDE_STEPS[i].id);
   }
   const mark = () => { let ch = false; for (const g of GUIDE_STEPS) if (!st.done.includes(g.id) && ready(g) && g.done(s, ctx.ui, ctx)) { st.done.push(g.id); ch = true; } return ch; };
-  const ended = () => s.tick >= COACH_END_TICK;
+  const ended = () => !lvMode && s.tick >= COACH_END_TICK;
   if (ended()) st.off = true;
   if (mark() && fresh && GUIDE_STEPS.every((g) => st.done.includes(g.id))) st.off = true;
   save(s, st);
@@ -138,7 +146,7 @@ export function mountGuide(root, ctx) {
       el.append(chip);
       return;
     }
-    const cur = step || (waiting ? (warned(s) ? WAIT_WARNED : WAIT) : END);
+    const cur = step || (waiting ? (warned(s) ? WAIT_WARNED : WAIT) : lvMode ? LV_END : END);
     const hide = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'guide-hide', 'aria-label': step ? 'Hide the steps' : 'Close', html: icon(step ? 'chevDown' : 'x') });
     onTap(hide, () => { if (step) st.small = true; else st.off = true; save(s, st); render(); });
     const head = h('div.ec-guide-head', null,
@@ -160,7 +168,8 @@ export function mountGuide(root, ctx) {
   return {
     el,
     /** The coach has ended (day 4 06:00, or closed after its last step): Next steps take over. */
-    ended: () => st.off || ended(),
+    ended: () => st.off || lvMode || ended(),   // the level steps of a migrated hold do not hold back Next steps or intros
+    levelSteps: lvMode,
     check() {
       if (st.off) return;
       if (ended()) { st.off = true; save(s, st); shown = null; render(); return; }

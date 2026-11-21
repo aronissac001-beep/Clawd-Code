@@ -10,6 +10,7 @@
 //                 learns a second). The tablet stays, marked read. Counts the reader's `tablets_read` deed.
 // The survey table (reveal veins around a chosen spot) waits for a target command (Stage 3).
 
+import { discoveredByTablet } from '../../colony/verbs/discovery.js';
 import { benchGiver, workplaceGiver } from './craft.js';
 import { addLore, learn, hasTech, canResearch } from '../../colony/research.js';
 import { all } from '../../colony/defs.js';
@@ -54,6 +55,8 @@ export function readTablet(s, col, it) {
   for (let k = 0; k < n; k++) { const id = tabletTech(s); if (!id || !learn(s, id)) break; got.push(id); }
   it.name = it.name + TABLET.read;
   didDeed(s, col, 'tablets_read');
+  const found = discoveredByTablet(s);   // Z2.4: research by doing (a third of the techs: a lore tablet read)
+  if (found) got.push(found);
   return got;
 }
 // the unread tablets on the map this tick (derived, never saved; there are one or two in a world)

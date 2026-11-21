@@ -104,6 +104,10 @@ export const BILL_MODES = Object.freeze(['count', 'until', 'forever']);
 export const ORDER_KINDS = Object.freeze(['move', 'attack', 'hold', 'guard', 'retreat', 'sally']);
 export const CARVE_PATTERNS = Object.freeze(['natural', 'pillar', 'prop']);
 export const ROTS = Object.freeze([0, 1, 2, 3]);
+/** Squad standing orders (Z2, 3.8; people/draft.js STANDING beyond ORDER_KINDS). */
+export const SQUAD_ORDER_KINDS = Object.freeze(['station', 'patrol', 'defendRefuge']);
+const objectOf = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? null : 'must be an object');
+const voxels = (v) => (Array.isArray(v) && v.length >= 1 && v.length <= 4 && v.every((x) => isInt(x) && x >= 0 && x < N) ? null : 'must list 1-4 voxels');
 
 const zoneCfgPatch = (v) => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return 'patch must be an object';
@@ -177,10 +181,22 @@ export const COMMANDS = Object.freeze({
   sched: { fields: { colId, hours } },
   soldier: { fields: { colId, on: bool } },
   draft: { fields: { colIds, on: bool } },
+  // Z2 (7.4 C3 v3): an order goes to drafted colonists (colIds) or to a squad (squad, with voxel pts for station
+  // and patrol, 1-4 of them)
   order: {
-    fields: { colIds, kind: oneOf(ORDER_KINDS), target: opt(target) },
-    rule: (c) => ((c.kind === 'hold' || c.kind === 'retreat') || c.target ? null : 'needs a target'),
+    fields: { colIds: opt(colIds), squad: opt(int(1, 9)), kind: oneOf([...ORDER_KINDS, ...SQUAD_ORDER_KINDS]), target: opt(target), pts: opt(voxels) },
+    rule: (c) => (c.squad !== undefined && c.squad !== null
+      ? (c.colIds !== undefined ? 'needs colIds or squad' : (c.kind === 'station' || c.kind === 'patrol') && !(c.pts && c.pts.length) && !c.target ? 'needs points' : null)
+      : c.colIds === undefined ? 'needs colIds or squad' : SQUAD_ORDER_KINDS.includes(c.kind) ? 'that order is for a squad' : (c.kind === 'hold' || c.kind === 'retreat') || c.target ? null : 'needs a target'),
   },
+  squad: { fields: { id: int(1, 9), uniform: opt(objectOf), sched: opt((v) => (Array.isArray(v) && v.length === 4 && v.every((n) => isInt(n) && n >= 0 && n <= 10) ? null : 'must be 4 season counts 0-10')), name: opt(text(40)), add: opt(ids), remove: opt(ids) } },
+  alert: { fields: { level: oneOf(['peace', 'muster', 'shelter']) } },
+  office: { fields: { id: (v) => (typeof v === 'string' && ID_RE.test(v) ? null : 'must be an office id'), colId: opt(colId) } },
+  stockTarget: { fields: { k: id('item'), m: opt(id('material')), n: int(0, 9999) } },
+  petition: { fields: { visitorId: nonNegId, accept: bool } },
+  births: { fields: { on: bool } },
+  laws: { fields: { on: bool } },
+  warden: { fields: { colId: opt(colId) } },
   prioritise: { fields: { colId, target, work: oneOf(WORK_IDS) } },
   forbid: { fields: { ids: opt(ids), rect: opt(rect), on: bool }, rule: exactlyOne('ids', 'rect') },
   upgrade: { fields: { bId } },

@@ -13,7 +13,8 @@
 //   - Harm: hurtAnimal(s, a, dmg, byColId) lowers hp; at 0 the animal dies (killAnimal): its jobs and
 //     path end, it leaves the list and a carcass (item 'carcass', E's item API) drops where it fell.
 //     Boar and wolves (pts) that are hurt turn on whoever hurt them (manhunter.enrage).
-//   - K's saved record s.colony.herd = { seeded, born } (created on the first Stage 2 animal tick).
+//   - K's saved record s.colony.herd = { seeded, born } (created on the first Stage 2 animal tick); Z2.7 adds
+//     herd.cav = { seeded, flora } for cavern life (caverns.js). The surface wildMax counts herd animals only.
 // Tuning lives here until G moves it into js/data/balance.js (an open issue for G).
 
 import { newAnimal } from '../core/schema.js';
@@ -26,6 +27,7 @@ import { spawn as spawnItem } from '../work/items.js';
 import { endJobsOn } from '../work/reserve.js';
 import { keyAnim } from '../work/jobs.js';
 import { cancelPath } from '../systems/pathing.js';
+import { isCaveDweller } from './caverns.js';
 
 export const ANIMALS = Object.freeze({
   wildMax: 16, spawnHour: 8, spawnEveryD: 2,
@@ -38,8 +40,12 @@ export const animalCap = () => bal('caps').animals || 60;
 export const atCap = (s) => s.anim.length >= animalCap();
 export const tameAnimals = (s) => s.anim.filter((a) => a.tame);
 export const wildAnimals = (s) => s.anim.filter((a) => !a.tame);
-/** The tile an animal stands on. */
+/** Wild animals of the surface herds: wildMax counts these; cavern creatures (caverns.js, Z2.7) keep their own count. */
+export const herdAnimals = (s) => s.anim.filter((a) => !a.tame && !isCaveDweller(a));
+/** The tile an animal stands on: its plane index (x, y only; callers that need the level use animVoxel). */
 export const animTile = (a) => idx(Math.min(W - 1, Math.max(0, Math.floor(a.x / TILE))), Math.min(H - 1, Math.max(0, Math.floor(a.y / TILE))));
+/** The voxel an animal stands on (its level included; equals animTile at D = 1). */
+export const animVoxel = (a) => animTile(a) + (D > 1 ? (a.z | 0) * PLANE : 0);
 /** K's saved herd record (created on first use by a sim system). */
 export function herdRec(s) {
   if (!s.colony.herd) s.colony.herd = { seeded: 0, born: 0 };
@@ -69,9 +75,9 @@ let onHurt = null;
 export function setHurtHook(fn) { onHurt = fn; }
 /** An animal dies where it stands: a carcass drops (meat for the butcher), and it is gone. */
 export function killAnimal(s, a) {
-  const i = animTile(a);
+  const i = animTile(a), z = a.z | 0;
   removeAnimal(s, a);
-  if (def('item', 'carcass')) spawnItem(s, 'carcass', null, 0, 1, i % W, (i / W) | 0);
+  if (def('item', 'carcass')) spawnItem(s, 'carcass', null, 0, 1, i % W, (i / W) | 0, D > 1 ? { z } : {});
   return true;
 }
 /** Damage an animal. Returns true when it died. */
@@ -120,7 +126,7 @@ export function wildGroup(s, kind = null) {
   if (at < 0) return [];
   const [lo, hi] = ANIMALS.group[k] || [1, 2];
   const n = rint(s, lo, hi), out = [];
-  for (let j = 0; j < n && !atCap(s) && wildAnimals(s).length < ANIMALS.wildMax; j++) {
+  for (let j = 0; j < n && !atCap(s) && herdAnimals(s).length < ANIMALS.wildMax; j++) {
     const a = spawnAnimal(s, k, at % W, ((at % PLANE) / W) | 0, { age: 2 * TICKS_PER_DAY, ...(D > 1 ? { z: (at / PLANE) | 0 } : {}) });
     if (a) { a.x += (j % 3) * 6 - 6; a.y += ((j / 3) | 0) * 6; out.push(a); }
   }
@@ -132,6 +138,6 @@ export function wildSpawnSystem(s) {
   if (!h.seeded) { h.seeded = 1; wildGroup(s, 'goat'); wildGroup(s, 'deer'); wildGroup(s); return; }
   if (s.tick % TICKS_PER_DAY !== ANIMALS.spawnHour * TICKS_PER_HOUR) return;
   if (Math.floor(s.tick / TICKS_PER_DAY) % ANIMALS.spawnEveryD !== 0) return;
-  if (wildAnimals(s).length >= ANIMALS.wildMax || atCap(s)) return;
+  if (herdAnimals(s).length >= ANIMALS.wildMax || atCap(s)) return;
   wildGroup(s);
 }

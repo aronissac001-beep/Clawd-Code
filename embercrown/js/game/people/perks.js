@@ -21,6 +21,10 @@ import { hasGrant } from './perkrules.js';
 import { onMined, setKnown } from '../world/terrain.js';
 import { addChron } from '../colony/chronicle.js';
 import { PERK_EARN, DEED_RULES } from '../../data/deeds-col.js';
+import { TEACH } from '../../data/personality.js';
+import { SKILL_IDS } from '../core/schema.js';
+import { dayOf } from '../core/time.js';
+import { ensurePeople, getKey, putKey } from './peoplerec.js';
 import { deedCount, deedDef, installColDeeds, colDeedsSystem } from './coldeeds.js';
 export { hasGrant, withGrant } from './perkrules.js';
 export { PERK_EARN };
@@ -124,6 +128,40 @@ export function nextPerks(col, { skill = null, limit = 99 } = {}) {
   }
   out.sort((a, b) => (b.levelOk - a.levelOk) || (a.lvl - b.lvl));
   return out.slice(0, limit);
+}
+
+// ---- Teaching (3.1, Z2) -------------------------------------------------------------------------------------------
+// A colonist working within TEACH.r (3) tiles, on their level, of a Master or Grandmaster (TEACH.lvl 15+) of the same
+// skill who is better than them learns x1.25. No UI: a "Learned from Bryn" log line once a game day. skills.js
+// awardXp multiplies its learning percent by teachPct (a request to skills.js; until it lands nothing calls it).
+// Pure in what it returns (positions and levels in saved state); the day's log line is a saved write of the sim.
+/** The teacher a colonist learns skillId from now (the best level, then lowest id), or null. */
+export function teacherOf(s, col, skillId) {
+  const k = SKILL_IDS.indexOf(skillId);
+  if (k < 0) return null;
+  const R = TEACH.r * 32, mine = col.sk[k][0] | 0, z = col.z | 0;
+  let best = null;
+  for (const o of s.col) {
+    if (o === col || o.hp.dead || o.hp.down || (o.z | 0) !== z) continue;
+    const lv = o.sk[k][0] | 0;
+    if (lv < TEACH.lvl || lv <= mine || Math.abs(o.x - col.x) > R || Math.abs(o.y - col.y) > R) continue;
+    if (!best || lv > (best.sk[k][0] | 0)) best = o;
+  }
+  return best;
+}
+/** XP percent from teaching (100, or TEACH.pct near a master); writes the daily log line. */
+export function teachPct(s, col, skillId) {
+  if (!stage2()) return 100;
+  const t = teacherOf(s, col, skillId);
+  if (!t) return 100;
+  const rec = ensurePeople(s);
+  if (!rec.taught) rec.taught = [];
+  const day = dayOf(s.tick), e = getKey(rec.taught, col.id);
+  if (!e || e[1] !== day) {
+    putKey(rec.taught, [col.id, day]);
+    if (Array.isArray(col.log)) { col.log.push({ tick: s.tick, text: `Learned from ${firstName(t)}.` }); if (col.log.length > DEED_RULES.logCap) col.log.splice(0, col.log.length - DEED_RULES.logCap); }
+  }
+  return TEACH.pct;
 }
 
 /** A skill reached `lvl` (skills.js awardXp's level hook): nothing happens at once; the hourly check earns perks. */

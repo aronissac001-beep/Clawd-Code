@@ -14,7 +14,8 @@
 
 import { TILE, W, H, PLANE, TER } from '../../game/core/grid.js';
 import { structDef } from '../../game/core/content.js';
-import { FIX } from '../../game/core/schema.js';
+import { FIX, fromPlain } from '../../game/core/schema.js';
+import { visitorsOf } from '../../game/colony/visitors.js';
 import { plantDef } from '../../game/world/defs.js';
 import { PLANT_CODE } from '../../data/plants.js';
 import { buildWork } from '../../game/work/construct.js';
@@ -79,6 +80,21 @@ export class EntityLayer {
   }
   setState(s) { this.s = s; this.motion.clear(); this.colAt = new Uint8Array(PLANE); }
 
+  /** A visitor's drawable stand-in (cached by id): their saved colonist row at the centre of their tile. */
+  visitorEnt(v, T) {
+    if (!v || !v.plain || v.at === undefined || v.at === null) return null;
+    const cache = this.visCache || (this.visCache = new Map());
+    let e = cache.get(v.id);
+    if (!e || e.__at !== v.at) {
+      try { e = fromPlain('col', v.plain); } catch (_) { return null; }
+      const p = v.at % PLANE;
+      e.x = (p % W) * T + (T >> 1); e.y = Math.floor(p / W) * T + (T >> 1); e.z = Math.floor(v.at / PLANE);
+      e.job = null; e.drafted = false; e.__at = v.at; e.__visitor = true;
+      cache.set(v.id, e);
+      if (cache.size > 32) cache.delete(cache.keys().next().value);
+    }
+    return e;
+  }
   rec() { const r = this.pool.pop() || {}; this.list.push(r); return r; }
 
   /** Render-side motion: previous and current world position per mover, refreshed when s.tick moves. */
@@ -158,6 +174,14 @@ export class EntityLayer {
       if (!inView(c.x, c.y, 40)) continue;
       if (strategic) { this.pips.push(c, m, 0); continue; }
       const r = this.rec(); r.k = 'col'; r.e = c; r.m = m; r.y = lerp(m.py, m.y, ctx.alpha);
+    }
+    // Z2.8: visitors stand in their hall (the colonist sprite from their saved look; never in s.col)
+    for (const v of visitorsOf(s)) {
+      const e = this.visitorEnt(v, T);
+      if (!e || off(e) || !inView(e.x, e.y, 40)) continue;
+      const m = this.moved('v' + v.id, e.x, e.y, tick);
+      if (strategic) { this.pips.push(e, m, 0); continue; }
+      const r = this.rec(); r.k = 'col'; r.e = e; r.m = m; r.y = lerp(m.py, m.y, ctx.alpha);
     }
     for (const a of s.anim) {
       if (off(a)) continue;

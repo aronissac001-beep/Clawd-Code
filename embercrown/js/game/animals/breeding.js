@@ -19,7 +19,7 @@ import { def } from '../colony/defs.js';
 import { bump } from '../colony/ledger.js';
 import { addChron } from '../colony/chronicle.js';
 import { spawn as spawnItem, stacksOn, consume } from '../work/items.js';
-import { atCap, spawnAnimal, animTile, herdRec } from './spawn.js';
+import { atCap, spawnAnimal, animTile, animVoxel, herdRec } from './spawn.js';
 import { penZones, penRoom, penTiles } from './pens.js';
 
 export const BREED = Object.freeze({ adultD: 3, permille: 350, deepcold: 3 });
@@ -54,7 +54,7 @@ export const productReady = (a) => productsDue(a).some((x) => !LAY.has(x.k));
 export function takeProduct(s, a) {
   const due = productsDue(a).filter((x) => !LAY.has(x.k));
   const i = animTile(a);
-  for (const x of due) { if (def('item', x.k)) spawnItem(s, x.k, null, 0, x.n, i % W, (i / W) | 0); a.st.prod[x.k] = 0; }
+  for (const x of due) { if (def('item', x.k)) spawnItem(s, x.k, null, 0, x.n, i % W, (i / W) | 0, D > 1 ? { z: a.z | 0 } : {}); a.st.prod[x.k] = 0; }
   return due.length;
 }
 
@@ -69,7 +69,7 @@ export function breedingSystem(s) {
     const p = a.st.prod || (a.st.prod = {});
     for (const x of d.products) {
       p[x.k] = (p[x.k] | 0) + 1;
-      if (LAY.has(x.k) && p[x.k] >= x.everyD && def('item', x.k)) { const i = animTile(a); spawnItem(s, x.k, null, 0, x.n, i % W, (i / W) | 0); p[x.k] = 0; }
+      if (LAY.has(x.k) && p[x.k] >= x.everyD && def('item', x.k)) { const i = animTile(a); spawnItem(s, x.k, null, 0, x.n, i % W, (i / W) | 0, D > 1 ? { z: a.z | 0 } : {}); p[x.k] = 0; }
     }
   }
   // births, pen by pen and kind by kind (pens by id, kinds in data order)
@@ -86,7 +86,7 @@ export function breedingSystem(s) {
       const room = penRoom(s, z.id), size = (def('animal', k) || {}).size | 0 || 1;
       if (room.used + size > room.cap) continue;
       if (nextU32(s, 'main') % 1000 >= BREED.permille) continue;
-      const mom = adults[0], i = animTile(mom);
+      const mom = adults[0], i = animVoxel(mom);
       const baby = spawnAnimal(s, k, i % W, ((i % PLANE) / W) | 0, { ...(D > 1 ? { z: (i / PLANE) | 0 } : {}), tame: true, pen: z.id, age: 0, st: { mode: 'graze', until: s.tick + 200, target: null } });
       if (!baby) continue;
       herdRec(s).born++;

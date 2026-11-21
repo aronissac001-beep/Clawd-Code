@@ -876,3 +876,11 @@ body.has-levels.land .ec-guide { left: calc(var(--sa-l) + 60px); }
 /* the level controls and the opened minimap draw over the coach card; in landscape the card stops above them */
 body.has-levels .ec-levels, body.has-levels .ec-minimap { z-index: 10; }
 body.has-levels.land .ec-guide { max-height: calc(100% - var(--sa-t) - var(--top) - var(--sa-b) - 112px); overflow-y: auto; }
+/* landscape intro cards (Z1fix): wider, the two buttons stacked at the right of the text, so a card fits the
+   844 x 335 world with no scroll (the depth card scrolled its buttons below the fold) */
+body.land .ec-intro { width: min(540px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - 200px)); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: start; }
+body.land .ec-intro .ec-guide-head { grid-column: 1 / -1; }
+body.land .ec-intro .ec-guide-t { grid-column: 1; grid-row: 2; }
+body.land .ec-intro .ec-guide-how { grid-column: 1; grid-row: 3; }
+body.land .ec-intro .ec-intro-row { grid-column: 2; grid-row: 2 / span 2; flex-direction: column; flex-wrap: nowrap; margin-right: 6px; }
+body.land .ec-intro .ec-intro-row .ec-guide-go { margin-top: 0; }

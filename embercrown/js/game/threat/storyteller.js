@@ -36,6 +36,13 @@
 //     (tier, season, cooldown, requires), never before day RULES.smallFromDay and never within 24 h
 //     of a queued major. Each is scheduled with its own warning lead (0: no warning) at its hour.
 //   - Choice letters expire into their default answer (letters.js).
+//
+// Stage Z2 (step Z2.10, F26: every threat has a cause; causes.js): a hostile incident is eligible only
+// while a live cause allows it, and its pick weight is its data weight times its causes' summed weight
+// (causes.js causedWeight). A scheduled hostile entry carries entry.cause = [kind, subject] and entry.why
+// (the cause line, filled at scheduling); the omen letter (here for non-raid omens; warnings.omenText for
+// raids) ends with it, and an arrival is written to the Annals with it (only once s.legend exists: the
+// legend records are dark until the colony index wires them). Non-hostile incidents need no cause.
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY, dayOf, seasonOf } from '../core/time.js';
 import { BUS } from '../core/bus.js';
@@ -51,6 +58,8 @@ import { ensureRaid, spawnRaid, raidById, setStage } from './raiders.js';
 import { dueNemeses, incidentFor, nemesisById } from './nemesis.js';
 import { warningBonusH } from '../defence/towers.js';
 import { sendLetter, expireLetters, fillText } from './letters.js';
+import { causedWeight, causeWeight, causeFor, causeLine, causesHour, needsCause, withCause } from './causes.js';
+import { legendEvent } from '../colony/legends.js';
 
 const T = () => bal('threat');
 /** Storyteller tuning (balance.js THREAT), with the 9.1 numbers when a key is missing. */
@@ -75,6 +84,11 @@ export function scheduleIncident(s, incId, warnTick, arriveTick, init = {}) {
   if (!inc) throw new Error(`storyteller: unknown incident ${incId}`);
   const a = ceilHour(arriveTick), w = Math.min(a, ceilHour(warnTick));
   const e = newEntry(nextId(s, 'raid'), incId, w, a, { cast: selectCast(s, inc.cast), ...init });
+  if (stage2() && needsCause(inc) && !e.cause) {
+    const nem = e.nem !== undefined && e.nem !== null ? nemesisById(s, e.nem) : null;
+    const c = causeFor(s, inc, nem) || causeFor(s, inc);
+    if (c) { e.cause = c; e.why = causeLine(s, c); }
+  }
   s.st.queue.push(e);
   s.st.queue.sort((x, y) => x.arriveTick - y.arriveTick || x.id - y.id);
   return e;
@@ -123,6 +137,7 @@ export function eligible(s, d) {
   const lg = logicOf(d.id);
   if (lg && lg.requires && !lg.requires(s)) return false;
   if (d.requires && !d.requires(s)) return false;
+  if (stage2() && needsCause(d) && causeWeight(s, d) <= 0) return false;   // F26: no cause, no incident
   return true;
 }
 /** Major incidents the colony can get now (tier, season, cooldown, requires), in data order. */
@@ -169,7 +184,7 @@ export function scheduleMajor(s) {
   if (stage2()) {
     for (const n of dueNemeses(s)) { const d = incidentDef(incidentFor(n)); if (d && eligibleNem(s, d)) { inc = d; nem = n; break; } }
   }
-  if (!inc) inc = pickWeighted(s, eligibleMajors(s));
+  if (!inc) inc = pickWeighted(s, eligibleMajors(s), stage2() ? (d) => causedWeight(s, d) : null);
   if (!inc) return null;
   const K = storyTuning(), sd = storytellerDef(s);
   const w = (sd && sd.warnH) || inc.warnH || [12, 24];
@@ -190,7 +205,7 @@ export function scheduleMajor(s) {
   s.st.lastMajorArrive = arrive;
   return e;
 }
-/** A nemesis-led major ignores the incident cooldown, not the tier. */
+/** A nemesis-led major ignores the incident cooldown, not the tier (its grievance is its cause). */
 function eligibleNem(s, d) { return stageAllows(d) && tierIndex(d.minTier) <= s.colony.tier; }
 
 /** The hourly major check (9.1 Scheduling). */
@@ -262,7 +277,7 @@ export function smallCheck(s) {
   for (const slot of ['minor', 'boon']) {
     if (!p[slot].includes(day)) continue;
     if (slot === 'minor' && majorWithin(s, TICKS_PER_DAY)) { const k = p[slot].indexOf(day); if (day + 1 < (p.block + 1) * RULES.blockD && !p[slot].includes(day + 1)) p[slot][k] = day + 1; continue; }
-    const inc = pickWeighted(s, eligibleSmall(s, slot), slot === 'boon' ? smallHoldWeight(s) : null);
+    const inc = pickWeighted(s, eligibleSmall(s, slot), slot === 'boon' ? smallHoldWeight(s) : (d) => causedWeight(s, d));
     if (inc) out.push(scheduleSmall(s, inc));
   }
   return out;
@@ -273,7 +288,8 @@ export function smallCheck(s) {
 function omenLetter(s, e, inc) {
   const hours = Math.max(0, Math.ceil((e.arriveTick - s.tick) / TICKS_PER_HOUR));
   const t = variants(inc.letter)[0] || '';
-  sendLetter(s, 'omen', { inc: inc.id, text: fillText(t, { hours, edge: e.side ? ({ n: 'north', e: 'east', s: 'south', w: 'west' })[e.side] : 'far' }), data: { entry: e.id } });
+  const text = fillText(t, { hours, edge: e.side ? ({ n: 'north', e: 'east', s: 'south', w: 'west' })[e.side] : 'far' });
+  sendLetter(s, 'omen', { inc: inc.id, text: withCause(text, e.why), data: { entry: e.id, ...(e.cause ? { cause: e.cause } : {}) } });
 }
 function advance(s, e) {
   const inc = incidentDef(e.inc), hostile = isHostile(inc), warned = e.warnTick < e.arriveTick;
@@ -297,6 +313,7 @@ function advance(s, e) {
   const lg = logicOf(e.inc);
   if (lg && lg.start) lg.start(s, e);
   else if (hostile) spawnRaid(s, e);
+  if (e.why && inc && inc.cat === 'major') annalsArrival(s, e, inc);
   if (inc && !hostile) {
     const h = s.st.history;
     h.push({ inc: inc.id, cat: inc.cat, day: dayOf(s.tick), result: 'happened', deaths: 0, downed: false, after: [] });
@@ -305,11 +322,20 @@ function advance(s, e) {
   return true;
 }
 
+/** The Annals line of a major's arrival with its cause (2.10); only once the legend records exist. */
+function annalsArrival(s, e, inc) {
+  if (typeof s.legend !== 'string') return;
+  const nem = e.nem !== undefined && e.nem !== null ? 'm' + (e.nem >>> 0).toString(36) : null;
+  legendEvent(s, inc.id === 'siege' ? 'siege' : 'raid', [nem], `${incidentName(inc)} came. ${e.why}`);
+}
+const incidentName = (inc) => { const n = String(inc.id).replace(/_/g, ' '); return n[0].toUpperCase() + n.slice(1); };
+
 /** Tick system (slot 'storyteller'). */
 export function storytellerSystem(s) {
   if (s.tick % TICKS_PER_HOUR !== 0) return;
   const st = s.st;
   if (s.tick % TICKS_PER_DAY === 0) st.tension = Math.max(0, st.tension - storyTuning().tensionDecayPerDay);
+  if (stage2()) causesHour(s);
   majorCheck(s);
   if (s.tick % TICKS_PER_DAY === RULES.smallHour * TICKS_PER_HOUR) smallCheck(s);
   if (stage2()) expireLetters(s);

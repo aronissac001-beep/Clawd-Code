@@ -19,6 +19,7 @@
 //   Gutterkin (9.8): payGutterkin(s) takes 200 coins and halves their raids for a season
 //   (gutterkinRaidPct, for H's storyteller weights).
 
+import { noteTradeOut } from './offices.js';
 import { registerApplier } from '../core/commands.js';
 import { emit } from '../core/events.js';
 import { nextU32 } from '../core/rand.js';
@@ -163,7 +164,7 @@ export function tradeCmd(s, c) {
   if (chk.why) return { ok: false, reason: chk.why };
   const v = visitById(s, c.visitId), t = def('trader', v.trader);
   const [x, y] = dropSpot(s);
-  for (const g of c.sell || []) { takeGoods(s, g, g.n); const st = v.stock.find((e) => e.k === g.k && e.m === (g.m ?? null)); if (st) st.n += g.n; else v.stock.push({ k: g.k, m: g.m ?? null, q: g.q | 0, n: g.n }); }
+  for (const g of c.sell || []) { takeGoods(s, g, g.n); noteTradeOut(s, g.k, g.m ?? null, g.n); /* Z2: a Keep mandate broken */ const st = v.stock.find((e) => e.k === g.k && e.m === (g.m ?? null)); if (st) st.n += g.n; else v.stock.push({ k: g.k, m: g.m ?? null, q: g.q | 0, n: g.n }); }
   for (const g of c.buy || []) {
     let left = g.n;
     for (const e of v.stock) { if (left <= 0) break; if (e.k !== g.k || (g.m !== undefined && g.m !== null && e.m !== g.m)) continue; const n = Math.min(left, e.n); e.n -= n; left -= n; spawn(s, e.k, e.m, e.q | 0, n, x, y); }

@@ -5,7 +5,7 @@ import { setMapSize, allocLayers, LAYERS, TER, N, W, H, D, zS, idx, DEFAULT_MAP 
 import { initStreams, seedOf } from './rand.js';
 import {
   STATE_VERSION, newColonyRecord, newStoryRecord, newIdCounters, toPlain, colonyToPlain, storyToPlain,
-  checkEntity, COLLECTIONS, ROOT_KEYS, DEPTH_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
+  checkEntity, COLLECTIONS, ROOT_KEYS, DEPTH_KEYS, OPTIONAL_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
 } from './schema.js';
 import { legacyChoices, settleChoice, settledChronEntry } from '../people/perklegacy.js';
 import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from './rtcontract.js';
@@ -223,7 +223,7 @@ export function nextId(s, kind) { const v = s.next[kind]; s.next[kind] = v + 1; 
 export function checkState(s) {
   const errs = [];
   for (const k of ROOT_KEYS) if (!(k in s)) errs.push(`root.${k} missing`);
-  for (const k of Object.keys(s)) if (k !== 'rt' && !ROOT_KEYS.includes(k) && !DEPTH_KEYS.includes(k)) errs.push(`root.${k} not in schema`);
+  for (const k of Object.keys(s)) if (k !== 'rt' && !ROOT_KEYS.includes(k) && !DEPTH_KEYS.includes(k) && !OPTIONAL_KEYS.includes(k)) errs.push(`root.${k} not in schema`);
   if ('d' in s && (!Number.isInteger(s.d) || s.d < 2 || !Number.isInteger(s.zS) || s.zS < 0 || s.zS >= s.d)) errs.push('root.d / root.zS');
   if (s.v !== STATE_VERSION) errs.push(`v ${s.v} != ${STATE_VERSION}`);
   if (!Number.isInteger(s.tick) || s.tick < 0) errs.push('tick');
@@ -272,6 +272,7 @@ export function entitiesJSON(s) {
     col: col('col', 'col'), items: col('items', 'items'), bld: col('bld', 'bld'), zones: col('zones', 'zones'),
     anim: col('anim', 'anim'), foes: col('foes', 'foes'), raids: col('raids', 'raids'), rel: s.rel, chron: s.chron,
     rt: Object.fromEntries(savedKeys(raidLive(s)).map((k) => [k, s.rt[k]])),
+    ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),
   });
 }
 /** 64-bit (two FNV-1a lanes) hex hash of the whole saved state by value, including the saved runtime. */

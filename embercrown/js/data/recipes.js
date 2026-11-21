@@ -8,6 +8,8 @@
 // simple meal, the bloomery's three smelts and the forge's pick and spear (roast waits for meat, Stage 2).
 // Stage 2 (14.8 row G, 6.4): the base recipes of every Camp, Hamlet and Village bench; the smelts
 // take any smelting fuel ({ cat: 'fuel' }: coal or charcoal). Specialisation recipes are Stage 3.
+// Z2.9 (F27): the furniture that was rank-gated as a structure (double bed, bunk, long table, infirmary
+// bed, cradle) is paced by its maker's skill instead (minSkill 2-4); the sarcophagus and tapestry already were.
 export const DATA = {
   recipe: [
     // ---- Carpenter's bench (Woodcraft) ----
@@ -56,11 +58,11 @@ export const DATA = {
     { id: 'make_cot', name: 'Cot', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'cot', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 60, minSkill: 0, quality: true, tech: 'carpentry', xp: 600, stage: '2' },
     { id: 'make_doublebed', name: 'Double bed', bench: ['carpenter'], in: [{ k: 'wood', n: 60 }], out: [{ k: 'doublebed', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 180, minSkill: 0, quality: true, tech: 'carpentry', xp: 1800, stage: '2' },
+      skill: 'woodcraft', work: 180, minSkill: 3, quality: true, tech: 'carpentry', xp: 1800, stage: '2' },
     { id: 'make_bunk', name: 'Bunk', bench: ['carpenter'], in: [{ k: 'wood', n: 50 }], out: [{ k: 'bunk', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 160, minSkill: 0, quality: true, tech: 'carpentry', xp: 1600, stage: '2' },
+      skill: 'woodcraft', work: 160, minSkill: 2, quality: true, tech: 'carpentry', xp: 1600, stage: '2' },
     { id: 'make_longtable', name: 'Long table', bench: ['carpenter'], in: [{ k: 'wood', n: 60 }], out: [{ k: 'longtable', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 150, minSkill: 0, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
+      skill: 'woodcraft', work: 150, minSkill: 3, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
     { id: 'make_stool', name: 'Stool', bench: ['carpenter'], in: [{ k: 'wood', n: 8 }], out: [{ k: 'stool', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 25, minSkill: 0, quality: true, tech: 'carpentry', xp: 250, stage: '2' },
     { id: 'make_bench', name: 'Bench', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'bench', n: 1, matFrom: 0 }],
@@ -72,9 +74,9 @@ export const DATA = {
     { id: 'make_endtable', name: 'End table', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'endtable', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 50, minSkill: 0, quality: true, tech: 'carpentry', xp: 500, stage: '2' },
     { id: 'make_cradle', name: 'Cradle', bench: ['carpenter'], in: [{ k: 'wood', n: 25 }], out: [{ k: 'cradle', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 70, minSkill: 0, quality: true, tech: 'carpentry', xp: 700, stage: '2' },
+      skill: 'woodcraft', work: 70, minSkill: 4, quality: true, tech: 'carpentry', xp: 700, stage: '2' },
     { id: 'make_medbed', name: 'Infirmary bed', bench: ['carpenter'], in: [{ k: 'wood', n: 40 }, { k: 'cloth', n: 10 }], out: [{ k: 'medbed', n: 1, matFrom: 0 }],
-      skill: 'woodcraft', work: 150, minSkill: 0, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
+      skill: 'woodcraft', work: 150, minSkill: 3, quality: true, tech: 'carpentry', xp: 1500, stage: '2' },
     { id: 'make_club', name: 'Club', bench: ['carpenter'], in: [{ k: 'wood', n: 10 }], out: [{ k: 'club', n: 1, matFrom: 0 }],
       skill: 'woodcraft', work: 30, minSkill: 0, quality: true, tech: 'carpentry', xp: 300, stage: '2' },
     { id: 'make_woodshield', name: 'Wooden shield', bench: ['carpenter'], in: [{ k: 'wood', n: 20 }], out: [{ k: 'woodshield', n: 1, matFrom: 0 }],
@@ -92,9 +94,9 @@ export const DATA = {
     { id: 'stone_shelf', name: 'Stone shelf', bench: ['mason'], in: [{ cat: 'blocks', n: 25 }], out: [{ k: 'shelf', n: 1, matFrom: 0 }],
       skill: 'masonry', work: 70, minSkill: 0, quality: false, tech: 'masonry', xp: 700, stage: '2' },
     { id: 'stone_doublebed', name: 'Stone double bed', bench: ['mason'], in: [{ cat: 'blocks', n: 60 }], out: [{ k: 'doublebed', n: 1, matFrom: 0 }],
-      skill: 'masonry', work: 180, minSkill: 0, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
+      skill: 'masonry', work: 180, minSkill: 3, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
     { id: 'stone_longtable', name: 'Stone long table', bench: ['mason'], in: [{ cat: 'blocks', n: 70 }], out: [{ k: 'longtable', n: 1, matFrom: 0 }],
-      skill: 'masonry', work: 180, minSkill: 0, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
+      skill: 'masonry', work: 180, minSkill: 3, quality: true, tech: 'masonry', xp: 1800, stage: '2' },
     { id: 'stone_stool', name: 'Stone stool', bench: ['mason'], in: [{ cat: 'blocks', n: 10 }], out: [{ k: 'stool', n: 1, matFrom: 0 }],
       skill: 'masonry', work: 30, minSkill: 0, quality: true, tech: 'masonry', xp: 300, stage: '2' },
     { id: 'make_sarcophagus', name: 'Sarcophagus', bench: ['mason'], in: [{ cat: 'blocks', n: 60 }], out: [{ k: 'sarcophagus', n: 1, matFrom: 0 }],
@@ -267,5 +269,70 @@ export const DATA = {
       skill: 'art', work: 300, minSkill: 12, quality: true, tech: 'jewellery', xp: 3000, stage: '2' },
     { id: 'copy_book', name: 'Copy a book', bench: ['scriptorium'], in: [{ k: 'cloth', mat: 'linen', n: 10 }, { k: 'charcoal', n: 2 }], out: [{ k: 'book', n: 1 }],
       skill: 'lore', work: 300, minSkill: 4, quality: true, xp: 3000, stage: '2', text: 'Linen pages and charcoal ink: joy to read, and a prize for traders.' },
+    // ---- Stage Z2.4 (EMBERCROWN-FORTRESS.md 3.7, appended): the new chains for depth (base benches) ----
+    // Glass: sand > glass > lenses and lanterns
+    { id: 'grind_lens', name: 'Lens', bench: ['glassworks'], in: [{ k: 'glass', n: 4 }], out: [{ k: 'lens', n: 1 }],
+      skill: 'woodcraft', work: 60, minSkill: 4, quality: false, tech: 'glassblowing', xp: 600, stage: '2', text: 'Ground and polished: survey lenses and observatory parts.' },
+    { id: 'make_glass_lantern', name: 'Glass lantern', bench: ['glassworks'], in: [{ k: 'glass', n: 3 }, { cat: 'ingots', n: 1 }], out: [{ k: 'glasslantern', n: 1 }],
+      skill: 'woodcraft', work: 50, minSkill: 2, quality: false, tech: 'glassblowing', xp: 500, stage: '2' },
+    // Clay: storage urns (bricks and pottery are the Stage 2 recipes)
+    { id: 'make_storage_urn', name: 'Storage urn', bench: ['potter'], in: [{ k: 'clay', n: 12 }], out: [{ k: 'urn', n: 1 }],
+      skill: 'masonry', work: 80, minSkill: 2, quality: true, tech: 'pottery', xp: 800, stage: '2', text: 'Food stored in a sealed urn rots half as fast.' },
+    // Lye and soap: ash + tallow
+    { id: 'render_ash', name: 'Wood ash', bench: ['charkiln'], in: [{ k: 'wood', n: 10 }], out: [{ k: 'ash', n: 8 }],
+      skill: 'woodcraft', work: 30, minSkill: 0, quality: false, tech: 'charcoal', xp: 300, stage: '2', waitH: 4, text: 'Burnt to ash for the apothecary\'s lye.' },
+    { id: 'make_lye', name: 'Lye', bench: ['apothecary'], in: [{ k: 'ash', n: 6 }], out: [{ k: 'lye', n: 2 }],
+      skill: 'medicine', work: 40, minSkill: 0, quality: false, tech: 'herbalism', xp: 400, stage: '2' },
+    { id: 'make_soap', name: 'Soap', bench: ['apothecary'], in: [{ k: 'lye', n: 1 }, { k: 'tallow', n: 4 }], out: [{ k: 'soap', n: 4 }],
+      skill: 'medicine', work: 50, minSkill: 2, quality: false, tech: 'herbalism', xp: 500, stage: '2', text: 'An infirmary with soap in it stays cleaner.' },
+    // Shell and bone: small crafts for traders
+    { id: 'carve_bonecraft', name: 'Bone craft', bench: ['carpenter'], in: [{ k: 'bone', n: 8 }], out: [{ k: 'bonecraft', n: 2 }],
+      skill: 'art', work: 60, minSkill: 2, quality: true, xp: 600, stage: '2', text: 'Combs, beads and pins carved from bone.' },
+    // (the fungus brews, shell crafts and the forge, tannery and loom add-on recipes are STAGED below)
+    // ---- Stage Z2.4: recipes of the surviving add-ons (addon: the add-on row lists them; js/data/addons.js) ----
+    { id: 'melt_weapons', name: 'Melt down weapons', bench: ['bloomery', 'blastfurnace'], in: [{ cat: 'weapons', n: 1 }, { cat: 'fuel', n: 2 }], out: [{ k: 'ingot', n: 6, matFrom: 0 }],
+      skill: 'smithing', work: 40, minSkill: 2, quality: false, tech: 'bloomery', addon: 'slag_pit', xp: 400, stage: '3', text: 'Scrap weapons back into ingots of their metal.' },
+    { id: 'melt_armour', name: 'Melt down armour', bench: ['bloomery', 'blastfurnace'], in: [{ cat: 'armour', n: 1 }, { cat: 'fuel', n: 2 }], out: [{ k: 'ingot', n: 8, matFrom: 0 }],
+      skill: 'smithing', work: 50, minSkill: 2, quality: false, tech: 'bloomery', addon: 'slag_pit', xp: 500, stage: '3', text: 'Reaver plate back into ingots of its metal.' },
+    { id: 'make_electrum', name: 'Electrum', bench: ['bloomery', 'blastfurnace'], in: [{ k: 'ingot', mat: 'silver', n: 3 }, { k: 'ingot', mat: 'gold', n: 3 }, { cat: 'fuel', n: 2 }], out: [{ k: 'ingot', n: 6, mat: 'electrum' }],
+      skill: 'smithing', work: 80, minSkill: 8, quality: false, tech: 'smelting', addon: 'alloy_crucible', xp: 800, stage: '3' },
+    { id: 'make_embersteel', name: 'Embersteel', bench: ['forge', 'bloomery', 'blastfurnace'], in: [{ k: 'ingot', mat: 'steel', n: 6 }, { k: 'embersalts', n: 4 }], out: [{ k: 'ingot', n: 5, mat: 'embersteel' }],
+      skill: 'smithing', work: 120, minSkill: 12, quality: false, tech: 'steel', addon: 'ember_forge', xp: 1200, stage: '3', text: 'Only at an ember forge: no fuel, the pool is the fire.' },
+    { id: 'brew_calming_tea', name: 'Calming tea', bench: ['apothecary'], in: [{ k: 'herbs', n: 3 }], out: [{ k: 'calmingtea', n: 2 }],
+      skill: 'medicine', work: 30, minSkill: 4, quality: false, tech: 'herbalism', addon: 'herbalist', xp: 300, stage: '3' },
+    { id: 'make_burial_urn', name: 'Burial urn', bench: ['potter', 'kiln'], in: [{ k: 'clay', n: 10 }, { cat: 'fuel', n: 1 }], out: [{ k: 'burialurn', n: 1 }],
+      skill: 'masonry', work: 90, minSkill: 6, quality: true, tech: 'pottery', addon: 'glazing_kiln', xp: 900, stage: '3' },
+    { id: 'fire_keystones', name: 'Keystone bricks', bench: ['kiln'], in: [{ k: 'clay', n: 12 }, { cat: 'fuel', n: 1 }], out: [{ k: 'keystone', n: 16, mat: 'brick' }],
+      skill: 'masonry', work: 70, minSkill: 6, quality: false, tech: 'pottery', addon: 'vault_kiln', xp: 700, stage: '3', text: 'Wedge bricks for a brick vault.' },
+  ],
+};
+
+// Stage Z2.4 recipes STAGED with their items (js/data/items.js STAGED: in traded categories, they would change caravan
+// stock): G moves them into DATA.recipe, and their add-ons' rows (js/data/addons.js STAGED) into DATA.addon, at the
+// Z2 switch. Every row validates with the staged items (renown.test).
+export const STAGED = {
+  recipe: [
+    { id: 'carve_shellcraft', name: 'Shell craft', bench: ['carpenter'], in: [{ k: 'shell', n: 4 }], out: [{ k: 'bonecraft', n: 3 }],
+      skill: 'art', work: 60, minSkill: 4, quality: true, xp: 600, stage: '3', text: 'Inlay and beads of shellback shell.' },
+    { id: 'dimroot_wort', name: 'Dimroot ale wort', bench: ['brewery'], in: [{ k: 'dimroot', n: 14 }], out: [{ k: 'alewort', n: 1 }],
+      skill: 'cooking', work: 60, minSkill: 0, quality: false, tech: 'brewing', xp: 600, stage: '3', text: 'Ale wort from cave tubers: casked like any ale.' },
+    { id: 'glowcap_spirit', name: 'Glowcap spirit', bench: ['brewery'], in: [{ k: 'glowcap', n: 10 }], out: [{ k: 'glowspirit', n: 4 }],
+      skill: 'cooking', work: 60, minSkill: 4, quality: false, tech: 'brewing', xp: 600, stage: '3', waitH: 24, text: 'Steeped a day, then stilled.' },
+    { id: 'forge_warpick', name: 'War pick', bench: ['forge'], in: [{ cat: 'ingots', n: 20 }], out: [{ k: 'warpick', n: 1, matFrom: 0 }],
+      skill: 'smithing', work: 170, minSkill: 10, quality: true, tech: 'smithing', addon: 'war_smith', xp: 1700, stage: '3' },
+    { id: 'forge_glaive', name: 'Glaive', bench: ['forge'], in: [{ cat: 'ingots', n: 22 }, { k: 'wood', n: 10 }], out: [{ k: 'glaive', n: 1, matFrom: 0 }],
+      skill: 'smithing', work: 190, minSkill: 10, quality: true, tech: 'smithing', addon: 'war_smith', xp: 1900, stage: '3' },
+    { id: 'forge_brigandine', name: 'Brigandine', bench: ['forge'], in: [{ cat: 'ingots', n: 24 }, { cat: 'cloth', n: 20 }], out: [{ k: 'brigandine', n: 1, matFrom: 0 }],
+      skill: 'smithing', work: 200, minSkill: 8, quality: true, tech: 'smithing', addon: 'armourer_stand', xp: 2000, stage: '3' },
+    { id: 'forge_emberward', name: 'Emberward coat', bench: ['forge'], in: [{ k: 'shell', n: 10 }, { k: 'embersalts', n: 6 }], out: [{ k: 'emberward', n: 1, mat: 'shell' }],
+      skill: 'smithing', work: 220, minSkill: 10, quality: true, tech: 'smithing', addon: 'armourer_stand', xp: 2200, stage: '3', text: 'Ignores Sweltering and ember splash.' },
+    { id: 'forge_emberhood', name: 'Emberward hood', bench: ['forge'], in: [{ k: 'shell', n: 4 }, { k: 'embersalts', n: 2 }], out: [{ k: 'emberhood', n: 1, mat: 'shell' }],
+      skill: 'smithing', work: 90, minSkill: 8, quality: true, tech: 'smithing', addon: 'armourer_stand', xp: 900, stage: '3' },
+    { id: 'harden_lamellar', name: 'Leather lamellar', bench: ['tannery'], in: [{ k: 'leather', n: 12 }], out: [{ k: 'lamellar', n: 1, mat: 'leather' }],
+      skill: 'tailoring', work: 140, minSkill: 6, quality: true, tech: 'tanning', addon: 'hardening_vat', xp: 1400, stage: '3' },
+    { id: 'shell_lamellar', name: 'Shell lamellar', bench: ['tannery'], in: [{ k: 'shell', n: 10 }, { k: 'leather', n: 4 }], out: [{ k: 'lamellar', n: 1, mat: 'shell' }],
+      skill: 'tailoring', work: 160, minSkill: 8, quality: true, tech: 'tanning', addon: 'hardening_vat', xp: 1600, stage: '3', text: 'Armour from the deep.' },
+    { id: 'weave_silk', name: 'Spidersilk', bench: ['loom'], in: [{ k: 'silk', n: 10 }], out: [{ k: 'cloth', n: 8, mat: 'spidersilk' }],
+      skill: 'tailoring', work: 50, minSkill: 4, quality: false, tech: 'weaving', addon: 'silk_frame', xp: 500, stage: '3', text: 'Fine cloth: half the work of linen, thanks to the frame.' },
   ],
 };

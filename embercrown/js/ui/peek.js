@@ -133,8 +133,8 @@ export function peekContent(ctx, sel) {
     let sub = buildingStatus(s, b);
     if (b.st === 'done' && hasFlag(d, 'door') && (hasFlag(d, 'lockable') || b.link !== null)) { try { sub = `${GATE_WORD[gateMode(s, b)] || 'Closed'}${b.link !== null && b.link !== undefined ? ' · linked to a lever' : ''}`; } catch (_) { /* before Stage 2 */ } }
     if (b.st === 'done' && (hasFlag(d, 'lever') || hasFlag(d, 'plate'))) { try { const n = linksOf(s, b.id).length; const m = mechState(s, b.id); sub = `${n} linked${hasFlag(d, 'lever') ? ` · holds them ${(GATE_WORD[m] || 'closed').toLowerCase()}` : ''}`; } catch (_) { /* before Stage 2 */ } }
-    if (burning(s, idx(b.x, b.y))) sub = 'On fire! · ' + sub;
-    const rw = b.st === 'done' && !hasFlag(d, 'wall') && !hasFlag(d, 'door') ? roomWord(s, idx(b.x, b.y)) : null;
+    if (burning(s, idx(b.x, b.y, b.z | 0))) sub = 'On fire! · ' + sub;
+    const rw = b.st === 'done' && !hasFlag(d, 'wall') && !hasFlag(d, 'door') ? roomWord(s, idx(b.x, b.y, b.z | 0)) : null;
     if (rw) sub = `${sub} · ${rw}`;
     const head = h('div.ec-peek-head', null, h('span.ec-peek-ic', { html: icon(defIcon(d)) }),
       h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: bldName(b, d) })), h('div.ec-peek-sub', { text: sub })));

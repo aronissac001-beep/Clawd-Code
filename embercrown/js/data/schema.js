@@ -95,7 +95,7 @@ export const PLACE_NEEDS = Object.freeze(['shore', 'underground', 'roofed', 'roc
 // linkable (B's mechanisms, 7.8: a lever or plate drives linked lockable gates and linkable traps), storage
 // (holds stacks: see `store`), workplace (no bills: a work spot), pen (an animal enclosure), burial.
 export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'prestige', 'trophy', 'grave', 'light',
-  'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial']);
+  'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial', 'arrival']);
 export const APPAREL_SLOTS = Object.freeze(['body', 'outer', 'head', 'feet', 'hands', 'trinket']);
 export const ITEM_TAGS = Object.freeze(['seed', 'fuel', 'medicine', 'tool', 'weapon', 'ranged', 'unique', 'installable', 'art', 'trade', 'corpse', 'deep', 'component', 'feed']);
 export const FOOD_KINDS = Object.freeze(['raw', 'meal', 'drink', 'preserved']);
@@ -232,7 +232,7 @@ export const SCHEMAS = {
   structure: {
     fields: { id: id(), name: str(), cat: oneOf(STRUCT_GROUPS), kind: oneOf(STRUCT_KINDS), size: size(), cost: opt(stock()),
       costByMat: opt(list(obj({ cat: ref('itemCat'), n: int(1, 1000) }), 1, 4)), item: opt(ref('item')), work: opt(int(0, 100000)),
-      hp: opt(int(1, 100000)), tech: opt(ref('tech')), tier: ref('tier'), claim: opt(bool()), claimR: opt(int(1, 40)),
+      hp: opt(int(1, 100000)), tech: opt(ref('tech')), tier: opt(ref('tier')), band: opt(ref('tier')), claim: opt(bool()), claimR: opt(int(1, 40)),
       needs: opt(list(oneOf(PLACE_NEEDS))), beauty: opt(int(-20, 50)), comfort: opt(pct(0, 300)), light: opt(light()), heat: opt(int(0, 1000)),
       roomRole: opt(ref('room')), cap: opt(int(1, 16)),
       workbench: opt(obj({ workType: ref('work'), addons: opt(refs('addon')), workplace: opt(bool()),
@@ -611,7 +611,11 @@ function stage2Checks(reg, errors, warnings, stg) {
   const tierIx = (id) => { const t = reg.get('tier', id); return t ? t.i : -1; };
   const eraTier = (techId) => { const t = reg.get('tech', techId); const e = t && reg.get('era', t.era); return e ? tierIx(e.tier) : -1; };
   for (const s of reg.all('structure')) {
-    if (s.tech && eraTier(s.tech) > tierIx(s.tier)) errors.push(`structure '${s.id}': tier ${s.tier} but its tech '${s.tech}' opens at a later tier`);
+    // Z2.9 (F27): a structure's rank is a `band` label; a `tier` gate is kept only on a row flagged `arrival`.
+    if (s.tier && !(s.flags || []).includes('arrival')) errors.push(`structure '${s.id}': a tier gate needs the 'arrival' flag (F27); use band`);
+    const band = s.band || s.tier;
+    if (!band) errors.push(`structure '${s.id}': needs a band`);
+    else if (s.tech && eraTier(s.tech) > tierIx(band)) errors.push(`structure '${s.id}': band ${band} but its tech '${s.tech}' opens at a later tier`);
     for (const [i, l] of (s.levels || []).entries()) if (l.tech && l.tier && eraTier(l.tech) > tierIx(l.tier)) errors.push(`structure '${s.id}' levels[${i}]: tech '${l.tech}' opens after tier ${l.tier}`);
     const wb = s.workbench;
     if (wb && !wb.workplace && !reg.all('recipe').some((r) => (r.bench || []).includes(s.id))) warnings.push(`structure '${s.id}': a workbench with no recipe (mark it workplace if it has none)`);

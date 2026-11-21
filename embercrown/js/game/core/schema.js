@@ -237,6 +237,11 @@ export const ROOT_KEYS = Object.freeze(['v', 'id', 'name', 'seed', 'w', 'h', 'ti
  * zS (the surface level). A D = 1 state has neither, so its saves and hashes are Stage 2.9's.
  */
 export const DEPTH_KEYS = Object.freeze(['d', 'zS']);
+/**
+ * Optional root keys (Z2): `legend`, the Annals records (colony/legends.js, one compact string), created on the
+ * first hourly legend pass. Saved and hashed only while non-empty, so a state without records keeps its bytes.
+ */
+export const OPTIONAL_KEYS = Object.freeze(['legend']);
 
 export function newColonyRecord() {
   return {

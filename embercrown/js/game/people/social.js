@@ -12,6 +12,7 @@ import { ensurePeople, putKey, getKey, peopleRec, hash3, emitIf } from './people
 import { satisfy } from './needs.js';
 import { addThought } from './mood.js';
 import { roomInfo } from '../world/rooms.js';
+import { chatPct } from './personality.js';
 
 export const REL_KINDS = Object.freeze(['kin', 'friend', 'rival', 'lover', 'spouse']);
 export const FRIEND_OP = 40, RIVAL_OP = -40, PAIR_SPAN = 1024;
@@ -99,7 +100,8 @@ export function socialSystem(s) {
     if ((a.id * 37) % TICKS_PER_HOUR !== slot || !social(a)) continue;
     for (const b of s.col) {
       if (b === a || !social(b) || Math.abs(a.x - b.x) > R || Math.abs(a.y - b.y) > R) continue;
-      if (hash3(a.id, b.id, s.tick) % 1000 < SO.chatPermille) chat(s, a, b);
+      // Z2 (3.2): Sociability scales the chance, x(1 + 0.15 f) of the one who starts the talk
+      if (hash3(a.id, b.id, s.tick) % 1000 < Math.floor((SO.chatPermille * chatPct(s, a)) / 100)) chat(s, a, b);
       break;
     }
   }

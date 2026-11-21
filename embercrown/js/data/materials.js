@@ -2,7 +2,7 @@
 // hp, work and value are integer percents of the base def (100 = x1.0); beauty is added.
 // Stage 1a: stone and wood; 1b: metals. Stage 2 (Camp to Village, 14.8): bronze, silver and gold,
 // cloth (linen, wool), hide (leather, fur), the six gems, brick, and the two cavern and old-tree woods.
-// Lumensteel and spidersilk come with the Hold tier (Stage 3).
+// Lumensteel comes with the Underdeep (Z3). Stage Z2.4: shankwood, spidersilk, shell, electrum, embersteel.
 export const DATA = {
   material: [
     { id: 'wood', name: 'Wood', group: 'wood', hp: 100, work: 100, beauty: 1, value: 100, tags: ['flammable', 'fuel'], tint: '#9a6b3f' },
@@ -34,5 +34,16 @@ export const DATA = {
     { id: 'emerald', name: 'Emerald', group: 'gem', hp: 100, work: 100, beauty: 12, value: 5500, tint: '#2f8a52' },
     { id: 'ruby', name: 'Ruby', group: 'gem', hp: 100, work: 100, beauty: 14, value: 7000, tint: '#b3263a' },
     { id: 'heartstone', name: 'Heartstone', group: 'gem', hp: 100, work: 100, beauty: 20, value: 12000, tags: ['glows', 'fuel'], fuelD: 10, tint: '#e2552e' },
+    // ---- Stage Z2.4 (EMBERCROWN-FORTRESS.md 3.7, appended): the deep chains' materials ----
+    // shankwood: greyshank felled in Cavern I (Z2.7's plant), a wood with no surface (beauty 1 below plain wood)
+    { id: 'shankwood', name: 'Shankwood', group: 'wood', hp: 90, work: 100, beauty: 0, value: 90, tags: ['flammable', 'fuel'], tint: '#7a7f74' },
+    // spidersilk: spun on a Silk frame (the Silkhouse add-on) from the silk of tamed cave spiders
+    { id: 'spidersilk', name: 'Spidersilk', group: 'cloth', hp: 150, work: 110, beauty: 3, value: 450, tags: ['flammable'], insul: 110, armour: 115, tint: '#e4e2da' },
+    // shell: shellback plates from the butcher (a hide-group material: lamellar, ember-proof gear)
+    { id: 'shell', name: 'Shell', group: 'hide', hp: 160, work: 120, beauty: 2, value: 260, insul: 80, armour: 140, tint: '#8f7f62' },
+    // electrum: silver and gold at the Alloyer's crucible; keeps silver's bite against the Hollow
+    { id: 'electrum', name: 'Electrum', group: 'metal', hp: 90, work: 100, beauty: 5, value: 1500, tags: ['hollowbane'], vsHollow: 120, tint: '#d9c27a' },
+    // embersteel: steel and ember salts, made only at an ember forge (built beside an ember pool)
+    { id: 'embersteel', name: 'Embersteel', group: 'metal', hp: 260, work: 160, beauty: 3, value: 1400, tags: ['glows'], tint: '#c4553a' },
   ],
 };

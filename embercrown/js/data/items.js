@@ -222,6 +222,25 @@ export const DATA = {
     // ---- Corpses ----
     { id: 'carcass', name: 'Carcass', cat: 'corpses', stack: 1, mass: 30, value: 20, tags: ['corpse', 'unique'], art: 'skull', text: 'A slain animal. A butcher cuts it into meat, hide, bone and tallow.' },
     { id: 'corpse', name: 'Corpse', cat: 'corpses', stack: 1, mass: 60, value: 0, tags: ['corpse', 'unique'], art: 'skull', text: 'Bury the dead, or they may rise as Husks.' },
+    // ---- Stage Z2.4 (EMBERCROWN-FORTRESS.md 3.7, appended): the deep chains and the surviving add-ons ----
+    // (the chain items in traded categories, and the forge add-ons' gear, are STAGED below)
+    // Ember salts: steel and ember salts make embersteel at an ember forge
+    { id: 'embersalts', name: 'Ember salts', cat: 'ore', stack: 50, mass: 1, value: 30, tags: ['deep'], art: 'flame', text: 'A crust from the ember layer. Steel and ember salts make embersteel at an ember forge.' },
+    // Lye and soap
+    { id: 'ash', name: 'Ash', cat: 'parts', stack: 75, mass: 1, value: 1, tags: ['component'], art: 'flame', text: 'Wood ash from the charcoal kiln. The apothecary leaches lye from it.' },
+    { id: 'lye', name: 'Lye', cat: 'parts', stack: 25, mass: 1, value: 6, tags: ['component'], art: 'eye', text: 'Leached from ash. With tallow it makes soap.' },
+    { id: 'soap', name: 'Soap', cat: 'parts', stack: 25, mass: 1, value: 10, tags: ['component'], art: 'heart', text: 'An infirmary stocked with soap is kept half as dirty again.' },
+    // Glass and clay
+    { id: 'lens', name: 'Lens', cat: 'glass', stack: 25, mass: 0, value: 40, tags: ['component'], art: 'eye', text: 'Ground glass: survey lenses and observatory parts.' },
+    { id: 'glasslantern', name: 'Glass lantern', cat: 'parts', stack: 10, mass: 1, value: 45, tags: ['component'], art: 'beacon', text: 'A glazed lantern: lantern posts and light mirrors take them.' },
+    { id: 'urn', name: 'Storage urn', cat: 'furniture', stack: 1, mass: 8, value: 120, tags: ['unique'], art: 'crate', text: 'A sealed clay urn: food stored in it rots half as fast.' },
+    { id: 'burialurn', name: 'Burial urn', cat: 'furniture', stack: 1, mass: 6, value: 160, tags: ['unique'], art: 'skull', text: 'A glazed urn for the ashes of the dead: a crypt slot without a sarcophagus.' },
+    { id: 'keystone', name: 'Keystone bricks', cat: 'parts', stack: 50, mass: 1, value: 10, mat: 'stone', tags: ['component'], art: 'wall', text: 'Wedge bricks from the vault kiln: a brick vault is built of them.' },
+    // Shell and bone crafts
+    { id: 'bonecraft', name: 'Bone and shell craft', cat: 'goods', stack: 10, mass: 1, value: 60, tags: ['trade'], art: 'trophy', text: 'Combs, beads and carved shell: small goods for traders.' },
+    // The Herbalist's set
+    { id: 'calmingtea', name: 'Calming tea', cat: 'parts', stack: 10, mass: 1, value: 15, shelfD: 30, tags: ['component'], art: 'heart',
+      text: 'The herbalist\'s tea: handed to a sulking or binging colonist, it ends a minor break.' },
   ],
   zonePreset: [
     { id: 'all', name: 'All', cats: ['raw', 'materials', 'food', 'medicine', 'apparel', 'weapons', 'armour', 'tools', 'furniture', 'art', 'gems', 'coins', 'goods'], pri: 1,
@@ -239,5 +258,34 @@ export const DATA = {
     { id: 'worker', name: 'Worker', allow: ['apparel', 'tools'] },
     { id: 'soldier', name: 'Soldier', allow: ['apparel', 'armour', 'weapons'] },
     { id: 'any', name: 'Any' },
+  ],
+};
+
+// Stage Z2.4 items STAGED for the Z2 switch (G moves them into DATA.item when the gate re-baselines): each is in a
+// category a trader sells (rawfood, drink, fibre, animal, weapons, armour), and a new kind there changes caravan
+// stock, so the v2 fixtures' continuation hashes. Every row validates against the item schema (renown.test).
+export const STAGED = {
+  item: [
+    // Fungus brewing: drink for a hold that never sees the sun (dimroot ale is ale brewed from dimroot wort)
+    { id: 'dimroot', name: 'Dimroot', cat: 'rawfood', stack: 75, mass: 1, value: 5, shelfD: 15, food: { kind: 'raw', nutr: 3 }, tags: ['deep'], art: 'food',
+      text: 'A pale cave tuber. Edible raw; a brewery makes ale wort of it.' },
+    { id: 'glowspirit', name: 'Glowcap spirit', cat: 'drink', stack: 25, mass: 1, value: 22, shelfD: 120, food: { kind: 'drink', nutr: 1, joy: 8 }, tags: ['trade', 'deep'], art: 'food',
+      text: 'Glowcaps steeped and stilled: a faint light in the cup.' },
+    // Silk and shell: the deep's cloth and armour
+    { id: 'silk', name: 'Spider silk', cat: 'fibre', stack: 50, mass: 1, value: 12, tags: ['deep'], art: 'farm', text: 'Spun by tamed cave spiders on a Silk frame. A loom weaves it into spidersilk.' },
+    { id: 'shell', name: 'Shell plates', cat: 'animal', stack: 25, mass: 2, value: 14, mat: 'hide', tags: ['deep'], art: 'shield', text: 'Cut from a shellback by the butcher: lamellar and ember-proof gear.' },
+    // The forge's add-ons: the Weaponsmith's master set, the Armourer's stand (ember-proof gear), the hardening vat
+    { id: 'warpick', name: 'War pick', cat: 'weapons', stack: 1, mass: 3, value: 700, mat: 'metal', tags: ['weapon', 'unique'], weapon: { dmg: 13, speed: 90, reach: 10, mods: [{ key: 'dmg.armour', op: 'pct', value: 25 }] }, art: 'pick',
+      text: 'A smith-master\'s pick for war: it punches through plate.' },
+    { id: 'glaive', name: 'Glaive', cat: 'weapons', stack: 1, mass: 4, value: 900, mat: 'metal', tags: ['weapon', 'unique'], weapon: { dmg: 14, speed: 85, reach: 15 }, art: 'sword',
+      text: 'A blade on a pole: strikes from the second rank.' },
+    { id: 'brigandine', name: 'Brigandine', cat: 'armour', stack: 1, mass: 8, value: 1500, mat: 'metal', slot: 'outer', wear: { armour: 24, insul: 3 }, tags: ['unique'], art: 'shield',
+      text: 'Plates riveted inside cloth: refitted from what raiders leave behind.' },
+    { id: 'lamellar', name: 'Lamellar', cat: 'armour', stack: 1, mass: 7, value: 900, mat: 'hide', slot: 'outer', wear: { armour: 20, insul: 2 }, tags: ['unique'], art: 'shield',
+      text: 'Laced plates of hardened leather or shellback shell.' },
+    { id: 'emberward', name: 'Emberward coat', cat: 'armour', stack: 1, mass: 8, value: 1600, mat: 'hide', slot: 'outer', wear: { armour: 18, insul: 0 }, tags: ['unique', 'deep'], art: 'shield',
+      text: 'Shell plates sealed with ember salts: its wearer ignores Sweltering and ember splash.' },
+    { id: 'emberhood', name: 'Emberward hood', cat: 'armour', stack: 1, mass: 2, value: 600, mat: 'hide', slot: 'head', wear: { armour: 10, insul: 0 }, tags: ['unique', 'deep'], art: 'shield',
+      text: 'The coat\'s hood: the face kept from the ember\'s breath.' },
   ],
 };
