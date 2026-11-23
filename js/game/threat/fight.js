@@ -47,15 +47,20 @@ import { foeStats, affixPct, WEAPONS, COMBAT } from './stats.js';
 import { startOrder, holdHere } from './orders.js';
 import { def, all } from './defs.js';
 import { coverAt, towerOf } from '../defence/towers.js';
+import { shotClear } from '../defence/vertical.js';
 import { RIFT } from './rift.js';
 import { didDeed } from '../people/coldeeds.js';
 import { closeRift } from './raids2.js';
 
 const TW = 32;
 const d2 = (a, b) => (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
-/** Line of sight on one level: combat happens on the same z (Z1; archers firing down through open air are Z3). */
+/** Line of sight on one level: blows and foes' shots happen on the same z. */
 const losZ = (s, a, b, side) => (a.z | 0) === (b.z | 0) && losClear(s, a.x, a.y, b.x, b.y, side, 0, a.z | 0);
-const inReach = (s, a, b, reach) => d2(a, b) <= reach * reach && losZ(s, a, b, SIDE.HOS);
+/** Z3.2: a colonist's shot also passes fortification walls and goes across up to 2 levels through open air
+ * or murder holes (defence/vertical.js); the level gap counts a tile per level in the reach. */
+const d3 = (a, b) => { const dz = ((a.z | 0) - (b.z | 0)) * TW; return d2(a, b) + dz * dz; };
+const shotLos = (s, a, b) => shotClear(s, a, b, () => losZ(s, a, b, SIDE.HOS));
+const inReach = (s, a, b, reach, shot = false) => (shot ? d3(a, b) <= reach * reach && shotLos(s, a, b) : d2(a, b) <= reach * reach && losZ(s, a, b, SIDE.HOS));
 const roll100 = (s) => nextU32(s, 'combat') % 100;
 
 const KIND_OF = Object.freeze({ club: 'blunt', maul: 'blunt', spear: 'stab', dagger: 'stab', shortbow: 'stab', longbow: 'stab', crossbow: 'stab', halberd: 'cut', axe: 'cut', sword: 'cut' });
@@ -170,14 +175,14 @@ function foesStrike(s) {
 }
 
 // ---- 2. Drafted colonists ------------------------------------------------------------------------
-function nearestFoe(s, col, from, tiles, reach = 0) {
+function nearestFoe(s, col, from, tiles, reach = 0, shot = false) {
   let best = null, bd = Infinity;
   const r = reach || tiles * TW;
   for (const f of s.foes) {
     if (!foeActive(s, f)) continue;
-    const dd = d2(from, f);
+    const dd = shot ? d3(from, f) : d2(from, f);
     if (dd > r * r || dd >= bd) continue;
-    if (!losZ(s, col, f, SIDE.HOS)) continue;
+    if (!(shot ? shotLos(s, col, f) : losZ(s, col, f, SIDE.HOS))) continue;
     bd = dd; best = f;
   }
   return best;
@@ -211,7 +216,7 @@ function colonistFights(s, col) {
     const f = foeById(s, job.foe);
     if (!f || !foeActive(s, f)) { holdHere(s, col); return; }
     if (f.kind === 'rift' && stage2() && channel(s, col, f)) return;
-    if (inReach(s, col, f, w.reach)) { if (swingNow) swing(s, col, f, w); return; }
+    if (inReach(s, col, f, w.reach, !!w.ranged)) { if (swingNow) swing(s, col, f, w); return; }
     const near = d2(col, f) <= (COMBAT.chaseTiles * TW) ** 2 && losZ(s, col, f, SIDE.HOS);
     if (near) {
       if (!standing(col)) startOrder(s, col, 'attack', { id: f.id, kind: 'foe' }, true);
@@ -220,13 +225,13 @@ function colonistFights(s, col) {
     return;
   }
   if (!standing(col)) {   // walking a Move (or Retreat) order: strike what comes into reach, keep walking
-    const f = nearestFoe(s, col, col, 0, w.reach);
+    const f = nearestFoe(s, col, col, 0, w.reach, !!w.ranged);
     if (f && swingNow) swing(s, col, f, w);
     return;
   }
   // Hold, Guard, Retreat (or a Move that has arrived): job.hx, job.hy is the spot
   const spot = { x: job.hx, y: job.hy };
-  const f = nearestFoe(s, col, col, 0, w.reach);
+  const f = nearestFoe(s, col, col, 0, w.reach, !!w.ranged);
   if (f) { if (swingNow) swing(s, col, f, w); return; }
   if (job.order === 'retreat' || w.ranged) return;   // sheltering, or an archer: no stepping out
   const guard = job.order === 'guard';

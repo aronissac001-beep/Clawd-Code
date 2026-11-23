@@ -16,6 +16,7 @@ import { W, H, tileOfW, cheb } from '../core/grid.js';
 import { footprint } from '../world/pass.js';
 import { structDef, hasFlag } from '../world/defs.js';
 import { COMBAT } from '../threat/stats.js';
+import { onPerch } from './vertical.js';
 
 export const TOWER_DEFS = Object.freeze(['tower', 'platform', 'stonetower']);
 export const isTower = (b) => !!b && b.st === 'done' && TOWER_DEFS.includes(b.def);
@@ -26,7 +27,8 @@ const modOf = (d, key) => { let v = 0; for (const m of (d && d.mods) || []) if (
 /** Is colonist c beside building b's footprint? */
 function beside(s, c, b) {
   const x = tileOfW(c.x), y = tileOfW(c.y);
-  for (const i of footprint(s, b)) if (cheb(x, y, i % W, (i / W) | 0) <= 1) return true;
+  const P = W * H;
+  for (const i of footprint(s, b)) if (((i / P) | 0) === (c.z | 0) && cheb(x, y, i % W, ((i % P) / W) | 0) <= 1) return true;
   return false;
 }
 /** The tower colonist c mans now: { b, range } or null (drafted, beside it, within its cap by id). */
@@ -45,17 +47,17 @@ const COVER_FLAGS = ['wall'];
 /** Percent of ranged hits that land on colonist c (100 in the open). */
 export function coverAt(s, c) {
   if (towerOf(s, c)) return COMBAT.towerCoverPct;
-  const x = tileOfW(c.x), y = tileOfW(c.y);
+  const x = tileOfW(c.x), y = tileOfW(c.y), base = (c.z | 0) * W * H;
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     const xx = x + dx, yy = y + dy;
     if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-    const id = s.rt.occ[yy * W + xx];
+    const id = s.rt.occ[base + yy * W + xx];
     const b = id >= 0 ? s.bld[id] : null;
     if (!b || b.st !== 'done') continue;
     const d = structDef(b.def);
     if (b.def === 'barricade' || b.def === 'embrasure' || (d && COVER_FLAGS.some((f) => hasFlag(d, f)))) return COMBAT.coverPct;
   }
-  return 100;
+  return onPerch(s, c) ? COMBAT.coverPct : 100;   // Z3.2: a cavern ledge or chasm lip
 }
 /** Does a tower's centre face edge `side` (lie in that half of the map)? */
 function faces(b, side) {
