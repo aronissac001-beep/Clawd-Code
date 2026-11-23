@@ -21,10 +21,13 @@
 //   refugees        2-5 wounded newcomers: accepting them brings a reaver warband in 1-2 days
 //   herd_passing    6-12 deer come in at an edge (K's wild animals)
 //   lost_cache      a crate of goods by an edge road; starfall: a lumenite-bright crater with gems
+//   (Z3.1, D > 1)   cavern_pack: an opened cavern's pack up its deep passages (raids2 beast logic, raidplan entry);
+//                   lamplost_thieves: thieves up the Mere passage (raids2 thief logic); lamplost_trade: the Lamplost
+//                   leave 2 of their goods (glowcap spirit, fish, gems) at the Hearth. All three need their cavern opened.
 
 import { headCount } from '../people/family.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
-import { W, H, N, TER, ROOF, PLANE, D } from '../core/grid.js';
+import { W, H, N, TER, ROOF, PLANE, D, zS } from '../core/grid.js';
 import { nextU32 } from '../core/rand.js';
 import { colById } from '../core/state.js';
 import { toPlain, fromPlain } from '../core/schema.js';
@@ -38,9 +41,10 @@ import { tremor } from '../world/support.js';
 import { setTerrain, setPlant } from '../world/terrain.js';
 import { spawn as spawnItem, consume, destroy, stackAt, storeBldAt } from '../work/items.js';
 import { spawnAnimal } from '../animals/spawn.js';
-import { registerIncidentLogic, incidentDef } from './incidents.js';
+import { registerIncidentLogic, incidentDef, logicOf } from './incidents.js';
 import { sendLetter, textOf, onChoice } from './letters.js';
 import { edgeTile, deepestTile } from './raidplan.js';
+import { cavernOpened, openedCaverns, passagesOf } from './causes.js';
 import { def, all, bal } from './defs.js';
 import { onStoryHour, scheduleIncident } from './storyteller.js';
 
@@ -226,7 +230,9 @@ const HERD = L({
   },
 });
 const CACHE_GOODS = Object.freeze([['coins', null, 20, 60], ['bandage', null, 3, 6], ['ration', null, 8, 16], ['ingot', 'iron', 4, 10], ['cloth', 'linen', 10, 20]]);
-function dropNear(s, k, m, n) { if (!def('item', k)) return; const [x, y] = near(s); spawnItem(s, k, m, 0, n, x + (nextU32(s, 'story') % 5) - 2, y + 2); }
+// (Z3.1 fix) at D > 1 the goods land on the Hearth's level, not level 0
+const hearthZ = (s) => { const hb = s.colony.hearth.id !== null ? s.bld[s.colony.hearth.id] : null; return hb ? hb.z | 0 : zS; };
+function dropNear(s, k, m, n) { if (!def('item', k)) return; const [x, y] = near(s); spawnItem(s, k, m, 0, n, x + (nextU32(s, 'story') % 5) - 2, y + 2, D > 1 ? { z: hearthZ(s) } : {}); }
 const CACHE = L({
   start(s) {
     for (let k = 0; k < 2; k++) { const g = CACHE_GOODS[nextU32(s, 'story') % CACHE_GOODS.length]; dropNear(s, g[0], g[1], roll(s, g[2], g[3])); }
@@ -259,10 +265,42 @@ function disHour(s) {
   }
 }
 
+// ---- the deep (Z3.1) ------------------------------------------------------------------------------------------
+/** A deep incident's logic: the requirement (D > 1, its cavern opened, a passage to come up) and the raid logic of
+ *  `base` (looked up when it runs, so the install order does not matter). */
+function deepLogic(base, requires) {
+  const b = () => logicOf(base) || {};
+  return L({
+    requires,
+    start: (s, e) => (b().start ? b().start(s, e) : null),
+    tick: (s, r) => { if (b().tick) b().tick(s, r); },
+    end: (s, r, res) => { if (b().end) b().end(s, r, res); },
+  });
+}
+// (no RNG draw: eligibility is asked every hour)
+const hasPassage = (s, cav) => passagesOf(s, cav).some((v) => s.rt.walkCost[v] !== 0);
+const PACK = deepLogic('manhunters', (s) => D > 1 && openedCaverns(s).some((cav) => hasPassage(s, cav)));
+const LAMP_THIEVES = deepLogic('thieves', (s) => D > 1 && cavernOpened(s, 'mere') && hasPassage(s, 'mere'));
+const LAMP_GOODS = Object.freeze([['glowspirit', 'glowcap spirit', 4, 8], ['fish', 'blindfish', 10, 20], ['gem', 'pale gems', 1, 3]]);
+const LAMP_TRADE = L({
+  requires: (s) => D > 1 && cavernOpened(s, 'mere'),
+  start(s) {
+    const got = [];
+    for (let k = 0; k < 2; k++) {
+      const g = LAMP_GOODS[nextU32(s, 'story') % LAMP_GOODS.length];
+      if (!def('item', g[0])) continue;
+      dropNear(s, g[0], null, roll(s, g[2], g[3]));
+      if (!got.includes(g[1])) got.push(g[1]);
+    }
+    note(s, 'lamplost_trade', { goods: got.join(' and ') || 'nothing' }, 'minor');
+    return null;
+  },
+});
+
 export function installEvents2() {
   const L2 = { brawl: BRAWL, hollow_whisper: WHISPER, fire: FIRE, blight_surge: SURGE, crop_blight: CROP_BLIGHT, grey_cough: COUGH, deep_tremor: TREMOR,
     cold_snap: COLD, drought: DROUGHT, flood: FLOOD, vermin: VERMIN, ember_gutter: GUTTER, wanderer: WANDERER, migrants: MIGRANTS, refugees: REFUGEES,
-    herd_passing: HERD, lost_cache: CACHE, starfall: STARFALL };
+    herd_passing: HERD, lost_cache: CACHE, starfall: STARFALL, cavern_pack: PACK, lamplost_thieves: LAMP_THIEVES, lamplost_trade: LAMP_TRADE };
   for (const id of Object.keys(L2)) registerIncidentLogic(id, L2[id]);
   onStoryHour(disHour);
 }

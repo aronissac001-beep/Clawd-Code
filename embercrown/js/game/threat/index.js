@@ -43,6 +43,7 @@ export * as sappers from './sappers.js';
 export * as warnings from './warnings.js';
 export * as stats from './stats.js';
 export * as beasts from './beasts/index.js';
+import { installBeasts } from './beasts/index.js';
 export { setThreatContent } from './defs.js';
 
 const has = (slot, name) => tickSystems().some((x) => x.slot === slot && x.name === name);
@@ -66,6 +67,7 @@ export function installThreat({ storyteller = false, raids = true, commands = tr
     installEvents2();
     installNemesis();
     installAftermath();
+    installBeasts();   // Z3.3: great beasts (weight 0: only their causes schedule them)
   }
   if (commands) { installOrderCommands(); installLetterCommand(); }
 }

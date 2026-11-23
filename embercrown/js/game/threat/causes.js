@@ -11,7 +11,10 @@
 //   hunger     the Hollow's hunger: always present, heavier as the Hearth grows
 //   winter     Deepcold, the end of Ashfall, the start of Thaw, and a cold snap
 //   carrion    (Z2b) raw meat, fish, carcasses and corpses in the hold (beasts any time of year)
-//   seep       the deep breach's own condition (raids2 BREACH_LOGIC.requires: a tunnel near the seep, or Hold)
+//   seep       D = 1: the deep breach's own condition (raids2 BREACH_LOGIC.requires); D > 1 (Z3.1): a woken seep, a
+//              found voxel within seepR tiles planar and nearDz levels of a seep row, or the Hold rank
+//   opened_cavern  (Z3.1, D > 1) a cavern a colonist has stood in (its level legend): subject hollows | mere | reach
+//   near_lair  (Z3.1, D > 1) a found voxel within lairR tiles planar and nearDz levels of a lair row: 'lair:<voxel>'
 // Renown leans every weight (colony/renown.js causeLean: Trade x1.5 rumour, Arms x1.25 grievance).
 // Both lists are saved story state (plain JSON in s.st), so a load continues them exactly (F25, C13). The
 // list is sorted by kind order (data order), then subject.
@@ -30,7 +33,10 @@ import { fillText } from './letters.js';
 import { fullName, incidentFor } from './nemesis.js';
 import { weatherKind } from '../world/weather.js';
 import { causeLean } from '../colony/renown.js';
-import { prehistoryOf, foundVoxel } from '../colony/legends.js';
+import { prehistoryOf, foundVoxel, legendOf } from '../colony/legends.js';
+import { W, H, D, zS, PLANE } from '../core/grid.js';
+import { GEN3 } from '../../data/worldgen.js';
+import { pristineOf } from '../save/pristine.js';
 
 export const CAUSE_KINDS = Object.freeze(DATA.cause.map((c) => c.id));
 const ROW = Object.freeze(Object.fromEntries(DATA.cause.map((c) => [c.id, c])));
@@ -117,6 +123,58 @@ function winterWeight(s) {
 }
 const leaned = (s, kind, w) => (w > 0 ? Math.max(1, Math.floor((w * causeLean(s, kind)) / 100)) : 0);
 
+// ---- the deep (Z3.1; D > 1) ------------------------------------------------------------------------------------
+const CAVE_NAME = Object.freeze(Object.fromEntries((DATA.cavern || []).map((c) => [c.id, c.name])));
+export const DEEP_CAVERNS = Object.freeze(['hollows', 'mere', 'reach']);
+/** The levels of each cavern: { hollows: [floor, ledge], mere: [floor, ledge], reach: [floor] } ({} at D = 1). */
+export function cavernZs() {
+  if (D === 1) return {};
+  const out = {};
+  for (const id of DEEP_CAVERNS) {
+    const C = GEN3.caverns[id];
+    const zs = [C.floor, C.ledge].filter((r) => r !== undefined).map((r) => zS + r).filter((z) => z >= 0 && z < D);
+    if (zs.length) out[id] = zs;
+  }
+  return out;
+}
+/** The cavern whose levels hold z, or null. */
+export function cavernAtZ(z) { const c = cavernZs(); for (const id of DEEP_CAVERNS) if (c[id] && c[id].includes(z)) return id; return null; }
+const b36 = (n) => (n >>> 0).toString(36);
+/** Has the hold opened cavern id (a colonist has stood on one of its levels: the level legend)? */
+export function cavernOpened(s, id) { const zs = cavernZs()[id]; return !!zs && zs.some((z) => !!legendOf(s, 'l' + b36(z))); }
+/** The opened caverns, in DEEP_CAVERNS order. */
+export const openedCaverns = (s) => DEEP_CAVERNS.filter((id) => cavernOpened(s, id));
+/** The pristine meta's dormant rows of a kind (or kinds): [[kind, voxel, seed]] in row order. */
+export function dormantRows(s, kinds) {
+  const p = pristineOf(s), rows = (p && p.meta && p.meta.dormant) || [], ks = Array.isArray(kinds) ? kinds : [kinds];
+  return rows.filter((r) => Array.isArray(r) && ks.includes(r[0]));
+}
+/** Is a found (fog-revealed) voxel within r tiles planar and dz levels of voxel v? */
+export function nearFound(s, v, r, dz) {
+  const fog = s.L && s.L.fog;
+  if (!fog) return false;
+  const z0 = (v / PLANE) | 0, p = v - z0 * PLANE, x0 = p % W, y0 = (p / W) | 0;
+  for (let z = Math.max(0, z0 - dz); z <= Math.min(D - 1, z0 + dz); z++) {
+    for (let y = Math.max(0, y0 - r); y <= Math.min(H - 1, y0 + r); y++) {
+      const row = z * PLANE + y * W;
+      for (let x = Math.max(0, x0 - r); x <= Math.min(W - 1, x0 + r); x++) { const i = row + x; if ((fog[i >> 3] >> (i & 7)) & 1) return true; }
+    }
+  }
+  return false;
+}
+/** The woken seeps (seep rows near a found voxel), in row order: [voxel]. */
+export const wokenSeeps = (s) => (D === 1 ? [] : dormantRows(s, 'seep').filter((r) => nearFound(s, r[1], K.seepR, K.nearDz)).map((r) => r[1]));
+/** The seeps a breach may use: the woken ones, else (the Hold rank) every seep row. */
+export function breachSeeps(s) {
+  const w = wokenSeeps(s);
+  return w.length ? w : (s.colony.tier | 0) >= 3 ? dormantRows(s, 'seep').map((r) => r[1]) : [];
+}
+/** The lairs the hold has dug near (lair and lair_colossus rows): [voxel]. */
+export const nearLairs = (s) => (D === 1 ? [] : dormantRows(s, ['lair', 'lair_colossus']).filter((r) => nearFound(s, r[1], K.lairR, K.nearDz)).map((r) => r[1]));
+/** A cavern's deep passages (passage rows on its levels): [voxel]. */
+export function passagesOf(s, cav) { const zs = cavernZs()[cav] || []; return dormantRows(s, 'passage').map((r) => r[1]).filter((v) => zs.includes((v / PLANE) | 0)); }
+export const cavernName = (id) => CAVE_NAME[id] || 'the deep';
+
 /** The live causes now (pure in s): [[kind, subject, weight]], sorted by kind order then subject. */
 export function computeCauses(s) {
   const out = [];
@@ -138,9 +196,14 @@ export function computeCauses(s) {
   // half (carrionFromDay: a three-colonist camp butchering its first deer is not yet a lure)
   const cn = carrionOf(s);
   if (dayOf(s.tick) >= K.carrionFromDay && cn >= K.carrionMin) add('carrion', 'carrion', Math.min(K.carrionMax, 1 + Math.floor((cn - K.carrionMin) / K.carrionStep)));
-  // a woken seep
-  const br = logicOf('deep_breach');
-  if (br && br.requires && br.requires(s)) add('seep', 'seep', 4);
+  // a woken seep (Z3.1 at D > 1: near a seep row, or the Hold rank)
+  if (D > 1) { if (breachSeeps(s).length) add('seep', 'seep', K.seepW); }
+  else { const br = logicOf('deep_breach'); if (br && br.requires && br.requires(s)) add('seep', 'seep', K.seepW); }
+  // (Z3.1) opened caverns and lairs dug near
+  if (D > 1) {
+    for (const id of openedCaverns(s)) add('opened_cavern', id, K.cavernW);
+    for (const v of nearLairs(s)) add('near_lair', 'lair:' + v, K.lairW);
+  }
   out.sort((a, b) => kindOrder(a[0]) - kindOrder(b[0]) || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   return out;
 }
@@ -209,6 +272,8 @@ export function causeLine(s, cause) {
   if (kind === 'winter') return t(weatherKind(s) === 'coldsnap' ? 'cause_winter_snap' : 'cause_winter');
   if (kind === 'seep') return t('cause_seep');
   if (kind === 'carrion') return t('cause_carrion');
+  if (kind === 'opened_cavern') return t('cause_cavern', { cavern: cavernName(subject) });
+  if (kind === 'near_lair') return t('cause_lair');
   const r = ROW[kind];
   return r ? t(r.line) : '';
 }

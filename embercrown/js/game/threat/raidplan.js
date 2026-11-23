@@ -24,6 +24,7 @@ import { bal, def, all } from './defs.js';
 import { EDGES, incidentDef } from './incidents.js';
 import { foeStats } from './stats.js';
 import { nemesisById } from './nemesis.js';
+import { breachSeeps, passagesOf, openedCaverns, dormantRows } from './causes.js';
 
 /** Defence adjustment percent from the last majors in s.st.history (9.2). */
 export function defenceAdjPct(s) {
@@ -131,6 +132,40 @@ export function goalOf(inc) {
   return 'core';
 }
 
+// ---- the deep (Z3.1; D > 1) -----------------------------------------------------------------------------------
+/** The pack each cavern sends (raider ids; the first is the pack's kind). */
+export const CAVE_PACKS = Object.freeze({ hollows: ['cave_spider'], mere: ['cave_spider'], reach: ['gloom_hound'] });
+/** The deep incidents: they enter through a deep passage of an opened cavern. */
+export const DEEP_INCIDENTS = Object.freeze(['cavern_pack', 'lamplost_thieves']);
+/** The cavern a deep entry comes from: its cause's subject when that is an opened cavern, else a seeded opened one. */
+export function deepCavern(s, entry) {
+  if (entry.inc === 'lamplost_thieves') return 'mere';
+  const op = openedCaverns(s).filter((id) => passagesOf(s, id).some((v) => s.rt.walkCost[v] !== 0)), c = entry.cause;
+  if (c && c[0] === 'opened_cavern' && op.includes(c[1])) return c[1];
+  if (entry.cav && op.includes(entry.cav)) return entry.cav;
+  return op.length ? op[nextU32(s, 'story') % op.length] : null;
+}
+/** The voxel a deep entry comes in at: a passage of its cavern (the Lamplost: the one nearest their camp), or -1
+ *  when that cavern is not open (nothing comes through a passage before its cavern is opened, 2.10). */
+export function deepEntry(s, entry, cav = deepCavern(s, entry)) {
+  if (!cav || !openedCaverns(s).includes(cav)) return -1;
+  const ps = passagesOf(s, cav).filter((v) => s.rt.walkCost[v] !== 0);
+  if (!ps.length) return -1;
+  if (entry.inc === 'lamplost_thieves') {
+    const camp = dormantRows(s, 'lamplost')[0];
+    if (camp) {
+      const cx = camp[1] % W, cy = ((camp[1] % (W * H)) / W) | 0, d = (v) => Math.abs((v % W) - cx) + Math.abs((((v % (W * H)) / W) | 0) - cy);
+      return ps.slice().sort((a, b) => d(a) - d(b) || a - b)[0];
+    }
+  }
+  return ps[nextU32(s, 'story') % ps.length];
+}
+/** The seep a breach comes up through (D > 1): a woken seep (seeded pick), else -1. */
+export function breachEntry(s) {
+  const ss = breachSeeps(s).filter((v) => s.rt.walkCost[v] !== 0);
+  return ss.length ? ss[nextU32(s, 'story') % ss.length] : -1;
+}
+
 /** Plan a raid for a queue entry: budget, composition, edge, goal (RaidPlan, C12). `only`: raider
  *  ids to compose from instead of the incident's pool (the scripted first horde is Husks only, 9.1). */
 export function planRaid(s, entry, pts = threatPoints(s), only = null) {
@@ -140,8 +175,17 @@ export function planRaid(s, entry, pts = threatPoints(s), only = null) {
   const S2 = stage2() && !only;
   const tags = (inc && inc.tags) || [];
   let pool = only ? all('raider').filter((r) => only.includes(r.id)) : raiderPool(inc, s);
+  // (Z3.1) the deep: an opened cavern's pack, or the Lamplost (their own scavengers once G adds them; Gutterkin
+  // thieves' stats until then)
+  const deep = D > 1 && S2 && DEEP_INCIDENTS.includes(entry.inc);
+  let cav = null;
+  if (deep) {
+    cav = deepCavern(s, entry);
+    const ids = entry.inc === 'lamplost_thieves' ? (def('raider', 'lamplost_scav') ? ['lamplost_scav'] : ['gutter_thief']) : CAVE_PACKS[cav] || CAVE_PACKS.hollows;
+    pool = all('raider').filter((r) => ids.includes(r.id));
+  }
   // beasts come as one kind of pack (wolves, boars or spiders); the Hollow hound is not a beast pack
-  if (S2 && tags.includes('beast')) {
+  if (S2 && tags.includes('beast') && !deep) {
     const packs = [['wolf'], ['boar'], ['cave_spider']].filter((p) => pool.some((r) => r.id === p[0]));
     if (packs.length) { const p = packs[nextU32(s, 'story') % packs.length]; pool = pool.filter((r) => p.includes(r.id)); }
   }
@@ -155,19 +199,21 @@ export function planRaid(s, entry, pts = threatPoints(s), only = null) {
     // the elite: the priciest of the pool at x1.6 (the warden affix)
     const top = pool.slice().sort((a, b) => b.pts - a.pts || (a.id < b.id ? -1 : 1))[0];
     lead.push(top.id); left -= Math.floor((top.pts * 16) / 10); aff = ['warden'];
-  } else if (S2 && tags.includes('beast') && budget >= 220 && def('raider', 'great_spider') && pool.some((r) => r.id === 'cave_spider')) {
+  } else if (S2 && tags.includes('beast') && (!deep || cav === 'hollows') && budget >= 220 && def('raider', 'great_spider') && pool.some((r) => r.id === 'cave_spider')) {
     lead.push('great_spider'); left -= def('raider', 'great_spider').pts;
   }
   const { members, spent } = composeRaid(s, pool, Math.max(0, left), Math.max(0, room - lead.length));
   const all_ = lead.concat(members);
   let side = entry.side || EDGES[nextU32(s, 'story') % 4], i = null;
-  if (S2 && tags.includes('breach')) { const d = deepestTile(s); if (d >= 0) { side = 'deep'; i = d; } }
+  if (S2 && tags.includes('breach')) { const d = D > 1 ? breachEntry(s) : deepestTile(s); if (d >= 0) { side = 'deep'; i = d; } }
+  if (deep) { const d = deepEntry(s, entry, cav); if (d >= 0) { side = 'deep'; i = d; } }
   if (i === null) {
     if (side === 'deep') side = 'n';
     i = edgeTile(s, side);
     for (let k = 0; i === null && k < 4; k++) { side = EDGES[k]; i = edgeTile(s, side); }
   }
   const plan = { pts: spent + (budget - Math.max(0, left)), edge: { side, i: i === null ? 0 : i }, goal: goalOf(inc), members: all_, nem: nem ? nem.id : null };
+  if (deep && cav) plan.cav = cav;
   if (lead.length) { plan.lead = 0; if (aff && aff.length) plan.aff = aff; }
   return plan;
 }

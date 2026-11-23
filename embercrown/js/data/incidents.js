@@ -36,6 +36,14 @@ export const DATA = {
       arrive: 'night', tags: ['breach'], cast: { prey: 'wounded' }, after: ['blight_scar'], letter: 'inc_deep_breach' },
     { id: 'siege', cat: 'major', minTier: 'hold', seasons: 'TBA', weight: 0, cooldownD: 20, pts: { min: 600, mult: 120 }, warnH: [24, 36],
       arrive: 'day', tags: ['siege', 'reaver'], after: ['siege_camp'], letter: 'inc_siege' },
+    // ---- Z3.1: the deep (D > 1 only: events2.js DEEP_LOGIC requires an opened cavern; entries in raidplan.js) ----
+    // a pack of an opened cavern's life comes out of its deep passages (cause Opened cavern; the pack by cavern)
+    { id: 'cavern_pack', cat: 'minor', minTier: 'camp', seasons: 'TBAD', weight: 5, cooldownD: 6, pts: { min: 40, mult: 30 }, warnH: [6, 10],
+      arrive: 'any', tags: ['beast'], letter: 'inc_cavern_pack' },
+    // the Lamplost: half their visits trade, half are thieves' raids (2.10); both up the Mere's passage once it is open
+    { id: 'lamplost_thieves', cat: 'minor', minTier: 'camp', seasons: 'TBAD', weight: 3, cooldownD: 10, pts: { min: 40, mult: 30 }, warnH: [6, 10],
+      arrive: 'day', tags: ['thief'], letter: 'inc_lamplost_thieves' },
+    { id: 'lamplost_trade', cat: 'visitor', minTier: 'camp', seasons: 'TBAD', weight: 3, cooldownD: 10, warnH: [0, 0], arrive: 'day', letter: 'inc_lamplost_trade' },
     // ---- Minor threats ----
     { id: 'lone_husks', cat: 'minor', minTier: 'camp', seasons: 'TBAD', weight: 6, cooldownD: 3, pts: { min: 20, mult: 25 }, warnH: [3, 6],
       arrive: 'night', tags: ['hollow'], letter: 'inc_lone_husks' },
@@ -71,6 +79,9 @@ export const DATA = {
     { id: 'inc_reaver_raid', text: 'Ashfang banners on the {edge} road. A reaver warband reaches the hold in {hours} hours.', vars: ['edge', 'hours'] },
     { id: 'inc_hollow_rift', text: 'The grey land to the {edge} is tearing open. A Hollow Rift will wake in {hours} hours.', vars: ['edge', 'hours'] },
     { id: 'inc_deep_breach', text: 'Cold air breathes up from the deepest tunnel. The Hollow will come from below in {hours} hours.', vars: ['hours'] },
+    { id: 'inc_cavern_pack', text: 'Things are stirring in the deep passages. A pack of cavern beasts will come up in {hours} hours.', vars: ['hours'] },
+    { id: 'inc_lamplost_thieves', text: 'Lantern light bobs in the Mere passage. Lamplost scavengers will come for our stores in {hours} hours.', vars: ['hours'] },
+    { id: 'inc_lamplost_trade', text: 'Pale folk with lanterns came up from the Mere and left {goods} for the hold, asking only for news of the sky.', vars: ['goods'] },
     { id: 'inc_lone_husks', text: 'A few Husks drift in from the {edge} in {hours} hours.', vars: ['edge', 'hours'] },
     { id: 'inc_lone_thief', text: 'A Gutterkin sneak was seen to the {edge}. Watch the stores.', vars: ['edge'] },
     { id: 'inc_wolf_pair', text: 'Hungry wolves are circling to the {edge}.', vars: ['edge'] },

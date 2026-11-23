@@ -658,3 +658,61 @@ export function beastLights(kind, e, push) {
     push(e.x, e.y - 70, 1.6 * T, 0.6);
   }
 }
+
+// ---- Generated beasts: the part-based painter (step Z3.3) --------------------------------------------------
+// drawBeast(g, b, x, y, time, opts) paints a generated great beast from its body record (beasts/gen.js: plan,
+// mat, size, attacks) with whole-pixel fillRects only (no paths, no allocation per frame): a body block per
+// plan, limbs, eyes, and material detail. (x, y) is the centre of its footprint in world units; size 2 or 3
+// tiles. opts: { hit (0-1 flash), flee, calm (reduce motion) }. Returns the fillRect count (the render budget
+// check: tools/tests/beasts.test.mjs). drawBeastFoe(g, foe, b, time, calm) draws a beast foe at its position.
+// Palettes are original: [base, shade, light] per material.
+export const BEAST_PAL = Object.freeze({
+  stone: ['#7d7a72', '#53514c', '#a8a49a'], ash: ['#5b5550', '#3a3532', '#8a827a'], glass: ['#7fb8c4', '#4e7f8c', '#d2eef2'],
+  bone: ['#d8ccb0', '#a3967a', '#f2ead6'], ember: ['#b4482a', '#6e2a18', '#f0a050'], fungus: ['#7a8a4a', '#4c5a2c', '#c4d27a'],
+  salt: ['#d6d6cc', '#a2a298', '#f6f6ee'], tar: ['#2e2a2c', '#181618', '#5a5458'],
+});
+const EYE = '#f0d060', EYE_DARK = '#a02c2c';
+function rect(g, c, x, y, w, h) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h))); }
+export function drawBeast(g, b, x, y, time = 0, opts = {}) {
+  const P = BEAST_PAL[b.mat] || BEAST_PAL.stone, S = (b.size || 2) * T, u = S / 16;
+  const bob = opts.calm ? 0 : Math.round(Math.sin(time * 3) * u * 0.5), step = opts.calm ? 0 : ((time * 4) | 0) & 1;
+  const x0 = x - S / 2, y0 = y - S / 2 + bob;
+  const base = opts.hit > 0 ? '#ffffff' : P[0];
+  let n = 0;
+  const R = (c, px, py, w, h) => { rect(g, c, x0 + px * u, y0 + py * u, w * u, h * u); n++; };
+  R('rgba(0,0,0,0.28)', 2, 14, 12, 2);   // shadow
+  switch (b.plan) {
+    case 'serpent': case 'eel':
+      for (let k = 0; k < 6; k++) R(k & 1 ? P[1] : base, 1 + k * 2, 8 + ((k + step) & 1) * 2, 3, 4);
+      R(base, 11, 4, 4, 5); R(P[2], 12, 5, 2, 1); break;
+    case 'manylegged':
+      R(base, 3, 6, 10, 5); R(P[2], 4, 6, 8, 1);
+      for (let k = 0; k < 4; k++) { R(P[1], 3 + k * 3, 11, 1, 3 + ((k + step) & 1)); R(P[1], 3 + k * 3, 3 + ((k + step) & 1), 1, 3); }
+      R(base, 12, 5, 3, 4); break;
+    case 'winged':
+      R(P[1], 0, 3 - step, 6, 5); R(P[1], 10, 3 - step, 6, 5); R(base, 5, 5, 6, 6); R(P[2], 6, 6, 4, 1); R(base, 7, 2, 3, 3); R(P[1], 6, 11, 1, 3); R(P[1], 9, 11, 1, 3); break;
+    case 'toad':
+      R(base, 2, 5, 12, 8); R(P[2], 4, 9, 8, 3); R(P[1], 1, 11, 3, 3); R(P[1], 12, 11, 3, 3); R(base, 4, 3, 3, 3); R(base, 9, 3, 3, 3); break;
+    case 'blob':
+      R(base, 2, 6, 12, 8); R(base, 4, 4, 8, 2); R(P[2], 5, 5, 3, 2); R(P[1], 2, 12, 12, 2); break;
+    case 'giant':
+      R(base, 5, 1, 6, 4); R(P[1], 4, 5, 8, 6); R(P[2], 5, 5, 6, 1); R(base, 2, 5, 2, 6 + step); R(base, 12, 5, 2, 7 - step); R(P[1], 5, 11, 2, 4); R(P[1], 9, 11, 2, 4); break;
+    case 'crab':
+      R(base, 3, 6, 10, 6); R(P[2], 4, 6, 8, 1); R(P[1], 0, 4 + step, 3, 3); R(P[1], 13, 4 + step, 3, 3);
+      for (let k = 0; k < 3; k++) { R(P[1], 3 + k * 4, 12, 1, 2); R(P[1], 4 + k * 4, 12, 1, 2); } break;
+    default:
+      R(base, 3, 4, 10, 9);
+  }
+  // eyes (two), a material detail and the attack tells
+  R(b.attacks && b.attacks.includes('darkness') ? EYE_DARK : EYE, 12, 6, 1, 1); R(b.attacks && b.attacks.includes('darkness') ? EYE_DARK : EYE, 13, 6, 1, 1);
+  if (b.mat === 'glass') R(P[2], 6, 7, 1, 2);
+  else if (b.mat === 'ember') R(step ? '#ffd070' : P[2], 7, 8, 2, 1);
+  else if (b.mat === 'fungus') { R(P[2], 5, 4, 1, 1); R(P[2], 9, 5, 1, 1); }
+  if (b.attacks && b.attacks.includes('breath') && step) R('#ff8a30', 15, 7, 1, 1);
+  if (opts.flee) R('rgba(160,30,30,0.7)', 6, 0, 4, 1);
+  return n;
+}
+/** Draw a beast foe (sim record f with f.st.gb; b its Beast) at its world point. Returns the fillRect count. */
+export function drawBeastFoe(g, f, b, time = 0, calm = false) {
+  return drawBeast(g, b, f.x, f.y, time, { hit: f.hitT || 0, flee: !!(f.st && f.st.flee), calm });
+}

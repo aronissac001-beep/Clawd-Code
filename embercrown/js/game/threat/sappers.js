@@ -7,10 +7,15 @@
 // stone falls as usual). Walls and doors in the way are broken by hp like any smasher (fight.js).
 // The incident: sapper_raid (Village, night, goal 'dig'); its logic is the default raid (spawnRaid),
 // with the delvers' dig step in raiders.js movement.
+// Z3.2 (2.10) dig down: a delver whose goal lies on a lower level and stands over rock cuts a stair down,
+// one level per digTicks of the rock below (stone work x SAPPER_SLOW per level): its voxel becomes
+// STAIR_D (STAIR_UD over an old STAIR_U), the rock below STAIR_U, and it steps down. foe.st.dd = [voxel,
+// ticks] (a foe field: old saves have none, which reads as not digging).
 
-import { mineTile } from '../world/terrain.js';
+import { mineTile, digStair, setTerrain } from '../world/terrain.js';
 import { mineTicks } from '../work/givers/mine.js';
-import { TER } from '../core/grid.js';
+import { TER, PLANE, D } from '../core/grid.js';
+import { isSolidTer } from '../world/vertical.js';
 
 export const SAPPER_SLOW = 4;
 /** Ticks a delver needs to dig rock tile i (4x a miner at speed 1.0). */
@@ -24,5 +29,25 @@ export function digStep(s, f, j) {
   if (f.st.dig[1] < digTicks(s, j)) return false;
   f.st.dig = null;
   mineTile(s, j, null);
+  return true;
+}
+
+/** The voxel a delver at voxel i would cut down into toward goal level gz, or -1 (no need, or not rock). */
+export function downCut(s, i, gz) {
+  if (D <= 1 || i < PLANE || ((i / PLANE) | 0) <= gz) return -1;
+  return isSolidTer(s.L.terrain[i - PLANE]) ? i - PLANE : -1;
+}
+/** One tick of a delver at voxel i cutting a stair down toward level gz; returns true when it spent the tick. */
+export function digDown(s, f, i, gz) {
+  const j = downCut(s, i, gz);
+  if (j < 0) { if (f.st) f.st.dd = null; return false; }
+  if (!f.st.dd || f.st.dd[0] !== j) f.st.dd = [j, 0];
+  if (++f.st.dd[1] < digTicks(s, j)) return true;
+  f.st.dd = null;
+  const t = s.L.terrain[i];
+  if (t === TER.STAIR_U || t === TER.STAIR_UD) setTerrain(s, i, TER.STAIR_UD);
+  else if (!digStair(s, i, TER.STAIR_D, null)) return true;
+  digStair(s, j, TER.STAIR_U, null);
+  f.z = (j / PLANE) | 0;
   return true;
 }

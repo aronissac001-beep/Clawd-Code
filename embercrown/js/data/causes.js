@@ -19,15 +19,22 @@ export const DATA = {
     // Camp, any"); with hard winter as their only cause, manhunters had vanished for most of the year (2.10 amended)
     { id: 'carrion', name: 'Scent of carrion', line: 'cause_carrion', allows: { '*': ['manhunters', 'wolf_pair'] } },
     { id: 'seep', name: 'Woken seep', line: 'cause_seep', allows: { seep: ['deep_breach'] } },
-    // Z3 (step Z3.1): sources land with the caverns and great beasts
-    { id: 'opened_cavern', name: 'Opened cavern', line: 'cause_cavern', allows: {}, deep: true },
-    { id: 'near_lair', name: 'Near lair', line: 'cause_lair', allows: {}, deep: true },
+    // Z3.1: a cavern a colonist has stood in (subject: hollows | mere | reach) lets its packs, and from the Mere
+    // the Lamplost thieves, out through its deep passages
+    { id: 'opened_cavern', name: 'Opened cavern', line: 'cause_cavern',
+      allows: { hollows: ['cavern_pack'], mere: ['cavern_pack', 'lamplost_thieves'], reach: ['cavern_pack'] } },
+    // Z3.1: digging near a lair row (subject 'lair:<voxel>'); the beast that wakes is Z3.3's (allows filled there)
+    { id: 'near_lair', name: 'Near lair', line: 'cause_lair', allows: {} },
   ],
+  // the caverns' names in cause lines
+  cavern: [{ id: 'hollows', name: 'the Hollows' }, { id: 'mere', name: 'the Mere' }, { id: 'reach', name: 'the Hollow Reach' }],
   // Weights (the numbers a row carries; renown leans multiply them, js/data/renown.js `lean`).
   tuning: [
     { id: 'causes', hungerBase: 3, ashfangBase: 3, vaultW: 2, nemesisW: 4, gutterkinFrom: -15, gutterkinBase: 2, gutterkinStep: 10,
       rumourBase: 1, rumourMax: 6, rumourWorth: 5000,
-      carrionFromDay: 15, carrionMin: 30, carrionStep: 60, carrionMax: 4, carrionBodyN: 10, winterDeep: 4, winterEdge: 2, winterSnap: 2, weightRef: 4, weightMax: 12 },
+      carrionFromDay: 15, carrionMin: 30, carrionStep: 60, carrionMax: 4, carrionBodyN: 10, winterDeep: 4, winterEdge: 2, winterSnap: 2, weightRef: 4, weightMax: 12,
+      // Z3.1: opened caverns, lairs and seeps (the near rule: a found voxel within r tiles planar and dz levels)
+      cavernW: 3, lairW: 4, lairR: 12, seepW: 4, seepR: 15, nearDz: 2 },
   ],
   text: [
     { id: 'cause_grievance_ashfang', text: 'The {faction} have not forgiven the Old Crown, which drove {founder} and their people to the Grey Edge.', vars: ['faction', 'founder'] },
@@ -41,7 +48,7 @@ export const DATA = {
     { id: 'cause_winter_snap', text: 'The cold snap has driven starving beasts out of the hills.' },
     { id: 'cause_carrion', text: 'The smell of meat and carrion carries from the hold, and the beasts have caught it.' },
     { id: 'cause_seep', text: 'A seep in the deep has woken, and the cold breathes up through it.' },
-    { id: 'cause_cavern', text: 'Something has found the way out of the cavern you opened.' },
+    { id: 'cause_cavern', text: 'Something has found the way out of {cavern}, which you opened.', vars: ['cavern'] },
     { id: 'cause_lair', text: 'Your picks have woken what sleeps in its lair.' },
   ],
 };
