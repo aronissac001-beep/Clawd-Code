@@ -20,8 +20,9 @@
 // View level = the camera's `level` (UI memory, never sim state). mountLevels(root, ctx, hooks) -> api.
 //   hooks: getZ(), setZ(z, why) -> bool, showCtx(p, items), centerTile(x, y), alertLevels() -> [z], toolKind() -> kind|null
 import { h, clear, onTap } from './kit.js';
-import { D, zS } from '../game/core/grid.js';
+import { D, zS, TILE } from '../game/core/grid.js';
 import { bandOfRel } from '../data/levels.js';
+import { routeChevrons } from './threatui.js';
 import { levelSummary, exploredRange, interestingLevels, nextInteresting, rulerRows, Scrub, levelText, toolLevels, nearestStair } from '../game/tools/levels.js';
 
 const HOLD_MS = 450;
@@ -58,7 +59,41 @@ export function mountLevels(root, ctx, hooks) {
   const nearest = h('button.ec-ruler-near', { type: 'button', 'data-act': 'ruler-stairs', text: LEVEL_TEXT.nearest });
   const ruler = h('section.ec-ruler', { hidden: true, role: 'dialog', 'aria-label': 'Depth ruler' }, rulerHead, rulerList, nearest);
   const scrim = h('div.ec-ruler-scrim', { hidden: true });
-  root.append(el, bubble, scrim, ruler);
+  // Z3.5 route chevrons: where the threat's route preview leaves (or reaches) the view level, a 44 pt stair
+  // chevron over the world; tapping it switches to the level the route goes to (the arrival one: back where
+  // it came from) and centres there. Data once a second (tick), positions every frame.
+  const CHEV_MAX = 6;
+  const chevs = h('div.ec-lv-chevs', { 'aria-label': 'Route level changes' });
+  const chevB = [];
+  for (let k = 0; k < CHEV_MAX; k++) {
+    const b = h('button.ec-lv-chev', { type: 'button', 'data-act': 'route-chev', style: { position: 'fixed', left: '0', top: '0', width: '44px', height: '44px', minWidth: '44px', padding: '0', border: '2px solid #f0c060', borderRadius: '10px', background: 'rgba(40,16,12,0.85)', color: '#ffd27a', fontSize: '14px', fontWeight: '700', lineHeight: '1', zIndex: '5', display: 'none', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', touchAction: 'none' } });
+    b.append(h('span.ec-lv-chev-a', { style: { width: '16px', height: '16px', display: 'block' } }), h('b', { style: { fontSize: '14px' } }));
+    onTap(b, () => { const c = b._c; if (!c) return; go(c.to, 'route'); hooks.centerTile(c.x, c.y); placeChevs(); say(`Route: ${levelWord(c.to)}`, 1400); });
+    chevB.push(b); chevs.append(b);
+  }
+  st.chev = []; st.chevPin = null;   // chevPin: a fixed route's chevrons (the phone walk)
+  function chevData() { if (st.chevPin) { st.chev = st.chevPin; return; } try { st.chev = routeChevrons(s); } catch (_) { st.chev = []; } }
+  function placeChevs() {
+    const cur = z();
+    let k = 0;
+    const cv = st.chev.length && !st.ruler && ctx.cam ? document.getElementById('view') : null;
+    if (cv) {
+      const rc = cv.getBoundingClientRect();
+      for (const c of st.chev) {
+        if (k >= CHEV_MAX) break;
+        if (c.from !== cur) continue;
+        const q = ctx.cam.worldToScreen((c.x + 0.5) * TILE, (c.y + 0.5) * TILE), p = { x: rc.left + q.x, y: rc.top + q.y };
+        if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) continue;
+        const b = chevB[k++];
+        const up = c.to > c.from, key = `${c.to}|${up}`;
+        if (b._k !== key) { b._k = key; b.firstChild.innerHTML = up ? SVG_UP : SVG_DOWN; b.lastChild.textContent = levelText(c.to); b.setAttribute('aria-label', `Route ${up ? 'goes up' : 'goes down'} to ${levelWord(c.to)}`); }
+        b._c = c; b.style.transform = `translate(${Math.round(p.x - 22)}px, ${Math.round(p.y - 22)}px)`;
+        if (b.style.display === 'none') b.style.display = 'flex';
+      }
+    }
+    for (; k < CHEV_MAX; k++) if (chevB[k].style.display !== 'none') { chevB[k].style.display = 'none'; chevB[k]._c = null; }
+  }
+  root.append(el, bubble, scrim, ruler, chevs);
   document.body.classList.add('has-levels');
 
   // ---- level changes ------------------------------------------------------------------------------------
@@ -264,11 +299,12 @@ export function mountLevels(root, ctx, hooks) {
   return {
     el, capsule, ruler, bubble, ghost, st,
     /** Once a second: the summary, badges, the ruler and the ghost column. */
-    tick() { refresh(); render(); if (st.ruler) renderRuler(); renderGhost(); },
+    tick() { refresh(); render(); if (st.ruler) renderRuler(); renderGhost(); chevData(); placeChevs(); },
     /** Every frame: the chip follows a level set elsewhere (Follow, an alert, the rail). */
-    frame() { if (st.shown === null || !st.shown.startsWith(z() + '|')) render(); },
+    frame() { if (st.shown === null || !st.shown.startsWith(z() + '|')) render(); if (st.chev.length || chevB[0].style.display !== 'none') placeChevs(); },
+    chevrons: () => st.chev,
     go, step, jump, openRuler, closeRuler, setGhost, renderGhost, say,
     get rulerOpen() { return st.ruler; },
-    destroy() { el.remove(); bubble.remove(); ruler.remove(); scrim.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
+    destroy() { chevs.remove(); el.remove(); bubble.remove(); ruler.remove(); scrim.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
   };
 }

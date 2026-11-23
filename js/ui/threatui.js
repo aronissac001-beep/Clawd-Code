@@ -16,7 +16,47 @@ import { TICKS_PER_MIN } from '../game/core/time.js';
 import { nemesisCard, nemesisOf } from './letters.js';
 import { fullName } from '../game/threat/nemesis.js';
 import { incidentDef } from '../game/threat/incidents.js';
+import { linksOf, mechState, isLever, isGate } from '../game/world/mechanisms.js';
+import { structDef } from '../game/world/defs.js';
 import { threatViews, threatChip, omenText, composition } from '../game/threat/warnings.js';
+import { D, zS, W, PLANE } from '../game/core/grid.js';
+import { DATA as CAUSES } from '../data/causes.js';
+import { levelText } from '../game/tools/levels.js';
+
+// ---- Stage Z3.5: threats on levels (EMBERCROWN-FORTRESS.md 4.x, 2.10) ---------------------------------
+//   threatZ(v)               the level (absolute z) a threat enters at (its edge voxel), null at D = 1
+//   causeName(s, v)          the live cause behind a threat ("Woken seep", "Opened cavern"), or null
+//   routeChevrons(s, v?)     where the route preview changes level: [{ i (voxel), x, y, from, to }]
+//   leverLinks(s, id)        a lever's linked gates with their levels; leverActs(ctx, b) its peek actions
+const CAUSE_NAME = Object.freeze(Object.fromEntries(CAUSES.cause.map((c) => [c.id, c.name])));
+export function threatZ(v) {
+  if (D <= 1 || !v) return null;
+  return v.edge ? (v.edge.z !== undefined ? v.edge.z : 0) : zS;
+}
+export function causeName(s, v) {
+  if (!v) return null;
+  const e = s.st.queue.find((q) => q.id === v.id || q.raid === v.id);
+  const r = s.raids.find((q) => q.id === v.id);
+  const c = (e && e.cause) || (r && r.cause) || null;
+  return c ? CAUSE_NAME[c[0]] || null : null;
+}
+const zOf = (i) => (i / PLANE) | 0;
+/** Level changes along a route (the stair chevrons). v: a threat view; default the first one with a route. */
+export function routeChevrons(s, v = null) {
+  if (D <= 1) return [];
+  const view = v || threatViews(s).find((q) => q.route && q.route.length > 1);
+  const r = view && view.route;
+  if (!r || r.length < 2) return [];
+  const out = [];
+  for (let j = 1; j < r.length; j++) {
+    const a = zOf(r[j - 1]), b = zOf(r[j]);
+    if (a === b) continue;
+    const p = r[j - 1] % PLANE, q = r[j] % PLANE;
+    out.push({ i: r[j - 1], x: p % W, y: (p / W) | 0, from: a, to: b });   // leaving level a toward b
+    out.push({ i: r[j], x: q % W, y: (q / W) | 0, from: b, to: a, back: true });   // arriving: back toward where it came from
+  }
+  return out;
+}
 
 /** The chip: "Hollow horde: 14 h" shortened to fit (icon + "14h"); aria label in full. */
 export function chipView(s) {
@@ -27,7 +67,10 @@ export function chipView(s) {
   const short = v.stage === 'active' ? 'here' : v.stage === 'retreat' ? 'fleeing' : mins < 60 ? `${mins}m` : `${v.hours}h`;
   const tone = v.stage === 'active' || v.stage === 'imminent' ? 'bad' : v.stage === 'retreat' ? '' : 'warn';
   const label = v.stage === 'active' ? `${v.name} on the map${v.onMap ? ': ' + v.onMap : ''}` : v.stage === 'retreat' ? `${v.name} fleeing at dawn` : `${v.name} in ${mins < 60 ? mins + ' minutes' : v.hours + ' hours'} from the ${v.edge ? v.edge.word : 'edge'}`;
-  return { text: short, label, stage: v.stage, hours: v.hours, tone, view: v };
+  const z = threatZ(v), cause = causeName(s, v);
+  const deep = z !== null && z !== zS;
+  const lvl = z !== null ? `Level ${levelText(z)}` : '';
+  return { text: deep ? `${short} ${levelText(z)}` : short, label: label + (lvl ? `, ${lvl}` : '') + (cause ? `. Cause: ${cause}` : ''), stage: v.stage, hours: v.hours, tone, view: v, z, cause };
 }
 
 const LKEY = (s) => 'ec2.letters.' + (s.id || 'colony');
@@ -99,6 +142,8 @@ export function omenLetter(ctx, v, opts = {}) {
     const row = (k, val) => facts.append(h('div.ec-fact', null, h('span', { text: k }), h('b', { text: val })));
     row('Arrives in', `${v.hours} hours`);
     row('From', `the ${v.edge ? v.edge.word : 'edge'}`);
+    if (threatZ(v) !== null) row('Level', levelText(threatZ(v)));
+    if (causeName(s, v)) row('Cause', causeName(s, v));
     if (v.size) row('Size', v.size.text);
     if (v.prey !== null && v.prey !== undefined) { const c = s.col.find((x) => x.id === v.prey); if (c) row('Hunting for', c.name); }
     el.append(facts);
@@ -131,8 +176,9 @@ export function jumpToEdge(ctx, v) {
   if (v && v.stage === 'active') {
     const raid = s.raids.find((r) => r.id === v.id);
     const f = raid && s.foes.find((x) => raid.members.includes(x.id));
-    if (f) { ctx.centerOn(f.x, f.y); return true; }
+    if (f) { if (D > 1 && ctx.setLevel) ctx.setLevel(f.z | 0); ctx.centerOn(f.x, f.y); return true; }
   }
+  if (v && v.edge && D > 1 && ctx.setLevel) ctx.setLevel(threatZ(v));
   if (v && v.edge) { ctx.centerOn((v.edge.x + 0.5) * TILE, (v.edge.y + 0.5) * TILE); return true; }
   return false;
 }
@@ -190,13 +236,15 @@ export function threatPeek(ctx, sel) {
   const v = views.find((x) => x.id === sel.id) || views[0];
   if (!v) return null;
   const comp = v.comp || (v.size ? [{ name: v.types ? v.types.join(', ') : 'Hollow', n: v.size.text }] : null);
-  const sub = v.stage === 'active' ? `On the map: ${v.onMap}` : v.stage === 'retreat' ? 'Fleeing at dawn' : `In ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}`;
+  const z = threatZ(v), cause = causeName(s, v);
+  const sub = (v.stage === 'active' ? `On the map: ${v.onMap}` : v.stage === 'retreat' ? 'Fleeing at dawn' : `In ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}`)
+    + (z !== null ? ` · Level ${levelText(z)}` : '') + (cause ? ` · ${cause}` : '');
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic.bad', { html: icon('horde') }),
     h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: v.name })),
       h('div.ec-peek-sub', { text: comp ? `${sub} · ${comp.map((c) => `${c.n} ${c.name}`).join(', ')}` : sub })));
   return { head, acts: [
     ['Draft all', () => draftAll(ctx), 'draft-all'],
-    ['Jump to edge', () => jumpToEdge(ctx, v), 'jump-edge'],
+    [z !== null && z !== zS ? `Go to ${levelText(z)}` : 'Jump to edge', () => jumpToEdge(ctx, v), 'jump-edge'],
     ['Close', () => ctx.closePeek(), 'close-peek'],
   ] };
 }
@@ -205,4 +253,57 @@ export function threatPeek(ctx, sel) {
 export function raidText(s, raid) {
   const kinds = raid.members.map((id) => { const f = s.foes.find((x) => x.id === id); return f ? f.kind : null; }).filter(Boolean);
   return composition(kinds).map((c) => `${c.n} ${c.name}`).join(', ');
+}
+
+// ---- the lever-link UI (Z3.5; 2.8 Z3: a link is a building pair, so a lever may sit on any level) -------
+const MODE_WORD = ['closed', 'held open', 'locked'];
+const LEVER_R = 24;   // tiles: link candidates within this square radius, on any level
+const bname = (b) => { const d = structDef(b.def); return (d && d.name) || b.def; };
+/** A lever's linked gates, doors, floodgates and bridges: [{ b, name, z, level }], sorted by id. */
+export function leverLinks(s, id) {
+  return linksOf(s, id).map((b) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelText(b.z | 0) : null }));
+}
+/** Unlinked gates a lever could take (near it in plan, any level), nearest first then id. */
+export function linkCandidates(s, id, max = 6) {
+  const lv = s.bld[id];
+  if (!lv) return [];
+  const out = [];
+  for (const b of s.bld) {
+    if (!b || b.id === id || !isGate(b) || b.link === id) continue;
+    const d = Math.max(Math.abs(b.x - lv.x), Math.abs(b.y - lv.y));
+    if (d > LEVER_R) continue;
+    out.push({ b, d: d + Math.abs((b.z | 0) - (lv.z | 0)) });
+  }
+  out.sort((p, q) => p.d - q.d || p.b.id - q.b.id);
+  return out.slice(0, max).map(({ b }) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelText(b.z | 0) : null, linked: b.link !== null && b.link !== undefined }));
+}
+/** Extra peek actions for a finished lever: Pull, Links. [label, fn, act] rows (peek.js appends them). */
+export function leverActs(ctx, b) {
+  if (!b || b.st !== 'done' || !isLever(b)) return [];
+  return [
+    ['Pull', () => { const r = ctx.send({ t: 'lever', bId: b.id }, null, true); if (r && r.ok) ctx.toast(`Lever pulled: gates ${MODE_WORD[r.mode] || 'closed'}.`); else ctx.toast(`It will not move${r && r.reason ? ': ' + r.reason : ''}.`, 'bad'); }, 'lever-pull'],
+    ['Links', () => openLeverLinks(ctx, b.id), 'lever-links'],
+  ];
+}
+/** The lever sheet: its mode, each linked gate with its level (Go switches the view there), Unlink, and the
+ *  candidates to Link. Every change is a command (lever, link). */
+export function openLeverLinks(ctx, id) {
+  const s = ctx.s;
+  const go = (b) => { ctx.closeSheet(); if (D > 1 && ctx.setLevel) ctx.setLevel(b.z | 0); ctx.centerOn((b.x + 0.5) * TILE, (b.y + 0.5) * TILE); };
+  const btn = (text, act, fn) => { const e = h('button.ec-act', { type: 'button', 'data-act': act, text, style: { padding: '0 14px' } }); onTap(e, fn); return e; };
+  const refresh = () => (ctx.refreshSheet ? ctx.refreshSheet() : null);
+  ctx.openSheet('Lever links', (el) => {
+    const lv = s.bld[id];
+    if (!lv) { el.append(h('p', { text: 'The lever is gone.' })); return; }
+    el.append(h('p.ec-lever-t', { text: `Holds its gates ${MODE_WORD[mechState(s, id)] || 'closed'}${D > 1 ? ` · Level ${levelText(lv.z | 0)}` : ''}. A lever drives up to 4 gates, floodgates or bridges on any level.` }));
+    el.append(btn('Pull the lever', 'lever-pull', () => { ctx.send({ t: 'lever', bId: id }, null, true); refresh(); }));
+    const rowOf = (x, acts) => h('div.ec-lever-row', { style: { display: 'flex', alignItems: 'center', gap: '8px', minHeight: '44px', flexWrap: 'wrap' } },
+      h('span', { style: { flex: '1 1 140px', fontSize: '15px' }, text: x.level !== null ? `${x.name} · Level ${x.level}` : x.name }), ...acts);
+    const ls = leverLinks(s, id);
+    el.append(h('h3', { text: ls.length ? 'Linked' : 'Nothing linked yet' }));
+    for (const x of ls) el.append(rowOf(x, [btn('Go', 'lever-go', () => go(x.b)), btn('Unlink', 'lever-unlink', () => { ctx.send({ t: 'link', bId: x.b.id, to: null }, 'Unlinked.', true); refresh(); })]));
+    const cs = ls.length < 4 ? linkCandidates(s, id) : [];
+    if (cs.length) el.append(h('h3', { text: 'Link a gate' }));
+    for (const x of cs) el.append(rowOf(x, [btn('Go', 'lever-go', () => go(x.b)), btn(x.linked ? 'Move link' : 'Link', 'lever-link', () => { const r = ctx.send({ t: 'link', bId: x.b.id, to: id }, null, true); if (!(r && r.ok)) ctx.toast(`Cannot link${r && r.reason ? ': ' + r.reason : ''}.`, 'bad'); refresh(); })]));
+  });
 }
