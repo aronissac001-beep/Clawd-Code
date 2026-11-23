@@ -77,12 +77,19 @@ async function v4Seed(seed, days) {
   const { saveBlob } = await import('../js/game/save/colonysave.js');
   const { runBot4, TARGETS_Z2 } = await import('./lib/bot4.mjs');
   const onDay = (s, d, row) => { if (d % 25 === 0 && has('--progress')) process.stderr.write(`  [v4 seed ${seed}] day ${d}: ${row.alive}/${row.total} colonists, tick p95 ${row.tickP95} ms\n`); };
-  const r = await runBot4({ seed, days, onDay, tickP95At: 0 });
+  // Stage Z3 (Z3.6): the same bot with every Z3 system on (deep causes, cavern packs, the Lamplost, breaches, great
+  // beasts, fluids and water control); the fluid active set is read at every tick
+  const z3 = arg('stage', '2') === 'z3';
+  const { activeCount } = await import('../js/game/world/fluids.js');
+  let fluidMax = 0, fluidAt = 0;
+  const onTick = z3 ? (s) => { const n = activeCount(s); if (n > fluidMax) { fluidMax = n; fluidAt = Math.floor(s.tick / 14400); } } : null;
+  const r = await runBot4({ seed, days, onDay, onTick, tickP95At: 0 });
   let blobKB = null;
   try { blobKB = +((await saveBlob(r.s)).length / 1024).toFixed(1); } catch (e) { blobKB = null; }
   const z1 = r.z1.checks.filter((c) => c.name === 'colony alive' || c.name === 'zero starvation deaths');
   // tick p95: the day-200 hold (the largest), as the soak reads it; the worst single day is reported beside it
   const ser = r.metrics.series.filter((x) => x.tickP95 !== undefined), tickP95 = ser.length ? ser[ser.length - 1].tickP95 : null, tickWorst = Math.max(0, ...ser.map((x) => x.tickP95 || 0));
+  if (z3) return z3Result(seed, days, r, blobKB, tickP95, tickWorst, z1, fluidMax, fluidAt);
   const checks = z1.concat(r.z2.checks);
   checks.push({ name: `save < ${TARGETS_Z2.saveKB} KB`, ok: blobKB !== null && blobKB < TARGETS_Z2.saveKB, detail: `${blobKB} KB at day ${days}` });
   const xp = r.metrics.xp || {};
@@ -91,6 +98,45 @@ async function v4Seed(seed, days) {
   const v2bad = r.metrics.checks.filter((c) => !c.ok && !c.info && !c.na).map((c) => `${c.name}: ${c.detail}`);
   if (v2bad.length) checks.push({ name: 'the bot ran clean', ok: false, detail: v2bad.join('; ') });
   return { seed, days, bot: 'v4', ok: checks.every((c) => c.ok || c.share || c.info || c.na), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z2: r.z2.report, deepNotes: r.deepNotes, tickP95, metrics: { colonists: r.metrics.colonists, deathCauses: r.metrics.deathCauses, xp: r.metrics.xp || null } };
+}
+// ---- Stage Z3 (EMBERCROWN-FORTRESS.md 8.5, step Z3.6): the 300-day soak with every Z3 system on ----------------
+export const TARGETS_Z3 = Object.freeze({ days: 300, saveKB: 130, stacks: 2500, tickP95: 1.2, fluidMax: 4096 });
+const DEEP_INC = ['cavern_pack', 'lamplost_thieves', 'lamplost_trade', 'great_beast', 'breach', 'seep_breach', 'river_breach'];
+function z3Result(seed, days, r, blobKB, tickP95, tickWorst, z1, fluidMax, fluidAt) {
+  const T = TARGETS_Z3, s = r.s, m = r.metrics;
+  const peak = Math.max(0, ...m.series.map((x) => x.stacks || 0));
+  const gb = (s.st && s.st.gb && s.st.gb.b) || {};
+  const met = Object.values(gb).reduce((a, x) => a + (x.met || 0), 0), slain = Object.values(gb).filter((x) => x.slain >= 0).length, kinds = Object.values(gb).filter((x) => x.met > 0).length;
+  const majors = m.majors || [];
+  const deep = majors.filter((x) => DEEP_INC.includes(x.inc) || /cavern|lamplost|breach|beast/.test(x.inc));
+  const warnMin = deep.length ? Math.min(...deep.map((x) => (x.warnH === null || x.warnH === undefined ? 99 : x.warnH))) : null;
+  const beastDeaths = Object.entries(m.deathCauses || {}).filter(([k]) => /beast|wyrm|colossus|king/.test(k)).reduce((a, [, v]) => a + v, 0);
+  const checks = z1.concat([
+    { name: `save < ${T.saveKB} KB`, ok: blobKB !== null && blobKB < T.saveKB, detail: `${blobKB} KB at day ${days}` },
+    { name: `item stacks < ${T.stacks}`, ok: peak < T.stacks, detail: `peak ${peak}, ${m.stacks} at the end` },
+    { name: `tick p95 < ${T.tickP95} ms`, ok: tickP95 !== null && tickP95 < T.tickP95, detail: `${tickP95} ms on the last day (worst day ${tickWorst} ms; seeds run side by side)` },
+    { name: `fluid active set < ${T.fluidMax} at every tick`, ok: fluidMax < T.fluidMax, detail: `max ${fluidMax} (day ${fluidAt})` },
+    { name: 'deep threats warned >= 6 h (info)', ok: warnMin === null || warnMin >= 6, info: true, detail: `${deep.length} deep incidents, least warning ${warnMin} h` },
+    { name: 'great beasts met (info)', ok: true, info: true, detail: `${met} visits by ${kinds} beasts, ${slain} slain, ${beastDeaths} deaths to beasts` },
+  ]);
+  const bad = m.checks.filter((c) => !c.ok && !c.info && !c.na).map((c) => `${c.name}: ${c.detail}`);
+  // the Z2 rows over 300 days are reported (their day targets are the 200-day run's)
+  const z2info = r.z2.checks.map((c) => ({ ...c, name: `Z2 ${c.name}`, info: true }));
+  if (bad.length) z2info.push({ name: 'Z2 the bot ran clean', ok: false, info: true, detail: bad.join('; ') });
+  const all = checks.concat(z2info);
+  return { seed, days, bot: 'v4', stage: 'z3', ok: checks.every((c) => c.ok || c.info), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks: all, z2: r.z2.report, deepNotes: r.deepNotes, tickP95,
+    z3: { fluidMax, stacksPeak: peak, beastsMet: met, beastKinds: kinds, beastsSlain: slain, beastDeaths, deep: deep.length, deepIncs: deep.map((x) => `${x.inc}@${x.day}`).slice(0, 12) },
+    metrics: { colonists: m.colonists, deathCauses: m.deathCauses, xp: m.xp || null } };
+}
+/** The Z3 balance report over the soak's seeds (printed; written into the --out file). */
+function z3Balance(results) {
+  const R = results.filter((r) => r.z3), n = R.length || 1, mean = (f) => +(R.reduce((a, r) => a + f(r), 0) / n).toFixed(2);
+  const deaths = {}; for (const r of R) for (const [k, v] of Object.entries(r.metrics.deathCauses || {})) deaths[k] = (deaths[k] || 0) + v;
+  return {
+    seeds: R.map((r) => r.seed), alive: mean((r) => r.metrics.colonists.alive), peak: mean((r) => r.metrics.colonists.peak), deaths,
+    beastsMet: mean((r) => r.z3.beastsMet), beastsMet2plus: R.filter((r) => r.z3.beastKinds >= 2).length, beastsSlain: mean((r) => r.z3.beastsSlain), beastDeathSeeds: R.filter((r) => r.z3.beastDeaths > 0).length,
+    deepIncidents: mean((r) => r.z3.deep), fluidMax: Math.max(0, ...R.map((r) => r.z3.fluidMax)), saveKBMax: Math.max(0, ...R.map((r) => r.blobKB || 0)), tickP95Max: Math.max(0, ...R.map((r) => r.tickP95 || 0)),
+  };
 }
 const topRefused = (list) => { const m = new Map(); for (const [, t, why] of list) { const k = `${t}: ${why}`; m.set(k, (m.get(k) || 0) + 1); } return [...m].sort((a, b) => b[1] - a[1]).slice(0, 8); };
 
@@ -104,6 +150,7 @@ async function v2Seeds(seeds, days, { jobs = 1, storyteller = null, soak = false
     const args = [fileURLToPath(import.meta.url), '--one', `--seeds=${seeds[k]}`, `--days=${days}`, `--out=${file}`, ...(storyteller ? [`--storyteller=${storyteller}`] : []), ...(soak ? ['--soak'] : []), ...(difficulty ? [`--difficulty=${difficulty}`] : [])];
     if (arg('bot', 'v2') === 'v3') args.push('--bot=v3');
     if (arg('bot', 'v2') === 'v4') args.push('--bot=v4');
+    if (arg('stage', '2') === 'z3') args.push('--stage=z3');
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'] });
     p.on('exit', () => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { seed: seeds[k], ok: false, error: `child failed: ${e.message}`, metrics: null }; } resolve(); });
   });
@@ -185,6 +232,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(report.ok ? 0 : 1);
   }
   const seeds = parseSeeds(arg('seeds', '1-5'));
+  if (stage === 'z3') {
+    // Stage Z3 (Z3.6): bot v4 for 300 days on seeds 1-5 with every Z3 system on; the Z3 gate rows hold on every seed
+    const days = +arg('days', TARGETS_Z3.days);
+    const results = jobs <= 1 || seeds.length <= 1 ? await (async () => { const o = []; for (const sd of seeds) o.push(await v4Seed(sd, days)); return o; })() : await v2Seeds(seeds, days, { jobs });
+    for (const r of results) {
+      if (!r.checks) { console.log(`FAIL seed ${r.seed}: ${r.error}`); continue; }
+      console.log(`${r.ok ? 'ok  ' : 'FAIL'} seed ${r.seed}: ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), hash ${r.hash}, blob ${r.blobKB} KB, tick p95 ${r.tickP95} ms`);
+      for (const c of r.checks) if (!c.info || !c.name.startsWith('Z2 ') || has('--verbose')) console.log(`      ${c.ok ? 'ok  ' : c.info ? 'info' : 'FAIL'} ${c.name}: ${c.detail}`);
+      console.log(`      deep: ${(r.z3.deepIncs || []).join(', ')}`);
+    }
+    const bal = z3Balance(results);
+    console.log('\nZ3 balance report: ' + JSON.stringify(bal));
+    const pass = results.every((r) => r.checks && r.ok);
+    if (out) save(out, { stage: 'z3', bot: 'v4', days, seeds, pass, balance: bal, results });
+    console.log(`colonybot z3 soak [${days} days, seeds ${seeds.join(',')}]: ${results.filter((r) => r.ok).length}/${results.length} seeds hold${pass ? ' - PASS' : ' - FAIL'}`);
+    process.exit(pass ? 0 : 1);
+  }
   if (arg('bot', 'v2') === 'v4' || stage === 'z2') {
     // Stage Z2 (Z2.11): bot v4 on fortresses for 200 days; each row holds on every seed unless it names its share
     // ("3 of 5"); info rows and rows not reached in the run (na) are reported only

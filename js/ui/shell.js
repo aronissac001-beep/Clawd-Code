@@ -52,6 +52,8 @@ import { footprint } from '../game/world/pass.js';
 import { SAVE } from '../data/balance.js';
 import { foodDays } from '../data/advice.js';
 import { Renderer } from '../engine/render/index.js';
+import { installFluidRender } from '../engine/render/fluids.js';
+let fluidHook = null;
 import { Camera } from '../engine/camera.js';
 import { Loop, fpsTarget } from '../engine/loop.js';
 import { GestureInput } from '../engine/input.js';
@@ -140,6 +142,8 @@ export function mountShell(root, api) {
   // ---- renderer, camera, loop -------------------------------------------------------------------
   const r = new Renderer(canvas);
   r.setState(s);
+  if (fluidHook && fluidHook.unhook) fluidHook.unhook();   // a reopened hold: drop the last renderer's hook
+  fluidHook = installFluidRender(r);   // Z3.4: water and ember of the view level
   const cam = new Camera();
   cam.zoom = 1;
   /** The view level (4.4: every tool and pick works on it); 0 on a D = 1 map. */

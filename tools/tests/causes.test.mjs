@@ -31,7 +31,8 @@ const has = (s, kind, subject) => C.liveCauses(s).some((c) => c[0] === kind && (
 test('Z2.10 data: every hostile incident has a cause row; rows name real incidents and lines', () => {
   colony();
   const caused = C.causedIncidents();
-  for (const d of incidentList()) if (isHostile(d)) assert.ok(caused.has(d.id), `${d.id} has no cause that allows it`);
+  // (the great beasts are gated by their own causes in beasts/index.js, never by a row: Z3.1 keeps near_lair empty)
+  for (const d of incidentList()) if (isHostile(d) && d.id !== 'great_beast') assert.ok(caused.has(d.id), `${d.id} has no cause that allows it`);
   for (const id of caused) assert.ok(incidentDef(id), `cause names unknown incident ${id}`);
   const texts = new Set(DATA.text.map((t) => t.id));
   for (const r of DATA.cause) assert.ok([...texts].some((t) => t.startsWith(r.line)), `${r.id}: no line ${r.line}`);

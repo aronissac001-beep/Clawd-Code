@@ -1,5 +1,5 @@
 // The gate (doc 14.4): runs every check that exists at the given stage. Must pass on every merge.
-//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|z1|z2|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
+//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|z1|z2|z3|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -12,12 +12,12 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const has = (f) => process.argv.includes(f);
-const STAGES = ['0', '1a', '1b', '2', '2.9', 'z1', 'z2', '3'];
+const STAGES = ['0', '1a', '1b', '2', '2.9', 'z1', 'z2', 'z3', '3'];
 const stage = arg('stage', '2.9');    // the current stage (14.8; EMBERCROWN-FORTRESS.md 8.2); pass --stage=2, 1b, 1a or 0 for the earlier sets
 if (!STAGES.includes(stage)) { console.error(`gate: unknown stage ${stage} (${STAGES.join(', ')})`); process.exit(2); }
 const atLeast = (s) => STAGES.indexOf(stage) >= STAGES.indexOf(s);
 // Stage 2.9 ships on the Stage 2 engine: tools that take a sim stage get '2'
-const simStage = stage === '2.9' || stage === 'z1' || stage === 'z2' ? '2' : stage;
+const simStage = stage === '2.9' || stage === 'z1' || stage === 'z2' || stage === 'z3' ? '2' : stage;
 const browser = arg('browser', 'webkit');
 const noBrowser = has('--no-browser');
 const strict = has('--strict');
@@ -68,7 +68,15 @@ const CHECKS = [
   // Stage Z2 (EMBERCROWN-FORTRESS.md 8.4, the Z2 gate; step Z2.11): bot v4 for 200 days on seeds 1-5 with every Z2
   // row (people, offices, renown and the winch, military, burial, halls and petitions, justice, the Annals), save
   // < 110 KB and tick p95 < 1.0 ms; it runs in the background from the start (about half an hour on 3 cores)
-  { name: `Colony bot v4 (fortress, ${quick ? 60 : 200} days)`, starts: 'z2', file: 'tools/colonybot.mjs', args: ['--bot=v4', '--seeds=1-5', `--days=${quick ? 60 : 200}`, '--jobs=2', `--out=${OUT}/z2.json`], bg: true, startAfter: 'Bench', timeout: 5400000 },
+  { name: `Colony bot v4 (fortress, ${quick ? 60 : 200} days)`, starts: 'z2', file: 'tools/colonybot.mjs', args: ['--bot=v4', '--seeds=1-5', `--days=${quick ? 60 : 200}`, '--jobs=2', `--out=${OUT}/z2.json`], bg: true, startAfter: 'Bench', timeout: 5400000, ends: 'z2' },
+  // Stage Z3 (EMBERCROWN-FORTRESS.md 8.5, step Z3.6): the same bot for 300 days on seeds 1-5 with every Z3 system on
+  // (deep causes, cavern packs, the Lamplost, breaches, great beasts, fluids): save < 130 KB, stacks < 2,500, tick
+  // p95 < 1.2 ms, the fluid active set < 4,096 at every tick; the Z2 rows and the Z3 balance report as info. It
+  // replaces the 200-day v4 row (about 90 min on 3 cores, from the Bench on)
+  { name: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, starts: 'z3', file: 'tools/colonybot.mjs', args: ['--stage=z3', '--bot=v4', '--seeds=1-5', `--days=${quick ? 60 : 300}`, '--jobs=3', `--out=${OUT}/z3.json`], bg: true, startAfter: 'Bench', timeout: 9000000 },
+  // determinism and cache-drop mid-flood and mid-beast (the Z3 gate) and the Z3 phone flows (Z3.5)
+  { name: 'Z3 mid-flood and mid-beast (save, cache drop)', starts: 'z3', node: ['--test', 'tools/tests/z3-midflood.test.mjs'] },
+  { name: 'Phone UI (Z3 threats on levels)', starts: 'z3', file: 'tools/ui-phone-z3.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
@@ -131,10 +139,11 @@ if (atLeast('2') && !quick) for (const f of ['stage2.json', 'soak.json']) { try 
 // a check with `startAfter` starts once that row has run (bot v4 waits for the Bench, which is timed and must not share
 // the CPU with more than the soak)
 const bgRuns = new Map();
+const retired = (c) => !!c.ends && STAGES.indexOf(stage) > STAGES.indexOf(c.ends);
 function startBg(after) {
 for (const c of CHECKS) {
   if ((c.startAfter || null) !== after) continue;
-  if (!c.bg || !atLeast(c.starts) || c.skip || (c.browser && noBrowser) || !existsSync(join(ROOT, c.file))) continue;
+  if (!c.bg || !atLeast(c.starts) || retired(c) || c.skip || (c.browser && noBrowser) || !existsSync(join(ROOT, c.file))) continue;
   mkdirSync(join(ROOT, 'tools/out/gate'), { recursive: true });
   const log = join(ROOT, 'tools/out/gate', c.name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase() + '.log');
   const fd = openSync(log, 'w');
@@ -157,6 +166,7 @@ for (const c of CHECKS) {
   const enforced = atLeast(c.starts);
   const info = !enforced && c.infoBefore;
   if (!enforced && !info) { rows.push([c.name, 'later', `starts at Stage ${c.starts}`]); continue; }
+  if (retired(c)) { rows.push([c.name, 'retired', `ran through Stage ${c.ends}; a later row covers it`]); continue; }
   if (c.browser && noBrowser) { rows.push([c.name, 'SKIP', '--no-browser']); continue; }
   if (c.skip) { rows.push([c.name, 'SKIP', c.skip]); continue; }
   if (c.fn) {

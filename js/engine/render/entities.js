@@ -20,6 +20,8 @@ import { plantDef } from '../../game/world/defs.js';
 import { PLANT_CODE } from '../../data/plants.js';
 import { buildWork } from '../../game/work/construct.js';
 import { foeStats, WEAPONS } from '../../game/threat/stats.js';
+import { beastByKey } from '../../game/threat/beasts/gen.js';
+import { drawBeast } from '../art/beasts.js';
 import * as SP from '../sprites.js';
 import { PAL } from '../art/palette.js';
 import { kitSprite, drawScaffold, drawItem, itemDot, fireCold } from './kit.js';
@@ -369,6 +371,8 @@ export class EntityLayer {
     const e = r.e, m = r.m;
     const x = lerp(m.px, m.x, ctx.alpha), y = lerp(m.py, m.y, ctx.alpha);
     const K = ctx.kit;
+    // a great beast (Z3.3): its own part-based painter at its size, from its generated body
+    if (foe && e.st && e.st.gb) { const b = beastByKey(s, e.st.gb); if (b) { drawBeast(g, b, x, y, ctx.time, { hit: e.hitT || 0, flee: !!e.st.flee, calm: !!ctx.reduceMotion }); return; } }
     if (K && K.colonistSprite) { this.drawPixelMover(g, s, e, m, x, y, ctx, type, foe, K); return; }
     let frame = m.walk ? ((m.anim / 2.4) | 0) % 2 ? 1 : 2 : 0;
     const opt = UNIT_OPT;

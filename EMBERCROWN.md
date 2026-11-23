@@ -143,7 +143,21 @@ The hold's own customs are set in the game, not here: **Colony > Hold > Customs*
 
 Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pauses (when a raid is near, on letters, when someone is down), an advanced work grid, two-finger tap to pause, battery saver, a left-handed layout, the back-up prompt, sound, music and volume.
 
-## What changed in this release (the life of the hold)
+## What changed in this release (the deep fights back)
+
+- **Caverns are a door you open.** Nothing comes up a deep passage until your miners break into its cavern. Once
+  open, cavern packs and the Lamplost (who may trade, or steal) can climb to you. A threat chip always names the
+  level and the reason: Opened cavern, Near lair or Woken seep, and every deep threat is warned at least 6 hours ahead.
+- **Great beasts.** Each hold has its own beasts, born from its seed, plus three legends. You cannot call one; each
+  comes only for a reason the hold gave it (a cavern opened near its lair, the Ember Seal mined). A hurt beast flees,
+  heals with the season and may return. Slaying one leaves trophies and a line in the Annals.
+- **Fighting on levels.** Archers shoot down through open shafts and channels up to two levels, never through rock.
+  Murder holes and fortification walls give cover; flyers come down shafts; sappers dig down toward you.
+- **Water and ember flow.** Mine under the river and the level below floods. Floodgates, doors and raising bridges
+  stop fluid; link a lever to them from any level (the lever-link sheet lists each link with its level). Flood and
+  ember alerts name their level: one tap takes the view there.
+
+## The release before (the life of the hold)
 
 - Colonists have personalities, likes, life goals and memories (Bio tab), and fevers of craft make named artifacts and memorials.
 - Offices, the Thane and the Lord, mandates and noble requests (Colony > Hold > Offices).
@@ -157,7 +171,7 @@ Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pause
 - Buildings are paced by materials, research and skill, not by the hold's rank.
 - Colonies from the previous version load and continue: the new records start empty and fill as the hold lives on.
 
-## The release before (depth)
+## Earlier (depth)
 
 - The world has levels: a new colony is 20 levels deep, with stairs, ramps, channels and built floors, and the Glowcap Hollows below. See *Levels and digging down*.
 - **Colonies from the previous version gain their depth when you continue them.** Your map becomes the surface level; the old mountain stands as real rock above it (tunnels keep their ceilings), and new levels lie below. One card says so the first time ("Your hold now has depth"), and the Chronicle records the day the hold learned the depth of the world. Everything on the map stays where it was.

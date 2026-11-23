@@ -66,8 +66,9 @@ export const DATA = {
   ],
   tuning: [
     { id: 'beasts', warnH: [24, 48], fleePct: 30, healPctSeason: 5, returnPct: 60, territorialR: 20, webS: 10, dreadR: 6,
-      darkR: 4, darkDrop: 2, darkStepR: 6, wyrmRumour: 4, kingYear: 6, kingHunger: 6, kingR: 12, kingDz: 1, dayPct: 25,
-      gapD: 20, keeperTier: 4, lore: 8, seasonD: 10 },
+      darkR: 4, darkDrop: 2, darkStepR: 6, wyrmRumour: 4, kingYear: 6, kingHunger: 6, kingR: 12, kingDz: 1, dayPct: 10,
+      // (Z3.6 balance: a beast every 22 days wiped seed 1 in the soak) at least 40 days apart, none in the first year
+      gapD: 40, firstDay: 40, keeperTier: 4, lore: 8, seasonD: 10 },
   ],
   text: [
     { id: 'beast_omen', text: 'Something vast stirs below: {beast} is waking. It will come in {hours} hours.', vars: ['beast', 'hours'] },

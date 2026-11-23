@@ -32,8 +32,8 @@ import { damage, infect } from '../../people/health.js';
 import { spawn as spawnItem } from '../../work/items.js';
 import { addLegend, legendEvent } from '../../colony/legends.js';
 import { registerIncidentLogic, incidentDef } from '../incidents.js';
-import { liveCauses, cavernAtZ, nearFound, dormantRows } from '../causes.js';
-import { scheduleIncident, onStoryHour } from '../storyteller.js';
+import { liveCauses, cavernAtZ, nearFound, dormantRows, causeLine } from '../causes.js';
+import { scheduleIncident, onStoryHour, majorPending, RULES } from '../storyteller.js';
 import { spawnRaid, addMember, setStage, foeById } from '../raiders.js';
 import { edgeTile } from '../raidplan.js';
 import { sendLetter, fillText } from '../letters.js';
@@ -113,7 +113,8 @@ export function beastDay(s) {
   if (D <= 1 || !incidentDef(BEAST_INC)) return null;
   const g = gbOf(s), day = dayOf(s.tick);
   if (day % DAYS_PER_SEASON === 0) for (const k of Object.keys(g.b)) { const r = g.b[k]; if (r.slain < 0 && r.hp < 100) r.hp = Math.min(100, r.hp + K.healPctSeason); }
-  if (beastPending(s) || day - g.last < K.gapD) return null;
+  // (Z3.6) a beast is a major: never beside another, and its arrival keeps RULES.minGapD days from the last (9.1)
+  if (beastPending(s) || day - g.last < K.gapD || day < (K.firstDay | 0) || majorPending(s)) return null;
   const woken = wokenBeasts(s);
   if (!woken.length) return null;
   if (h32(s, 'd' + day) % 100 >= K.dayPct) return null;
@@ -131,6 +132,9 @@ function scheduleBeast(s, b, cause) {
   const members = [b.base];
   if (b.knights) { const [a, z] = b.knights, n = a + (h32(s, 'k' + s.tick) % (z - a + 1)); for (let k = 0; k < n; k++) members.push('hollow_knight'); }
   const plan = { pts: Math.floor(b.hp / 4), edge: entryVoxel(s, b), goal: (DATA.behaviour.find((x) => x.id === b.beh) || { goal: 'core' }).goal, members, nem: null, lead: 0 };
+  const arrive = s.tick + hrs * TICKS_PER_HOUR, last = s.st.lastMajorArrive === undefined ? -Infinity : s.st.lastMajorArrive;
+  if (arrive < last + RULES.minGapD * TICKS_PER_DAY) return null;
+  s.st.lastMajorArrive = arrive;
   const why = causeText(s, b, cause);
   const e = scheduleIncident(s, BEAST_INC, s.tick, s.tick + hrs * TICKS_PER_HOUR, { plan, gb: b.key, cause: [cause[0], cause[1]], why });
   sendLetter(s, 'incident', { inc: BEAST_INC, text: `${beastText(b.legend === 'gloomwyrm' ? 'beast_omen_sky' : 'beast_omen', { beast: b.name, hours: hrs })} ${why}`.trim() });
@@ -140,7 +144,8 @@ function causeText(s, b, c) {
   if (c[0] === 'seal') return beastText('cause_seal');
   if (c[0] === 'near_lair' && b.legend === 'hollowking') return beastText('cause_sleep');
   if (c[0] === 'hunger' && b.legend === 'hollowking') return beastText('cause_kinghunger');
-  return '';
+  // (Z3.6) every other beast's letter names its cause the way every threat's does (2.10)
+  return causeLine(s, c) || '';
 }
 
 // ---- the incident's logic ------------------------------------------------------------------------------------
