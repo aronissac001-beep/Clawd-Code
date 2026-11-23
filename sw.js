@@ -273,6 +273,7 @@ const FILES = [
   './js/game/world/claims.js',
   './js/game/world/defs.js',
   './js/game/world/fire.js',
+  './js/game/world/fluids.js',
   './js/game/world/fog.js',
   './js/game/world/fuel.js',
   './js/game/world/light.js',

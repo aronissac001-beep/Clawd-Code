@@ -34,7 +34,8 @@ import { COMMANDS, registerApplier } from '../core/commands.js';
 import { WORLD } from '../../data/worldgen.js';
 import { worldRec, ensureWorld, worldStage2, getKey, putKey, dropKey } from './worldrec.js';
 import { structDef, hasFlag } from './defs.js';
-import { doorMode } from './pass.js';
+import { doorMode, footprint } from './pass.js';
+import { installFluids, activateBuilding } from './fluids.js';
 import { removeBuilding } from '../core/apply.js';
 
 export const MECH = WORLD.mech;
@@ -45,7 +46,9 @@ export const gateModeName = (m) => GATE_NAMES[m] || 'closed';
 const flagOf = (b, f) => !!b && hasFlag(structDef(b.def), f);
 export const isLever = (b) => flagOf(b, 'lever');
 export const isPlate = (b) => flagOf(b, 'plate');
-export const isGate = (b) => flagOf(b, 'door');
+// Z3.4: floodgates (never pass creatures, pass fluid only when open) and raising bridges (raised = LOCKED) are
+// worked like gates; a link is a building id pair, so a lever may sit on any level.
+export const isGate = (b) => flagOf(b, 'door') || flagOf(b, 'floodgate') || flagOf(b, 'liftbridge');
 export const isLockable = (b) => flagOf(b, 'lockable');
 export const isLinkableTrap = (b) => flagOf(b, 'linkable');
 const isSource = (b) => isLever(b) || isPlate(b);
@@ -89,6 +92,7 @@ function setGate(s, b, mode) {
   if (before === mode) return false;
   if (mode === GATE.CLOSED) dropKey(w.mech, b.id); else putKey(w.mech, [b.id, mode]);
   if (refreshFn && b.st === 'done') refreshFn(s, b);
+  if (b.st === 'done') activateBuilding(s, b, footprint(s, b));   // a toggle wakes the fluid around it (2.8 Z3)
   return true;
 }
 /** Hold every gate of lever `id` in `mode`. Returns the number of gates that changed. */
@@ -183,6 +187,7 @@ function onRemoved(s, b) {
 }
 
 export function installMechanisms() {
+  installFluids(footprint);
   if (!tickSystems().some((x) => x.slot === 'mechanisms' && x.name === 'plates')) registerSystem('mechanisms', 'plates', mechanismSystem, 10);
   if (!BUS.built.includes(onBuilt)) BUS.built.push(onBuilt);
   if (!BUS.removed.includes(onRemoved)) BUS.removed.push(onRemoved);
