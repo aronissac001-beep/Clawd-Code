@@ -232,13 +232,29 @@ export function wadeStep(s, i) {
   }
   return -1;
 }
+/** The nearest walkable voxel of i's level within 8 tiles (ring scan, lowest index first on a ring), -1 when none. */
+export function nearestWalkable(s, i) {
+  const z0 = ((i / PLANE) | 0) * PLANE, p = i - z0, x = p % W, y = (p / W) | 0;
+  for (let r = 1; r <= 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const j = z0 + ny * W + nx;
+    if (passable(s, j, 0)) return j;
+  }
+  return -1;
+}
 /** Colonists on voxels that water made unwalkable swim one tile toward dry footing (see the header). */
 export function wadeOut(s) {
   const fl = s.L.fluid;
   for (const c of s.col) {
     if (!c || (c.hp && c.hp.dead)) continue;
     const i = tileOfCol(c);
-    if (i < 0 || !(fl[i] & FL.DEPTH) || (fl[i] & FL.EMBER) || passable(s, i, 0)) continue;
+    if (i < 0) continue;
+    // entombed: the voxel turned solid under them (cinderstone where water met ember, a cave-in); they step out to the
+    // nearest walkable voxel of the level (v4 soak seed 3: a colonist stood in rock for days and starved there)
+    if (SOLID_T[s.L.terrain[i]]) { const j = nearestWalkable(s, i); if (j >= 0) { c.x = (j % W) * TILE + TILE / 2; c.y = (((j % PLANE) / W) | 0) * TILE + TILE / 2; c.path = null; } continue; }
+    if (!(fl[i] & FL.DEPTH) || (fl[i] & FL.EMBER) || passable(s, i, 0)) continue;
     const j = wadeStep(s, i);
     if (j < 0) continue;
     c.x = (j % W) * TILE + TILE / 2; c.y = (((j % PLANE) / W) | 0) * TILE + TILE / 2; c.path = null;

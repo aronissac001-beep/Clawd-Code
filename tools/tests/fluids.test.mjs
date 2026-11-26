@@ -185,3 +185,15 @@ test('a colonist under deep water wades out to walkable footing, one tile per st
   assert.equal(passable(s, at(c), 0), true, 'on walkable footing');
   assert.equal(at(c), idx(16, 10, ZT), 'the nearest walkable voxel (depth 3)');
 });
+
+test('a colonist whose voxel turns to rock steps out to the nearest walkable voxel', () => {
+  const s = world('TOMB');
+  tunnel(s, 2, 10, 10, ZT);
+  const c = { id: 98, x: 6 * 32 + 16, y: 10 * 32 + 16, z: ZT, hp: { dead: false }, path: null };
+  s.col.push(c);
+  s.L.terrain[idx(6, 10, ZT)] = TER.ROCK; initRuntime(s);
+  wadeOut(s);
+  const at = idx(Math.floor(c.x / 32), Math.floor(c.y / 32), c.z);
+  assert.ok(at === idx(5, 10, ZT) || at === idx(7, 10, ZT), `out at ${at}`);
+  assert.equal(passable(s, at, 0), true);
+});
