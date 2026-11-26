@@ -19,15 +19,20 @@
 //   a raised bridge (mechanism mode LOCKED). A held-open one passes fluid.
 //
 //   API: installFluids(), activate(s, i), activateAround(s, i), fluidStep(s, kind), fluidSystem(s),
-//   fluidRec(s), fluidBlocked(s, i), activeCount(s).
+//   fluidRec(s), fluidBlocked(s, i), activeCount(s), wadeOut(s).
+//
+//   Wading out (Z3b): water deep enough to block walking (depth >= 4) that rises over a colonist used to trap
+//   them where they stood (no region, so no path to food or bed: a seed-2 digger starved in a flooded room).
+//   Every water step a colonist on such a voxel swims one tile toward the nearest walkable voxel of the level,
+//   through wet voxels, within WADE_R steps.
 
-import { W, H, N, D, PLANE, zS, TER } from '../core/grid.js';
+import { W, H, N, D, PLANE, zS, TER, TILE, DX4, DY4 } from '../core/grid.js';
 import { EVENTS, emit } from '../core/events.js';
 import { registerSystem, tickSystems, BUS } from '../core/bus.js';
 import { FL, setFluid } from './pass.js';
 import { worldRec, ensureWorld, getKey } from './worldrec.js';
 import { structDef, hasFlag, stoneId } from './defs.js';
-import { setTerrain, onTileWrite } from './terrain.js';
+import { setTerrain, onTileWrite, passable } from './terrain.js';
 
 export const FLOW = Object.freeze({ water: 4, ember: 16, perStep: 2048, maxActive: 4096, idle: 8, maxQueue: 65536, alertDepth: 4 });
 
@@ -202,8 +207,63 @@ export function fluidStep(s, kind = 'all') {
 }
 
 /** Tick system (slot 'mechanisms', after the plates): water every 4 ticks, ember every 16. */
+const WADE_R = 24;
+const tileOfCol = (c) => { const x = Math.floor(c.x / TILE), y = Math.floor(c.y / TILE); return x < 0 || y < 0 || x >= W || y >= H ? -1 : (c.z | 0) * PLANE + y * W + x; };
+/** The first step from voxel i toward the nearest walkable voxel of its level through wet voxels (-1: none in reach). */
+export function wadeStep(s, i) {
+  const fl = s.L.fluid, z0 = ((i / PLANE) | 0) * PLANE;
+  const from = new Map([[i, -1]]);
+  let front = [i];
+  for (let d = 0; d < WADE_R && front.length; d++) {
+    const next = [];
+    for (const a of front) {
+      const p = a - z0, x = p % W, y = (p / W) | 0;
+      for (let k = 0; k < 4; k++) {
+        const nx = x + DX4[k], ny = y + DY4[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const b = z0 + ny * W + nx;
+        if (from.has(b)) continue;
+        from.set(b, a);
+        if (passable(s, b, 0)) { let c = b; while (from.get(c) !== i) c = from.get(c); return c; }
+        if ((fl[b] & FL.DEPTH) && !(fl[b] & FL.EMBER) && !SOLID_T[s.L.terrain[b]] && !bldBlocks(s, b)) next.push(b);
+      }
+    }
+    front = next;
+  }
+  return -1;
+}
+/** The nearest walkable voxel of i's level within 8 tiles (ring scan, lowest index first on a ring), -1 when none. */
+export function nearestWalkable(s, i) {
+  const z0 = ((i / PLANE) | 0) * PLANE, p = i - z0, x = p % W, y = (p / W) | 0;
+  for (let r = 1; r <= 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const j = z0 + ny * W + nx;
+    if (passable(s, j, 0)) return j;
+  }
+  return -1;
+}
+/** Colonists on voxels that water made unwalkable swim one tile toward dry footing (see the header). */
+export function wadeOut(s) {
+  const fl = s.L.fluid;
+  for (const c of s.col) {
+    if (!c || (c.hp && c.hp.dead)) continue;
+    const i = tileOfCol(c);
+    if (i < 0) continue;
+    // entombed: the voxel turned solid under them (cinderstone where water met ember, a cave-in); they step out to the
+    // nearest walkable voxel of the level (v4 soak seed 3: a colonist stood in rock for days and starved there)
+    if (SOLID_T[s.L.terrain[i]]) { const j = nearestWalkable(s, i); if (j >= 0) { c.x = (j % W) * TILE + TILE / 2; c.y = (((j % PLANE) / W) | 0) * TILE + TILE / 2; c.path = null; } continue; }
+    if (!(fl[i] & FL.DEPTH) || (fl[i] & FL.EMBER) || passable(s, i, 0)) continue;
+    const j = wadeStep(s, i);
+    if (j < 0) continue;
+    c.x = (j % W) * TILE + TILE / 2; c.y = (((j % PLANE) / W) | 0) * TILE + TILE / 2; c.path = null;
+  }
+}
+
 export function fluidSystem(s) {
   if (D <= 1 || !s.L.fluid) return;
+  if (s.tick % FLOW.water === 0) wadeOut(s);
   const r = fluidRec(s);
   if (!r || (!r.act.length && !r.q.length)) return;
   const t = s.tick;

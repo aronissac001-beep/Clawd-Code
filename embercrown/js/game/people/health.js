@@ -83,7 +83,7 @@ export function setSimpleHealth(on) { simpleHealth = !!on; }
 /** Is the colonist lying in a bed (a bedrest job, or asleep in a bed)? */
 export function inBed(col) {
   const j = col.job;
-  if (!j || (j.type !== 'bedrest' && j.type !== 'sleep' && j.type !== 'catatonic') || !(j.bed >= 0)) return false;
+  if (!j || (j.type !== 'bedrest' && j.type !== 'sleep' && j.type !== 'catatonic') || !(j.bed >= 0 || j.ground)) return false;   // (Z3b ground rest)
   const t = j.toils[j.i];
   // (a catatonic colonist lying in their bed, its last toil, counts as in bed: X 2.7)
   return !!t && (t.t === 'bedrest' || t.t === 'sleep' || (j.type === 'catatonic' && j.i === j.toils.length - 1));
@@ -326,7 +326,7 @@ function stage2Health(s, col, every, t0, t1) {
   if (hp.taint > 0) {
     const hearth = bed && nearHearth(s, col, h.taintRestHearthLvl, h.taintRestR);
     const before = hp.taint;
-    const delta = hearth ? -perDayOf(h.taintRestPerDay * FIX, t0, t1) : bed ? -perDayOf(h.taintBedPerDay * FIX, t0, t1) : perDayOf(h.taintPerDay * FIX, t0, t1);
+    const delta = hearth ? -perDayOf(h.taintRestPerDay * FIX, t0, t1) : bed ? -perDayOf(Math.floor((h.taintBedPerDay * FIX) / (col.job.ground ? 2 : 1)), t0, t1) : perDayOf(h.taintPerDay * FIX, t0, t1);
     hp.taint = Math.max(0, Math.min(100 * FIX, hp.taint + delta));
     for (const a of h.taintAlerts) if (before < a * FIX && hp.taint >= a * FIX) emit(s, 'wounded', { id: col.id, part: 'torso', kind: 'taint', dmg: 0 });
     if (hp.taint >= 100 * FIX) {

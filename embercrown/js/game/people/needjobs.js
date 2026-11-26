@@ -219,9 +219,29 @@ export function startBedrest(s, patient, b) {
   ownBed(s, patient, b);
   return true;
 }
+/**
+ * Z3b: ground rest, the bed rest of a colonist who needs it (the Grey Taint, an infected wound, a bad illness) when no
+ * bed is free. They lie down on a free floor tile by the Hearth (warm and lit; else where they stand), a doctor tends
+ * them there and the infection is held back as in a bed; the taint falls at half the bed rate (health.js). Before
+ * this, an infected colonist with no free bed kept working until the infection killed them (v4 soak seed 1: three
+ * joiners on day 104, with 6 beds for 15 colonists).
+ */
+export function groundRestJob(s, col) {
+  const h = s.colony.hearth, hb = h && h.id !== null ? bldById(s, h.id) : null;
+  let goal = -1;
+  if (hb) {
+    const cx = hb.x + 1, cy = hb.y + 1, z = hb.z | 0, R = 6;
+    for (let r = 2; r <= R && goal < 0; r++) for (let dy = -r; dy <= r && goal < 0; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !inB(cx + dx, cy + dy)) continue;
+      const i = idx(cx + dx, cy + dy, z);
+      if (TER_PASSABLE[s.L.terrain[i]] === 1 && !TER_WATER[s.L.terrain[i]] && s.rt.occ[i] < 0 && !s.col.some((c) => c !== col && !c.hp.dead && c.job && c.job.ground && c.job.toils[0].i === i) && reachableFrom(s, col, i)) { goal = i; break; }
+    }
+  }
+  return makeJob('bedrest', -1, goal >= 0 ? [T.goto(goal), { t: 'bedrest' }] : [{ t: 'bedrest' }], { need: true, bed: -1, ground: 1 });
+}
 registerToil('bedrest', (s, col, job) => {
-  const b = bldById(s, job.bed);
-  if (!isBed(b) || myClaim(s, keyBld(b.id), col.id) < 0) return 'lostBed';
+  const b = job.ground ? null : bldById(s, job.bed);
+  if (!job.ground && (!isBed(b) || myClaim(s, keyBld(b.id), col.id) < 0)) return 'lostBed';
   job.work++;
   // a patient who can walk gets up to eat (and to sleep in the night: the sleep job lies in the
   // same bed) and comes back after (the urgent hook); the downed are fed in bed (Care)
@@ -520,7 +540,7 @@ export function urgentHook(s, col) {
   // Not for a plain untended cut: a walking colonist with a scratch keeps working (and rescuing) and
   // is tended where they stand; X 2.7 soak: sending every scratched survivor to bed after a beast
   // fight left the downed to bleed out with nobody up to carry them.
-  if (stage2() && needsBed(col) && !col.drafted) { const j = bedrestJob(s, col); if (j) return j; }
+  if (stage2() && needsBed(col) && !col.drafted) { const j = bedrestJob(s, col); return j || groundRestJob(s, col); }
   if (needActive('warmth') && below(col, 'warmth', PEOPLE.warmth.seekBelow) && tempAt(s, colTile(col)) < PEOPLE.warmth.seekTemp) { const j = seekWarmthJob(s, col); if (j) return j; }
   return null;
 }
