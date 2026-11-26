@@ -46,11 +46,11 @@ export const DATA = {
     { id: 'sculpture', name: 'Sculpture', era: 'hold', cost: 300, text: 'The sculptor\'s studio: statues and figurines.' },
     { id: 'medicine2', name: 'Medicine II: salves', era: 'hold', cost: 300, text: 'Healing salves, sleeping draughts and the surgery table.' },
     { id: 'prospecting', name: 'Prospecting', era: 'hold', cost: 250, discover: { event: 'discovery', k: 'vault', effect: 'free' }, text: 'Silver and gold smelting and the survey table. Free on the first vault.' },
-    { id: 'waterworks', name: 'Waterworks', era: 'hold', cost: 350, text: 'The watermill and the water wheel.' },
+    { id: 'waterworks', name: 'Waterworks', era: 'hold', cost: 350, text: 'The watermill, the water wheel and the hand pump.' },
     { id: 'masonry2', name: 'Masonry II', era: 'hold', cost: 300, text: 'Reinforced walls, iron-bound gates and stone houses.' },
     { id: 'siegecraft', name: 'Siegecraft', era: 'hold', cost: 450, text: 'The ballista, the stone tower and the crossbow.' },
     { id: 'lanterns', name: 'Lantern-making', era: 'hold', cost: 250, text: 'Lantern posts, signal beacons and ward stones.' },
-    { id: 'mechanisms', name: 'Mechanisms', era: 'hold', cost: 400, text: 'Levers, pressure plates, locked gates and linked deadfalls.' },
+    { id: 'mechanisms', name: 'Mechanisms', era: 'hold', cost: 400, text: 'Levers, pressure plates, locked gates, floodgates and linked deadfalls.' },
     // ---- Kindling, appended ----
     { id: 'bloomery', name: 'Bloomery smelting', era: 'kindling', cost: 60, discover: { event: 'oreFound', effect: 'free' }, text: 'The bloomery and the forge: ore and coal become ingots, ingots become picks and spears. Free once ore is found.' },
   ],

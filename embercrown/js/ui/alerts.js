@@ -157,6 +157,16 @@ export const ALERT_RULES = Object.freeze([
     },
   },
   {
+    // Z4: the sick resting on the ground (Z3b ground rest: no bed was free); heals slower, taint drains at half
+    id: 'nobed', icon: 'bed', tone: 'warn',
+    test(s) {
+      const sick = alive(s).filter((x) => x.job && x.job.ground && x.job.type === 'bedrest' && ((x.hp.taint | 0) > 0 || infected(x)));
+      if (!sick.length) return null;
+      const c = sick[0];
+      return { text: sick.length === 1 ? `No bed for the sick: ${first(c)}` : `No bed for the sick: ${sick.length}`, why: `${first(c)} rests on the bare ground: wounds heal slower and the Grey Taint drains at half the rate. Build a bed (Build > Housing) in a room near the Hearth. Tap to go to them.`, target: { colonist: c.id } };
+    },
+  },
+  {
     id: 'taint', icon: 'skull', tone: 'bad',
     test(s) {
       const c = alive(s).find((x) => (x.hp.taint | 0) > 0);

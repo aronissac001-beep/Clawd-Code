@@ -95,7 +95,8 @@ export const PLACE_NEEDS = Object.freeze(['shore', 'underground', 'roofed', 'roc
 // linkable (B's mechanisms, 7.8: a lever or plate drives linked lockable gates and linkable traps), storage
 // (holds stacks: see `store`), workplace (no bills: a work spot), pen (an animal enclosure), burial.
 export const STRUCT_FLAGS = Object.freeze(['wall', 'door', 'floor', 'roof', 'support', 'shell', 'start', 'unique', 'flammable', 'bed', 'seat', 'table', 'trap', 'tower', 'prestige', 'trophy', 'grave', 'light',
-  'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial', 'arrival']);
+  'fence', 'window', 'road', 'bridge', 'lever', 'plate', 'lockable', 'linkable', 'storage', 'pen', 'burial', 'arrival',
+  'floodgate', 'liftbridge', 'pump']);   // Z3.4 water control (fluids.js), Z4 pumps (pumps.js)
 export const APPAREL_SLOTS = Object.freeze(['body', 'outer', 'head', 'feet', 'hands', 'trinket']);
 export const ITEM_TAGS = Object.freeze(['seed', 'fuel', 'medicine', 'tool', 'weapon', 'ranged', 'unique', 'installable', 'art', 'trade', 'corpse', 'deep', 'component', 'feed']);
 export const FOOD_KINDS = Object.freeze(['raw', 'meal', 'drink', 'preserved']);

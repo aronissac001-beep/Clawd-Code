@@ -18,6 +18,7 @@ import { openTarget, distTo, reachableFrom } from '../windex.js';
 import { fireTiles, burning, extinguish, FIRE } from '../../world/fire.js';
 import { worldStage2 } from '../../world/worldrec.js';
 import { isClaimed } from '../../world/claims.js';
+import { wellNear } from '../../world/pumps.js';
 import { able } from '../../people/health.js';
 
 export const FIRE_R = 25, BEAT_TICKS = 20, FIGHT_TICKS = 900;
@@ -76,7 +77,7 @@ registerToil('beat', (s, col, job, toil) => {
   const ci = colTile(col);
   if (tz(ci) !== tz(toil.i) || cheb(tx(ci), ty(ci), tx(toil.i), ty(toil.i)) > 1) return 'notThere';
   job.work++;
-  if (job.work % BEAT_TICKS === 0 && extinguish(s, toil.i, FIRE.extinguish)) return NEXT;
+  if (job.work % BEAT_TICKS === 0 && extinguish(s, toil.i, FIRE.extinguish * (wellNear(s, toil.i) ? 2 : 1))) return NEXT;   // Z4: a watered well within 15 doubles it
   return job.work >= FIGHT_TICKS ? NEXT : RUN;
 });
 

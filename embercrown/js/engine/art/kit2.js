@@ -27,6 +27,8 @@ export const TOP2 = {
   cobbles: 0, bricks: 0, carpet: 0, deck: 0,
   // Z2 (Z2_PARTS): the bench add-ons, the winch, the cell bed and the memorial slab
   addon: 12, winch: 16, cellbed: 6, slab: 14,
+  // Z4 (Z4_PARTS): the hand pump and the floodgate sluice
+  pump: 14, sluice: 6,
 };
 
 // ---- Shared pieces ----------------------------------------------------------------------------------
@@ -489,6 +491,26 @@ export const PARTS2 = {
     block(p, 1, -9, 14, 21, g); p.hl(2, -9, 12, P.bone); p.px(1, -9, P.slate3); p.px(14, -9, P.slate3);
     for (let y = -6; y < 10; y += 3) { p.hl(3, y, 4 + ((y + 6) % 4), RAMP.granite[1]); p.hl(9, y, 4 - ((y + 6) % 3), RAMP.granite[1]); }
     p.rect(12, 13, 2, 2, P.bone); p.px(12, 12, P.flame);
+  },
+  // ---- Stage Z4 (keys.js Z4_PARTS): water engineering ----------------------------------------------
+  // The hand pump: a stone collar over the shaft, an iron barrel with a long handle and a spout that pours
+  // toward the facing side (o.rot; 0 north), a dark pool of water under the collar.
+  pump(p, o) {
+    const g = RAMP.granite, ir = RAMP.iron, w = RAMP.wood, r = (o.rot | 0) & 3;
+    block(p, 2, 6, 12, 8, g); p.rect(4, 8, 8, 4, P.deep); p.hl(5, 9, 3, P.shallow);
+    p.rect(6, -6, 4, 14, ir[1]); p.vl(6, -6, 14, ir[2]); p.hl(6, -6, 4, ir[3]); p.rect(5, -8, 6, 2, ir[0]);
+    p.line(10, -7, 15, -12, w[1]); p.line(10, -6, 15, -11, w[0]); p.rect(14, -13, 2, 2, w[2]);
+    const sx = r === 1 ? 11 : r === 3 ? 1 : 7, sy = r === 0 ? -4 : r === 2 ? 2 : -2;
+    p.rect(sx, sy, 4, 2, ir[2]); p.px(r === 3 ? sx : sx + 3, sy + 2, P.shallow); p.px(r === 3 ? sx : sx + 3, sy + 3, P.water);
+  },
+  // The floodgate: an iron sluice board in a stone frame, bolted, with a lifting rack on top.
+  sluice(p, o) {
+    const g = RAMP.granite, ir = RAMP.iron;
+    block(p, 0, 0, 3, 16, g); block(p, 13, 0, 3, 16, g);
+    p.rect(3, 2, 10, 13, ir[1]); p.dither(3, 2, 10, 13, ir[0], 7);
+    for (const y of [4, 8, 12]) { p.hl(3, y, 10, ir[2]); p.px(4, y, ir[3]); p.px(11, y, ir[3]); }
+    p.rect(1, -5, 14, 3, RAMP.darkwood[1]); p.hl(1, -5, 14, RAMP.darkwood[3]); p.vl(7, -4, 6, ir[2]); p.vl(8, -4, 6, ir[0]);
+    p.hl(3, 15, 10, P.shallow);
   },
 };
 

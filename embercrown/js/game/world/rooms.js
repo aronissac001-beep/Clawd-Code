@@ -24,13 +24,13 @@
 // roof on the sky-open voxels of built rooms. The pass relabels only the dirty levels (pass.addDirtyLevels
 // over rt.dirty.tiles) and renumbers the clean levels after them in place, so it equals a full rebuild.
 
-import { W, H, N, D, PLANE, ROOF } from '../core/grid.js';
+import { W, H, N, D, PLANE, ROOF, DX4, DY4 } from '../core/grid.js';
 import { addDirtyLevels } from './pass.js';
 import { skyZRebuild } from './vertical.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick } from '../core/bus.js';
 import { isOpaque, WALK_DOOR, occRebuild, walkRebuild, footprint } from './pass.js';
-import { structDef, roomRoles, roomTiers, floorDefById, materialDef } from './defs.js';
+import { structDef, hasFlag, roomRoles, roomTiers, floorDefById, materialDef } from './defs.js';
 import { stackValue, buildingValue } from '../colony/wealth.js';
 
 export const ROOM = Object.freeze({ maxTiles: 600, roofReach: 6 });
@@ -38,8 +38,15 @@ export const ROOM = Object.freeze({ maxTiles: 600, roofReach: 6 });
 /** Room walls: opaque tiles and doors. */
 function wallMask(s, occ, walk) {
   const m = new Uint8Array(N);
-  for (let i = 0; i < N; i++) m[i] = walk[i] === WALK_DOOR || isOpaque(s, i, occ) ? 1 : 0;
+  for (let i = 0; i < N; i++) m[i] = walk[i] === WALK_DOOR || isOpaque(s, i, occ) || windowAt(s, occ, i) ? 1 : 0;
   return m;
+}
+/** Z4: a finished glass window bounds a room like a wall (it lets light through; pass.js keeps it non-opaque). */
+export function windowAt(s, occ, i) {
+  const id = occ[i];
+  if (id < 0) return false;
+  const b = s.bld[id];
+  return !!b && b.st === 'done' && hasFlag(structDef(b.def), 'window');
 }
 
 /** { room, rooms } from scratch. occ and walk default to the live caches (the pass) or rebuilt ones. */
@@ -101,7 +108,7 @@ function floodLevel(s, z, occ, walk, room, rooms, skyZ) {
   if (!wl || wl.length !== PLANE) { wl = new Uint8Array(PLANE); sn = new Uint8Array(PLANE); qq = new Int32Array(PLANE); }
   const b0 = z * PLANE, L = s.L;
   let open = 0;
-  for (let c = 0; c < PLANE; c++) { const i = b0 + c; const w = walk[i] === WALK_DOOR || isOpaque(s, i, occ) ? 1 : 0; wl[c] = w; if (!w) open++; }
+  for (let c = 0; c < PLANE; c++) { const i = b0 + c; const w = walk[i] === WALK_DOOR || isOpaque(s, i, occ) || windowAt(s, occ, i) ? 1 : 0; wl[c] = w; if (!w) open++; }
   if (!open) return;
   sn.fill(0);
   for (let start = 0; start < PLANE; start++) {
@@ -305,7 +312,7 @@ export function roomInfo(s, id) {
   if (!rec) return null;
   const contents = roomContents(s, id);
   const L = s.L, a = s.rt.room, light = s.rt.light, itemAt = s.rt.itemAt;
-  let n = 0, beauty = 0, lightSum = 0, corpses = 0, blight = 0, stock = 0, wealth10 = 0, blocked = 0;
+  let n = 0, beauty = 0, lightSum = 0, corpses = 0, blight = 0, stock = 0, wealth10 = 0, blocked = 0, wins = null;
   const b0 = (rec.z | 0) * PLANE;
   for (let y = rec.y0; y <= rec.y1; y++) for (let x = rec.x0; x <= rec.x1; x++) {
     const i = b0 + y * W + x;
@@ -318,7 +325,15 @@ export function roomInfo(s, id) {
     if (L.zone[i] && zoneTypeAt(s, L.zone[i]) === 'stockpile') stock++;
     const it = itemAt && itemAt[i] >= 0 ? s.items[itemAt[i]] : null;
     if (it) { wealth10 += stackValue(it); if (it.k === 'corpse') corpses++; }
+    // Z4: windows in the room's bounding walls count for its beauty (each once; one between two rooms counts for both)
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k], ny = y + DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = b0 + ny * W + nx;
+      if (s.rt.occ[j] >= 0 && windowAt(s, s.rt.occ, j)) (wins || (wins = new Set())).add(s.rt.occ[j]);
+    }
   }
+  if (wins) for (const id2 of [...wins].sort((p, q) => p - q)) beauty += buildingBeauty(s.bld[id2]);
   for (const b of contents) {
     wealth10 += buildingValue(b);
     beauty += buildingBeauty(b);
