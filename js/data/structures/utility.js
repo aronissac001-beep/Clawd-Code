@@ -23,7 +23,7 @@ export const DATA = {
       text: 'The heart of the hold: it claims land, lights the dark and fires on the Hollow at night. Bank it to reach Hamlet.' },
     { id: 'well', name: 'Well', cat: 'utility', kind: 'construct', size: [1, 1], cost: { block: 20 }, work: 90, hp: 300, band: 'camp',
       needs: ['nearWater'], mods: [{ key: 'fire.fight', op: 'pct', value: 100, when: 'near' }], art: 'struct.well', stage: '2',
-      text: 'Firefighters within 15 tiles work twice as fast. A brewery and a bathhouse need one.' },
+      text: 'Firefighters within 15 tiles on its level work twice as fast. On the surface it finds ground water; deeper, build it over water or on a seep.' },
     // ---- Stage 2 ----
     { id: 'waystone', name: 'Waystone', cat: 'utility', kind: 'furniture', size: [1, 1], band: 'camp', claim: true, claimR: 9, beauty: 2,
       mods: [{ key: 'claim.blight', op: 'pct', value: -40, when: 'near' }], art: 'beacon', stage: '2',
@@ -49,6 +49,10 @@ export const DATA = {
       flags: ['lever'], art: 'lock', stage: '2', text: 'Opens, closes and locks up to 4 linked gates and doors from afar. A locked gate is a wall to hostiles until broken.' },
     { id: 'plate', name: 'Pressure plate', cat: 'utility', kind: 'construct', size: [1, 1], cost: { 'ingot:iron': 4, block: 4 }, work: 40, hp: 100, band: 'village', tech: 'mechanisms',
       flags: ['plate'], art: 'lock', stage: '2', text: 'When a hostile steps on it, its linked deadfalls, ember pits and gates fire.' },
+    // ---- Stage Z4: water engineering (world/pumps.js) ----
+    { id: 'pump', name: 'Hand pump', cat: 'utility', kind: 'construct', size: [1, 1], cost: { block: 10, wood: 10, 'ingot:iron': 6 }, work: 120, hp: 200, band: 'village', tech: 'waterworks',
+      flags: ['pump', 'lockable'], art: 'struct.pump', stage: '2',
+      text: 'Lifts water one level: it draws from the water under it and pours out on the side it faces. A hauler works it; a water wheel within 6 tiles turns it alone. A lever can lock it.' },
     ...WINCH_ROWS,
   ],
 };

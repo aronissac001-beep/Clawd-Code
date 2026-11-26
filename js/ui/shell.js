@@ -53,6 +53,9 @@ import { SAVE } from '../data/balance.js';
 import { foodDays } from '../data/advice.js';
 import { Renderer } from '../engine/render/index.js';
 import { installFluidRender } from '../engine/render/fluids.js';
+import { audio } from '../engine/audio.js';
+import { Ambience, ambienceBand } from '../engine/audio/ambience.js';
+import { bandOfRel } from '../data/levels.js';
 let fluidHook = null;
 import { Camera } from '../engine/camera.js';
 import { Loop, fpsTarget } from '../engine/loop.js';
@@ -162,7 +165,24 @@ export function mountShell(root, api) {
   const flags = { covered: false, saver: false, paused: false, combat: false, moving: true, fast: false };
   let lastMinute = -1, dirtyChrome = true, peekT = 0;
   // Settings that reach the renderer and the loop (A's save/settings.js; the CSS reads data-ec-*)
-  const applyLive = (st) => { if (!st) return; r.settings.reduceMotion = !!st.reduceMotion; r.settings.colorblind = !!st.colourSafe; flags.saver = !!st.batterySaver; };
+  // Z4 sound: the colony's effects and the depth and season ambience (audio/ambience.js). The AudioContext is made
+  // inside the first tap (iOS); Sound, Music (and ambience), Volume and Battery saver (no ambience) apply live.
+  const amb = new Ambience(audio), snd = { st: null };
+  audio.setMode('silent');
+  const applyAudio = (st) => {
+    if (!st) return;
+    snd.st = st;
+    const v = Math.max(0, Math.min(100, st.volume === undefined ? 80 : st.volume)) / 100;
+    audio.setVolumes(st.music !== false ? v : 0, st.sound !== false ? v : 0);
+    audio.setMuted(st.sound === false && st.music === false);
+    amb.setLevel(v); amb.setEnabled(st.music !== false && !st.batterySaver && v > 0);
+  };
+  const unlockAudio = () => { if (audio.ready) return; try { const fresh = !audio.ctx; audio.unlock(); if (fresh && snd.st) applyAudio(snd.st); } catch (_) { /* no Web Audio */ } };
+  for (const ev of ['pointerdown', 'touchend', 'click']) window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+  const onVis = () => { if (document.hidden) audio.suspend(); else audio.resume(); };
+  document.addEventListener('visibilitychange', onVis);
+  const ambKind = () => { const rel = deep ? viewZ() - zS : 0; return ambienceBand(rel, bandOfRel(rel)); };
+  const applyLive = (st) => { if (!st) return; r.settings.reduceMotion = !!st.reduceMotion; r.settings.colorblind = !!st.colourSafe; flags.saver = !!st.batterySaver; applyAudio(st); };
   applyLive(api.readSettings ? api.readSettings() : null);
   const onSettings = (e) => { applyLive(e && e.detail ? e.detail.settings : null); dirtyChrome = true; layout(); };
   window.addEventListener('ec2:settings', onSettings);
@@ -184,6 +204,7 @@ export function mountShell(root, api) {
       if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); }
       if (ui.map) drawMini();
       if (levels) levels.frame();
+      amb.tick(ambKind(), seasonOf(s.tick));
       peekT += dt;
       if (peekT > 1 && ui.peek && !ui.sheet) { peekT = 0; renderPeek(true); }
     },
@@ -1064,7 +1085,7 @@ export function mountShell(root, api) {
   else if (api.resumed) onResume();
 
   const shell = {
-    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker, letters,
+    state: s, renderer: r, camera: cam, loop, ui, speed, loupe, toast, ctx, guide, ledger, prompts, alerts: tracker, letters, ambience: amb,
     get levels() { return levels; }, viewZ, setLevel: (z) => setZ(z, 'test'),
     alertGo: (id) => { const a = tracker.list().find((x) => x.id === id); if (a) alertGo(a); return !!a; },
     get ruin() { return ruin.on; }, showEnd: () => showEnd(), openAnnals: () => openAnnals(false),
@@ -1079,6 +1100,7 @@ export function mountShell(root, api) {
     destroy() {
       loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
+      amb.stop(); for (const ev of ['pointerdown', 'touchend', 'click']) window.removeEventListener(ev, unlockAudio, { capture: true }); document.removeEventListener('visibilitychange', onVis);
       if (levels) levels.destroy();
       { const k = BUS.draw.overlay.indexOf(orderHook); if (k >= 0) BUS.draw.overlay.splice(k, 1); }
       window.removeEventListener('ec2:backup', onBackup);

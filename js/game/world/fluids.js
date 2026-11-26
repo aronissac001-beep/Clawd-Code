@@ -71,7 +71,7 @@ function bldBlocks(s, i) {
   if (!d) return false;
   if (hasFlag(d, 'liftbridge')) return modeOf(s, b) === 2;
   if (hasFlag(d, 'door') || hasFlag(d, 'floodgate')) return modeOf(s, b) !== 1;
-  return hasFlag(d, 'wall');
+  return hasFlag(d, 'wall') || hasFlag(d, 'window');   // Z4: a glass window holds water like a wall
 }
 /** Voxel i is solid for fluid (2.8 Z3). */
 export function fluidBlocked(s, i) { return SOLID_T[s.L.terrain[i]] === 1 || bldBlocks(s, i); }

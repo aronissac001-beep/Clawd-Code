@@ -40,6 +40,7 @@ import { VDIG_GIVER, VBUILD_GIVER, designateVertical, cancelVertical, VD_NAMES }
 import { onItemFall } from './items.js';
 import { CLEAN_GIVER } from './givers/clean.js';
 import { FIRE_GIVER } from './givers/fire.js';
+import { PUMP_GIVER } from './givers/pump.js';
 import { REPAIR_GIVER } from './givers/repair.js';
 import { SMOOTH_GIVER, ENGRAVE_GIVER } from './givers/stone.js';
 import { filthSystem } from './filth.js';
@@ -82,7 +83,7 @@ export const FIRST_NIGHT_GIVERS = Object.freeze([COOK_GIVER, GROW_GIVER, HARVEST
  */
 const stage2Only = (g) => Object.freeze({ ...g, candidates: (s, c, k) => (worldStage2() ? g.candidates(s, c, k) : []) });
 export const HOLD_GIVERS = Object.freeze([TAILOR_GIVER, ART_GIVER, STUDY_GIVER, LORE_BENCH_GIVER, TEND_GIVER, TALK_GIVER, FEED_GIVER, CARE_BENCH_GIVER,
-  FISH_GIVER, QUARRY_GIVER, CLEAN_GIVER, FIRE_GIVER, REPAIR_GIVER, TABLET_GIVER, SMOOTH_GIVER, ENGRAVE_GIVER].map(stage2Only));
+  FISH_GIVER, QUARRY_GIVER, CLEAN_GIVER, FIRE_GIVER, REPAIR_GIVER, TABLET_GIVER, SMOOTH_GIVER, ENGRAVE_GIVER, PUMP_GIVER].map(stage2Only));
 /**
  * Stage Z1 (E5): the vertical work givers, Stairs / Ramp / Channel (Mine) and the built floor and stairs
  * (Build). Quiet until a fortress command designates one (vdig.js): a D = 1 game never has a target.

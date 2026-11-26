@@ -23,6 +23,7 @@ import { h, clear, onTap } from './kit.js';
 import { D, zS, TILE } from '../game/core/grid.js';
 import { bandOfRel } from '../data/levels.js';
 import { routeChevrons } from './threatui.js';
+import { mountSection } from './section.js';
 import { levelSummary, exploredRange, interestingLevels, nextInteresting, rulerRows, Scrub, levelText, toolLevels, nearestStair } from '../game/tools/levels.js';
 
 const HOLD_MS = 450;
@@ -33,7 +34,7 @@ export const LEVEL_TEXT = Object.freeze({
   unexploredBelow: 'Unexplored below: dig or sound to see more',
   nothingAbove: 'Nothing known above',
   surface: 'Go to surface', deepest: 'Go to deepest dig', noDig: 'Nothing dug below the surface yet',
-  nearest: 'Nearest stairs', noStairs: 'No stairs on this level',
+  nearest: 'Nearest stairs', noStairs: 'No stairs on this level', section: 'Section view',
 });
 /** "Level -4 · Outer" (the change toast and the alert explanations). */
 export function levelWord(z) { return `Level ${levelText(z)} · ${bandOfRel(z - zS).short}`; }
@@ -57,7 +58,8 @@ export function mountLevels(root, ctx, hooks) {
   const rulerList = h('div.ec-ruler-list');
   const rulerHead = h('div.ec-ruler-head');
   const nearest = h('button.ec-ruler-near', { type: 'button', 'data-act': 'ruler-stairs', text: LEVEL_TEXT.nearest });
-  const ruler = h('section.ec-ruler', { hidden: true, role: 'dialog', 'aria-label': 'Depth ruler' }, rulerHead, rulerList, nearest);
+  const secB = h('button.ec-ruler-near.ec-ruler-sec', { type: 'button', 'data-act': 'ruler-section', text: LEVEL_TEXT.section });
+  const ruler = h('section.ec-ruler', { hidden: true, role: 'dialog', 'aria-label': 'Depth ruler' }, rulerHead, rulerList, secB, nearest);
   const scrim = h('div.ec-ruler-scrim', { hidden: true });
   // Z3.5 route chevrons: where the threat's route preview leaves (or reaches) the view level, a 44 pt stair
   // chevron over the world; tapping it switches to the level the route goes to (the arrival one: back where
@@ -94,6 +96,9 @@ export function mountLevels(root, ctx, hooks) {
     for (; k < CHEV_MAX; k++) if (chevB[k].style.display !== 'none') { chevB[k].style.display = 'none'; chevB[k]._c = null; }
   }
   root.append(el, bubble, scrim, ruler, chevs);
+  // Z4: the section view (a side cut through every level; 4.1)
+  const sec = mountSection(root, ctx, { range: () => { refresh(); return st.range; }, go: (zz) => go(zz, 'section'), z: () => z() });
+  const openSection = () => { closeRuler(); sec.open(); };
   document.body.classList.add('has-levels');
 
   // ---- level changes ------------------------------------------------------------------------------------
@@ -167,6 +172,7 @@ export function mountLevels(root, ctx, hooks) {
         hooks.showCtx({ x: rc.left + rc.width / 2, y: rc.top }, [
           [LEVEL_TEXT.surface, () => go(zS, 'menu'), 'level-surface'],
           [LEVEL_TEXT.deepest, () => { refresh(); if (st.range.deepest === null) say(LEVEL_TEXT.noDig, 2000); else go(st.range.deepest, 'menu'); }, 'level-deepest'],
+          [LEVEL_TEXT.section, () => openSection(), 'level-section'],
         ]);
       }, HOLD_MS);
     });
@@ -211,6 +217,7 @@ export function mountLevels(root, ctx, hooks) {
   }
   function closeRuler() { st.ruler = false; ruler.hidden = true; scrim.hidden = true; document.body.classList.remove('has-ruler'); }
   scrim.addEventListener('pointerdown', (e) => { e.preventDefault(); closeRuler(); });
+  onTap(secB, () => openSection());
   onTap(nearest, () => {
     const c = ctx.cam, tx = Math.floor(c.x / 32), ty = Math.floor(c.y / 32);
     const p = nearestStair(s, z(), tx, ty);
@@ -299,12 +306,15 @@ export function mountLevels(root, ctx, hooks) {
   return {
     el, capsule, ruler, bubble, ghost, st,
     /** Once a second: the summary, badges, the ruler and the ghost column. */
-    tick() { refresh(); render(); if (st.ruler) renderRuler(); renderGhost(); chevData(); placeChevs(); },
+    tick() { refresh(); render(); if (st.ruler) renderRuler(); if (sec.isOpen) sec.draw(); renderGhost(); chevData(); placeChevs(); },
+    section: sec, openSection,
+    get sectionOpen() { return sec.isOpen; },
+    closeSection() { sec.close(); },
     /** Every frame: the chip follows a level set elsewhere (Follow, an alert, the rail). */
     frame() { if (st.shown === null || !st.shown.startsWith(z() + '|')) render(); if (st.chev.length || chevB[0].style.display !== 'none') placeChevs(); },
     chevrons: () => st.chev,
     go, step, jump, openRuler, closeRuler, setGhost, renderGhost, say,
     get rulerOpen() { return st.ruler; },
-    destroy() { chevs.remove(); el.remove(); bubble.remove(); ruler.remove(); scrim.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
+    destroy() { sec.destroy(); chevs.remove(); el.remove(); bubble.remove(); ruler.remove(); scrim.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
   };
 }

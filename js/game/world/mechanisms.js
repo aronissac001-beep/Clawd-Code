@@ -36,6 +36,7 @@ import { worldRec, ensureWorld, worldStage2, getKey, putKey, dropKey } from './w
 import { structDef, hasFlag } from './defs.js';
 import { doorMode, footprint } from './pass.js';
 import { installFluids, activateBuilding } from './fluids.js';
+import { installPumps } from './pumps.js';
 import { removeBuilding } from '../core/apply.js';
 
 export const MECH = WORLD.mech;
@@ -48,7 +49,8 @@ export const isLever = (b) => flagOf(b, 'lever');
 export const isPlate = (b) => flagOf(b, 'plate');
 // Z3.4: floodgates (never pass creatures, pass fluid only when open) and raising bridges (raised = LOCKED) are
 // worked like gates; a link is a building id pair, so a lever may sit on any level.
-export const isGate = (b) => flagOf(b, 'door') || flagOf(b, 'floodgate') || flagOf(b, 'liftbridge');
+// Z4: a pump links like a gate (a lever holding it LOCKED stops it; pumps.js).
+export const isGate = (b) => flagOf(b, 'door') || flagOf(b, 'floodgate') || flagOf(b, 'liftbridge') || flagOf(b, 'pump');
 export const isLockable = (b) => flagOf(b, 'lockable');
 export const isLinkableTrap = (b) => flagOf(b, 'linkable');
 const isSource = (b) => isLever(b) || isPlate(b);
@@ -188,6 +190,7 @@ function onRemoved(s, b) {
 
 export function installMechanisms() {
   installFluids(footprint);
+  installPumps();
   if (!tickSystems().some((x) => x.slot === 'mechanisms' && x.name === 'plates')) registerSystem('mechanisms', 'plates', mechanismSystem, 10);
   if (!BUS.built.includes(onBuilt)) BUS.built.push(onBuilt);
   if (!BUS.removed.includes(onRemoved)) BUS.removed.push(onRemoved);

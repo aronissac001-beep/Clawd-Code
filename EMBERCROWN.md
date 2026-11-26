@@ -143,7 +143,20 @@ The hold's own customs are set in the game, not here: **Colony > Hold > Customs*
 
 Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pauses (when a raid is near, on letters, when someone is down), an advanced work grid, two-finger tap to pause, battery saver, a left-handed layout, the back-up prompt, sound, music and volume.
 
-## What changed in this release (the deep fights back)
+## What changed in this release (water and quiet, Z4a)
+
+- **Hand pump.** Research Waterworks, build a pump over water and face it the way to fill. Haulers work it, a
+  water wheel within 6 tiles on its level drives it, and a linked lever set to Locked stops it.
+- **Floodgates can be built** (Mechanisms research). **Windows** (Glassblowing) keep out feet and water, let light
+  through, bound a room like a wall and add beauty to the rooms beside them.
+- **Wells by level.** A well below the surface needs water in or under it; a watered well doubles firefighting
+  within 15 tiles on its level.
+- **Section view.** From the depth ruler or the level chip's menu: a side cut through every level you have seen.
+  Touch a level to go there.
+- **Sound of the hold.** Each depth has its own ambience that changes with the season; Battery saver turns it off.
+- **A "No bed for the sick" alert** when a tainted or infected colonist lies on the ground, and higher-contrast faint text.
+
+## The release before (the deep fights back)
 
 - **Caverns are a door you open.** Nothing comes up a deep passage until your miners break into its cavern. Once
   open, cavern packs and the Lamplost (who may trade, or steal) can climb to you. A threat chip always names the
@@ -157,7 +170,7 @@ Text size (100%, 115% or 130%), reduce motion, colour-blind safe overlays, pause
   stop fluid; link a lever to them from any level (the lever-link sheet lists each link with its level). Flood and
   ember alerts name their level: one tap takes the view there.
 
-## The release before (the life of the hold)
+## Earlier (the life of the hold)
 
 - Colonists have personalities, likes, life goals and memories (Bio tab), and fevers of craft make named artifacts and memorials.
 - Offices, the Thane and the Lord, mandates and noble requests (Colony > Hold > Offices).
