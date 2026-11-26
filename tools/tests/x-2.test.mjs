@@ -127,3 +127,18 @@ test('a downed colonist is rescued by anyone, and a bleeding patient tended by a
   assert.ok(tended, 'the bleeding stopped');
   assert.equal(URGENT_TEND_GIVER.candidates(s, helper, 4).length, 0, 'no urgent tend once nothing bleeds');
 });
+
+// Z3b: with no free bed, an infected colonist rests on the ground by the Hearth (they used to work on until it killed them)
+test('an infected colonist with no free bed rests on the ground, and the infection is held back there', () => {
+  const s = colony('X-2-ground');
+  const c = s.col[0];
+  for (const o of s.col) if (o !== c) { o.custom = true; o.prio = new Uint8Array(WORK_IDS.length); }
+  assert.equal(s.bld.filter((b) => b && /bed|cot|bunk/.test(b.def)).length, 0, 'no beds in the scene');
+  c.hp.wounds.push({ part: 1, kind: 'cut', dmg: 3, bleed: 0, tended: 30, infected: 40, infx: 40 * FIX, rolled: 1, age: 20 * TICKS_PER_HOUR });
+  c.job = null; s.rt.res = rebuildFromJobs(s);
+  let ground = 0;
+  calm(s, 24 * TICKS_PER_HOUR, () => { if (c.job && c.job.type === 'bedrest' && c.job.ground) ground++; });
+  assert.ok(ground > 10 * TICKS_PER_HOUR, `on ground rest ${ground} of 24 h of ticks`);
+  const w = c.hp.wounds.find((x) => x.kind === 'cut' && x.dmg === 3);
+  assert.ok(!c.hp.dead && (!w || w.infected < 40), `infection ${w && w.infected} fell below 40`);
+});

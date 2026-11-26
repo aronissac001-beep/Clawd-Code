@@ -70,7 +70,7 @@ async function v3Seed(seed, days) {
   checks.push({ name: `save < ${TARGETS_Z1.saveKB} KB`, ok: blobKB !== null && blobKB < TARGETS_Z1.saveKB, detail: `${blobKB} KB at day ${days}` });
   const v2bad = r.metrics.checks.filter((c) => !c.ok && !c.info && !c.na).map((c) => `${c.name}: ${c.detail}`);
   if (v2bad.length) checks.push({ name: 'the bot ran clean', ok: false, detail: v2bad.join('; ') });
-  return { seed, days, bot: 'v3', ok: checks.every((c) => c.ok), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z1: { ...r.z1, checks: undefined }, deepNotes: r.deepNotes, tickP95: Math.max(...r.metrics.series.map((x) => x.tickP95 || 0)) };
+  return { seed, days, bot: 'v3', ok: checks.every((c) => c.ok || c.info), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks, z1: { ...r.z1, checks: undefined }, deepNotes: r.deepNotes, tickP95: Math.max(...r.metrics.series.map((x) => x.tickP95 || 0)) };
 }
 /** One v4 seed (Stage Z2), in this process: the plain result. */
 async function v4Seed(seed, days) {
@@ -298,7 +298,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     for (const r of results) {
       if (!r.checks) { console.log(`FAIL seed ${r.seed}: ${r.error}`); continue; }
       console.log(`${r.ok ? 'ok  ' : 'FAIL'} seed ${r.seed}: ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), hash ${r.hash}, blob ${r.blobKB} KB, tick p95 max ${r.tickP95} ms`);
-      for (const c of r.checks) console.log(`      ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+      for (const c of r.checks) console.log(`      ${c.ok ? 'ok  ' : c.info ? 'info' : 'FAIL'} ${c.name}: ${c.detail}`);
       if (has('--verbose')) { for (const n of r.deepNotes) console.log('      deep', n); console.log('      refused', JSON.stringify(r.refusedTop)); }
     }
     const pass = results.filter((r) => r.ok).length;

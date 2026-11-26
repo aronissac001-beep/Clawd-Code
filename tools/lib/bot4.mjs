@@ -14,7 +14,7 @@
 //   add-ons   a cutting yard beside the first mason bench once Masonry is known
 //   winch     a channel column beside the shaft from -1 to -5 (mined, then channelled twice), and a winch over it on
 //             the surface whose foot is the store level on -6
-//   petitions a petition letter is answered yes while the hold has room (POP_CAP4) and two days of food
+//   petitions a petition letter is answered yes while the hold has room (POP_CAP4) and 12 days of food
 //   drink     the tavern needs drink: Brewing is researched, a brewery and a fermenting cask go in a brewhouse on -4, and
 //             'until' bills keep a little wort and a dozen drinks (traders' drink is bought too: v2's Q.drinkWant)
 //   seizures  a seizure's demand gets its bills (smelt, cut) and a vein of the ore it needs dug, once per demand
@@ -44,6 +44,7 @@ import { lifeStage, couples, sharedFineBedroom } from '../../js/game/people/fami
 import { disabledWork } from '../../js/game/people/roles.js';
 import { foodDays } from '../../js/game/work/givers/animals.js';
 import { legendRecords } from '../../js/game/colony/legends.js';
+import { MINE_GIVER } from '../../js/game/work/givers/mine.js';
 
 export const POP_CAP4 = 20;          // v2 keeps 16; v4 makes room for petitioners and children (Thane at 15, Lord at 20)
 // The 200-day run plays Warden, as the soak does (the difficulty a careful player should never lose on): at Steadfast
@@ -96,6 +97,8 @@ export function makeZ2(s, deep, base = null, opts = {}) {
     // a couple's bedroom (Z2.8 births): 5 x 5, two beds, an end table, a wardrobe and a sconce on a flagstone floor
     // scores Fine (61; js/data/rooms.js); the door is on the west side, so the beds stand along the east
     couple: (r) => [['bed', r.x1, r.y0], ['bed', r.x1 - 2, r.y0], ['endtable', r.x1 - 1, r.y0], ['wardrobe', r.x1, r.y1], ['sconce', r.x0, r.y1]],
+    // a dormitory (Z3b): 5 x 6, six beds in two rows across an aisle, a sconce
+    dorm: (r, q) => [['bed', r.x0, r.y0], ['bed', r.x0 + 2, r.y0], ['bed', r.x0 + 4, r.y0], ['bed', r.x0, r.y1 - 1], ['bed', r.x0 + 2, r.y1 - 1], ['bed', r.x0 + 4, r.y1 - 1], ['sconce', q && q.neck && q.neck.x > r.x1 ? r.x0 : r.x1, r.y0 + 3]],
   };
   // floor tiles of a furnished room (every interior tile but the furniture's: beds are 1 x 2)
   const FLOOR = { couple: (r) => { const out = [], skip = new Set([`${r.x1},${r.y0}`, `${r.x1},${r.y0 + 1}`, `${r.x1 - 2},${r.y0}`, `${r.x1 - 2},${r.y0 + 1}`, `${r.x1 - 1},${r.y0}`, `${r.x1},${r.y1}`, `${r.x0},${r.y1}`]);
@@ -112,10 +115,36 @@ export function makeZ2(s, deep, base = null, opts = {}) {
         for (const t of FLOOR[q.use](q.rect)) { const l = run[run.length - 1]; if (l && (l[1] !== t[1] || l[0] + 1 !== t[0])) flush(); run.push(t); }
         flush();
       }
-      for (const [d, x, y] of FURNISH[q.use](q.rect)) if (structDef(d)) cmds.push({ t: 'place', def: d, x, y, z: q.z, rot: 0 });
-      note(`${q.use} on -4 furnished`);
+      for (const [d, x, y] of FURNISH[q.use](q.rect, q)) if (structDef(d)) cmds.push({ t: 'place', def: d, x, y, z: q.z, rot: 0 });
+      note(`${q.use} on ${q.z - zS} furnished`);
     }
     return cmds;
+  }
+
+  // dormitories (Z3b): v3's four bedrooms and v2's surface rooms gave 5 to 7 beds for 15 to 20 colonists, so the
+  // infected and tainted found no bed to rest in (v4 soak seed 1: 6 beds for 15 on day 104, infection killed 3 joiners).
+  // A player digs a dormitory: once the hold has fewer beds than colonists + 2, two 5 x 6 dorms off a corridor on -5.
+  const isBedB = (b) => b && (b.def === 'bed' || b.def === 'cot' || b.def === 'bunk' || b.def === 'doublebed');
+  function dorms() {
+    if (!Z.planned || Z.dorm) return [];
+    const beds = s.bld.filter(isBedB).length;
+    if (beds >= live(s).length + 2) return [];
+    const sh = deep.D3.shaft, x0 = sh.x0, y0 = sh.y0, z = zS - 5;
+    const want = [
+      // north of the shaft: the store on -6 lies south, under the -4 halls' side
+      { use: 'corridor5', rect: rect(x0 + 1, y0 - 8, x0 + 1, y0 - 1, z) },
+      { use: 'dorm', rect: rect(x0 - 5, y0 - 7, x0 - 1, y0 - 2, z), neck: { x: x0, y: y0 - 5 } },
+      { use: 'dorm', rect: rect(x0 + 3, y0 - 7, x0 + 7, y0 - 2, z), neck: { x: x0 + 2, y: y0 - 5 } },
+    ];
+    Z.dorm = [];
+    for (const q of want) {
+      if (!allRock(q.rect, q.use === 'corridor5' ? 0 : 1)) { note(`dorm level: no rock for the ${q.use}`); if (q.use === 'corridor5') break; continue; }
+      const room = { z, use: q.use, rect: q.rect, neck: q.neck };
+      deep.D3.rooms.push(room); Z.rooms.push(room); Z.dorm.push(room);
+    }
+    if (Z.dorm.length) deep.D3.done = 0;
+    note(`dorms on -5: ${Z.dorm.length - 1} (${beds} beds for ${live(s).length})`);
+    return [];
   }
 
   // births (Z2.8): once a married couple lives, a couple's bedroom on -4 at the corridor's south end (east of it),
@@ -375,8 +404,14 @@ export function makeZ2(s, deep, base = null, opts = {}) {
       && !disabledWork(c).includes(MINE_W) && !(c.job && (c.job.type === 'mine' || c.job.type === 'vdig')) && !(c.role && ['cook', 'grower', 'doctor'].includes(c.role[0])))
       .sort((a, b) => b.sk[MINING][0] - a.sk[MINING][0] || a.id - b.id);
     if (!fit.length) return [];
-    const r = oreRect(s, i);
-    return [{ t: 'prioritise', colId: fit[0].id, target: { x: r.x0, y: r.y0, z: r.z }, work: 'mine' }];
+    // (Z3b) only a tile the game's Mine giver would take for this miner: designated, its face walkable (not flooded)
+    // and reachable; v4 seed 1 tapped an unreachable vein tile every 3 hours for 300 days (3,364 refusals)
+    for (const j of Z.demandTiles) {
+      const r = oreRect(s, j), tg = { x: r.x0, y: r.y0, z: r.z };
+      const c = fit.find((m) => { const t = MINE_GIVER.fromTarget(s, m, tg); return t && MINE_GIVER.valid(s, m, t); });
+      if (c) return [{ t: 'prioritise', colId: c.id, target: tg, work: 'mine' }];
+    }
+    return [];
   }
 
   // add-ons: a cutting yard beside the first finished mason bench (Masonry)
@@ -400,7 +435,7 @@ export function makeZ2(s, deep, base = null, opts = {}) {
     const cmds = [];
     for (const l of pendingLetters(s)) {
       if (!l.data || l.data.k !== 'petition' || Z.held.has(l.id)) continue;
-      const ok = live(s).length < POP_CAP4 && foodDays(s) >= 6;
+      const ok = live(s).length < POP_CAP4 && foodDays(s) >= 12;   // (Z3b: was 6; the joiners' larder rule, 12 days)
       Z.held.set(l.id, ok);
       Z.petitions[ok ? 0 : 1]++;
       cmds.push({ t: 'petition', visitorId: l.data.visitorId, accept: ok });
@@ -418,9 +453,12 @@ export function makeZ2(s, deep, base = null, opts = {}) {
       // joiners only while the larder holds (a fortress winters on its stores: seed 1 took 8 joiners in autumn and
       // starved 5 in the winter)
       if (base) base.Q.popCap = foodDays(s) >= 12 ? POP_CAP4 : Math.min(POP_CAP4, live(s).length);
+      // (Z3b) the larder sliding under 10 days widens the fields (x2.2: v2's 460-tile cap bit at 18+ colonists, and
+      // seed 2's hold of 20 ate its stores down from 22 days to none by day 200 and starved); back to x1.6 over 20 days
+      if (base) { const fd = foodDays(s); if (fd < 10) base.Q.growMul = 2.2; else if (fd >= 20) base.Q.growMul = 1.6; }
       if (deep.D3.shaft && !Z.planned && day() >= HALL_DAY) { Z.planned = true; planHalls(); }
       if (base && Z.furnished.size && !base.Q.drinkWant) { base.Q.drinkWant = 15; note('the tavern wants drink: buy it from traders'); }
-      cmds.push(...demandHand(), ...demandDigger(), ...brew(), ...coupleRoom(), ...furnish(), ...winchStep(), ...offices(), ...(opts.squads === false ? [] : squads()), ...slabs(), ...addons(), ...petitions());
+      cmds.push(...dorms(), ...demandHand(), ...demandDigger(), ...brew(), ...coupleRoom(), ...furnish(), ...winchStep(), ...offices(), ...(opts.squads === false ? [] : squads()), ...slabs(), ...addons(), ...petitions());
       return cmds;
     },
   };

@@ -60,6 +60,7 @@ const CHECKS = [
   { name: 'Soak (300 days)', starts: '2', file: 'tools/colonybot.mjs', args: ['--soak', '--seeds=1', '--days=300', `--out=${OUT}/soak.json`], skip: quick ? '--quick' : null, bg: true, timeout: 3600000 },
   // Stage Z1 (EMBERCROWN-FORTRESS.md 8.3, the Z1 gate): bot v3 on fortresses (item 1), the 3D generator's guarantees on
   // seeds 1-100 (E10), the Z1 bench scenes (E3, E11), the fortress render and level UI (E6, E7)
+  // its "one raid fought below the surface" row is info since Z3 (a breach from below now needs a woken seep, Z3.1)
   { name: 'Colony bot v3 (fortress, 30 days)', starts: 'z1', file: 'tools/colonybot.mjs', args: ['--bot=v3', '--seeds=1-5', `--days=${quick ? 10 : 30}`, `--jobs=${quick ? 5 : 3}`, `--out=${OUT}/z1.json`] },
   { name: 'Mapgen3 (seeds 1-100)', starts: 'z1', file: 'tools/check-mapgen.mjs', args: [] },
   { name: 'Bench (Z1 scenes)', starts: 'z1', file: 'tools/bench.mjs', args: ['--scene=maze3d,miners6,hflow', '--stage=2'] },

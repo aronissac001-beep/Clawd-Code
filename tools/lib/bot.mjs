@@ -281,11 +281,14 @@ export function makePlayer(s, stage = '1b', opts = {}) {
   // lingers at the map edge does not keep the whole hold drafted for a day
   const foeNear = (r) => {
     const hb = hearthOf(s);
+    // (Z3b) on a fortress only a foe within a level counts: a cavern pack or a beast on -10 under the Hearth held the
+    // whole line drafted for two days (v4 soak seed 1, day 141: nine soldiers starved at their posts, three died)
+    const lv = (s.d | 0) > 1, near = (f, z) => !lv || Math.abs((f.z | 0) - (z | 0)) <= 1;
     for (const f of s.foes) {
       if (!f || (f.st && f.st.down)) continue;
       const fx = (f.x / 32) | 0, fy = (f.y / 32) | 0;
-      if (Math.max(Math.abs(fx - hb.x), Math.abs(fy - hb.y)) <= r) return f;
-      for (const c of s.col) if (!c.hp.dead && !c.hp.down && Math.max(Math.abs(fx - ((c.x / 32) | 0)), Math.abs(fy - ((c.y / 32) | 0))) <= r) return f;
+      if (near(f, hb.b ? hb.b.z : s.zS) && Math.max(Math.abs(fx - hb.x), Math.abs(fy - hb.y)) <= r) return f;
+      for (const c of s.col) if (!c.hp.dead && !c.hp.down && near(f, c.z) && Math.max(Math.abs(fx - ((c.x / 32) | 0)), Math.abs(fy - ((c.y / 32) | 0))) <= r) return f;
     }
     return null;
   };
@@ -314,7 +317,10 @@ export function makePlayer(s, stage = '1b', opts = {}) {
   // (2.9b) also stands down one in pain near the downing line (a player pulls the hurt back before they
   // fall where the horde is: a colonist downed in the line bled out before anyone could reach them)
   const painOf = (c) => { let p = 0; for (const w of c.hp.wounds) if (w.tended === 0) p += w.dmg; return p; };
-  const unfit = (c) => c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100) || (pol && painOf(c) >= PAIN_OUT);
+  // (Z3b, fortress) a soldier gone Hungry or Exhausted on a long stand is stood down to eat or sleep, and drafted again
+  // once fed: a player rotates the line (drafted colonists skip their need jobs)
+  const spent = (c) => (s.d | 0) > 1 && (c.need[0] < 12 * 100 || c.need[1] < 8 * 100);
+  const unfit = (c) => spent(c) || c.hp.blood < HURT_BLOOD || (c.hp.wounds.some((w) => w.tended === 0 && w.bleed > 0 && w.dmg >= 4) && c.hp.blood < 85 * 100) || (pol && painOf(c) >= PAIN_OUT);
   const holdSpot = () => { const at = P.holdAt || { x: hx, y: hy + 2 }; return rings(at.x, at.y, 4, (x, y) => (inB(x, y) && TER_PASSABLE[s.L.terrain[idx(x, y)]] && !TER_WATER[s.L.terrain[idx(x, y)]] && s.rt.occ[idx(x, y)] < 0 ? { x, y } : null)); };
   /** 1b defence: 2 braziers by the Hearth toward the omen's edge; draft at Imminent and hold there; undraft after. */
   function defence() {

@@ -180,7 +180,8 @@ export function makeDeep(s, base) {
       for (const r of parts) for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
         const i = idx(x, y, q.z);
         if (!TER_MINEABLE[T[i]] || !(s.L.desig[i] & 1) || !mineAllowed(s, i)) continue;
-        if ([i - 1, i + 1, i - W, i + W].some((j) => TER_PASSABLE[T[j]])) return { x, y, z: q.z };
+        // walkable, not merely open terrain: a face whose only floor is flooded has no mine job (Z3b)
+        if ([i - 1, i + 1, i - W, i + W].some((j) => TER_PASSABLE[T[j]] && s.rt.walkCost[j] !== 0)) return { x, y, z: q.z };
       }
     }
     return null;
@@ -383,12 +384,14 @@ export function evaluate3(s, r, X3, deep, days) {
     [`stair shaft to -${T.shaft} or deeper`, shaft >= T.shaft, `shaft reaches -${shaft}${deep.D3.shaft ? ` at ${deep.D3.shaft.x0},${deep.D3.shaft.y0}` : ' (no shaft)'}`],
     [`roofed rooms on >= ${T.roofLevels} levels`, lv.size >= T.roofLevels, `roofed rooms by level ${JSON.stringify(roofedBy)}`],
     ['a workshop below -2', benches.length >= 1, `${benches.length} finished benches below -2: ${out.deepBenches.join(', ') || 'none'}`],
-    [`>= ${T.raids} raids warned and repelled, one fought below the surface`, repelled.length >= T.raids && X3.deepTicks > 0, `${repelled.length} repelled of ${m.majors.length}: ${JSON.stringify(out.raids)}; ${X3.deepTicks} foe-colonist samples side by side below the surface; deepest foe by raid ${JSON.stringify(out.foeDepth)}`],
+    [`>= ${T.raids} raids warned and repelled`, repelled.length >= T.raids, `${repelled.length} repelled of ${m.majors.length}: ${JSON.stringify(out.raids)}`],
+    // informational since Z3: a breach below the surface now needs a woken seep (Z3.1), so on most seeds no raid comes up from below
+    ['one raid fought below the surface (info)', X3.deepTicks > 0, `${X3.deepTicks} foe-colonist samples side by side below the surface; deepest foe by raid ${JSON.stringify(out.foeDepth)}`, true],
     ['zero starvation deaths', starved === T.starvation, `${starved} starvation deaths`],
     [`idle < ${T.idleMax * 100}%`, m.idle && m.idle.work < T.idleMax, `idle ${m.idle ? (m.idle.work * 100).toFixed(1) : '?'}% of work hours`],
     [`median haul latency < ${T.haulMedianMaxH} h`, m.haul && m.haul.medianH !== null && m.haul.medianH < T.haulMedianMaxH, `median ${m.haul ? m.haul.medianH : '?'} h (${m.haul ? m.haul.stored : 0} stored, ${m.haul ? m.haul.stillWaiting : 0} waiting)`],
-  ].map(([name, ok, detail]) => ({ name, ok: !!ok, detail }));
-  out.ok = out.checks.every((c) => c.ok);
+  ].map(([name, ok, detail, info]) => (info ? { name, ok: !!ok, detail, info: true } : { name, ok: !!ok, detail }));
+  out.ok = out.checks.every((c) => c.ok || c.info);
   out.days = days;
   return out;
 }

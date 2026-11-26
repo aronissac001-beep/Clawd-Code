@@ -240,8 +240,13 @@ function roleSlots(Q) {
   const early = Q.has('bloomery') && Q.ingot('iron') < 30 && Q.ore('iron') > 0;
   add('crafter', 3, Q.has('mason') || Q.has('carpenter')); if (early) add('smith', 3); add('miner', 3); if (Q.food >= 3) add('grower', 5);
   add('smith', 5, Q.has('bloomery') && !early); add('scholar', 6, Q.has('study')); add('hauler', 7); add('doctor', 7);
-  add('herder', 8, Q.pens > 0); add('grower', 9); add('hauler', 10); add('builder', 11); add('crafter', 12); add('artisan', 12, Q.has('sculptor'));
-  add('soldier', 13); add('cook', 13); add('miner', 14); add('hauler', 15); add('scholar', 16); add('soldier', 17);
+  // (Z3b, bot v4 only: Q.growMul) a fortress's fields of 700+ tiles want more hands than two growers: each crop of a tile
+  // is about 20 minutes of sowing and harvest, so 770 tiles every 6 days are 3 to 4 growers' days (seed 4: fields lay
+  // unsown while 300 to 700 idle hours a day went by, and the hold starved in its third winter)
+  // in the place of the third and fourth haulers (v4 has the winch for the deep store)
+  const G = Q.growMul ? 'grower' : 'hauler';
+  add('herder', 8, Q.pens > 0); add('grower', 9); add(G, 10); add('builder', 11); add('crafter', 12); add('artisan', 12, Q.has('sculptor'));
+  add('soldier', 13); add('cook', 13); add('miner', 14); add(G, 15); add('scholar', 16); add('soldier', 17);
   return out;
 }
 

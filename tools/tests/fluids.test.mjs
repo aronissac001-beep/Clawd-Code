@@ -14,7 +14,8 @@ import { setWorldStage } from '../../js/game/world/worldrec.js';
 import { setWorldContent } from '../../js/game/world/defs.js';
 import { CONTENT } from '../../js/data/index.js';
 import { link, setLever, GATE } from '../../js/game/world/mechanisms.js';
-import { FLOW, fluidRec, activate, fluidStep, activeCount, fluidBlocked } from '../../js/game/world/fluids.js';
+import { FLOW, fluidRec, activate, fluidStep, activeCount, fluidBlocked, wadeOut } from '../../js/game/world/fluids.js';
+import { passable } from '../../js/game/world/terrain.js';
 
 const EXTRA = {
   floodgate: { id: 'floodgate', name: 'Floodgate', kind: 'construct', size: [1, 1], flags: ['wall', 'lockable', 'floodgate'] },
@@ -166,4 +167,21 @@ test('fluid render draws the view level only', async () => {
   assert.equal(n, 2);
   assert.equal(calls.length, 3, 'two fills and one rim line on the deep voxel');
   assert.equal(new FluidLayer().draw(g, s, { x0: 400, y0: 400, x1: 600, y1: 600 }, ZT, 0), 0, 'culled to the view');
+});
+
+// Z3b: a seed-2 digger stood in a room that flooded to depth 6 (unwalkable), had no region and starved there
+test('a colonist under deep water wades out to walkable footing, one tile per step', () => {
+  const s = world('WADE');
+  tunnel(s, 2, 16);
+  step(s, 400);
+  const at = (c) => idx(Math.floor(c.x / 32), Math.floor(c.y / 32), c.z);
+  const c = { id: 99, x: 8 * 32 + 16, y: 10 * 32 + 16, z: ZT, hp: { dead: false }, path: [1] };
+  s.col.push(c);
+  assert.equal(passable(s, at(c), 0), false, 'depth 7 is not walkable');
+  wadeOut(s);
+  assert.equal(at(c), idx(9, 10, ZT), 'one tile toward the shallow end');
+  assert.equal(c.path, null);
+  for (let k = 0; k < 12; k++) wadeOut(s);
+  assert.equal(passable(s, at(c), 0), true, 'on walkable footing');
+  assert.equal(at(c), idx(16, 10, ZT), 'the nearest walkable voxel (depth 3)');
 });
