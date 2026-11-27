@@ -64,7 +64,7 @@ export const DATA = {
     { id: 'beautiful_near2', label: 'Breathtaking hall', value: 6, durationH: 0, tags: ['beauty'] },
     { id: 'blight_near', label: 'The grey blight is near', value: -3, durationH: 0, tags: ['environment'] },
     { id: 'saw_corpse', label: 'Saw a corpse', value: -3, durationH: 6, stack: { max: 3, decay: 50 }, tags: ['event'] },
-    { id: 'stone_pressed', label: 'Stone-pressed', value: -3, durationH: 0, tags: ['ancestry'], text: 'Sylvari: the mountain presses on them.' },
+    { id: 'stone_pressed', label: 'Stone-pressed', value: -3, durationH: 0, tags: ['ancestry'], text: 'Thornwake: the mountain presses on them.' },
     { id: 'among_trees', label: 'Among growing things', value: 4, durationH: 0, tags: ['ancestry'] },
     { id: 'rock_and_hearth', label: 'Rock and hearth', value: 3, durationH: 0, tags: ['ancestry'], text: 'Deepforge: a carved room feels like home.' },
     { id: 'underground', label: 'Under the mountain', value: -2, durationH: 0, tags: ['environment'] },

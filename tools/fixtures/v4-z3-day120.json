@@ -1,0 +1,231 @@
+{
+ "file": "v4-z3-day120.ecsave",
+ "what": "A real Stage Z3 save: colony bot v4 (every Z3 system on), seed 3, a 128 x 128 x 20 hold at the end of game day 120.",
+ "made": "node tools/capture-fixture.mjs --bot=v4 --seed=3 --at=day --day=120 --out=/tmp/claude-0/-home-user-Clawd-Code/ebc4371c-fbfa-5aa9-b9db-34342a9a0671/scratchpad/overhaul/build/W0.1/fix/v4-z3-day120.ecsave --root=<worktree of 547800a>",
+ "commit": "547800a",
+ "dirty": false,
+ "bytes": 86680,
+ "stateVersion": 4,
+ "formatVersion": 3,
+ "compression": "deflate-raw",
+ "seed": 3,
+ "tick": 1731600,
+ "hashAtSave": "5a6e80d2861dcfe0",
+ "at": {
+  "day": 120,
+  "hash": "5a6e80d2861dcfe0",
+  "tick": 1731600
+ },
+ "colonists": [
+  "Isolde Dunmore",
+  "Cade Thorne",
+  "Juno Thorne",
+  "Fenwick Ravel",
+  "Rowena Pellam",
+  "Saelor Willowmere",
+  "Cade Coldwater",
+  "Lirra Ashbough",
+  "Saffi Thorne",
+  "Maren Thorne",
+  "Bramm Emberdelve",
+  "Szara Smokeborn",
+  "Wenna Coldwater",
+  "Szara Ashfang",
+  "Bramm Anvilborn",
+  "Oriel Ashbough",
+  "Veyra Willowmere",
+  "Edda Sallow",
+  "Cade Fallow",
+  "Bramm Coalvein",
+  "Cade Dunmore"
+ ],
+ "alive": 21,
+ "foes": 1,
+ "reavers": 0,
+ "items": 1227,
+ "buildings": 203,
+ "raids": [
+  "great_beast:active"
+ ],
+ "commands": 4878,
+ "colony": {
+  "difficulty": "warden",
+  "storyteller": "steady"
+ },
+ "perks": {
+  "Isolde Dunmore": [
+   "cave_sense"
+  ],
+  "Fenwick Ravel": [
+   "reforger"
+  ],
+  "Rowena Pellam": [
+   "stone_carver"
+  ],
+  "Cade Coldwater": [
+   "deep_reader"
+  ],
+  "Maren Thorne": [
+   "hearth_cook"
+  ]
+ },
+ "bot": "v4",
+ "pristineEmbedded": true,
+ "fortress": {
+  "w": 128,
+  "d": 20,
+  "zS": 14
+ },
+ "fluidActive": 0,
+ "beasts": 1,
+ "continue": {
+  "what": "loaded from the blob by the capturing build in a fresh process, ticked with no commands",
+  "hour": {
+   "tick": 1732200,
+   "hash": "7132869080cfb4d2",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 6403,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5429,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 3011,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Fenwick Ravel",
+     "mood": 3900,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Rowena Pellam",
+     "mood": 6429,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Saelor Willowmere",
+     "mood": 6500,
+     "dead": false
+    },
+    {
+     "id": 10,
+     "name": "Cade Coldwater",
+     "mood": 3731,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Lirra Ashbough",
+     "mood": 6750,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Saffi Thorne",
+     "mood": 6400,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Maren Thorne",
+     "mood": 6250,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Bramm Emberdelve",
+     "mood": 8825,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Szara Smokeborn",
+     "mood": 5350,
+     "dead": false
+    },
+    {
+     "id": 18,
+     "name": "Wenna Coldwater",
+     "mood": 4500,
+     "dead": false
+    },
+    {
+     "id": 21,
+     "name": "Szara Ashfang",
+     "mood": 5107,
+     "dead": false
+    },
+    {
+     "id": 26,
+     "name": "Bramm Anvilborn",
+     "mood": 3981,
+     "dead": false
+    },
+    {
+     "id": 27,
+     "name": "Oriel Ashbough",
+     "mood": 6024,
+     "dead": false
+    },
+    {
+     "id": 28,
+     "name": "Veyra Willowmere",
+     "mood": 5214,
+     "dead": false
+    },
+    {
+     "id": 29,
+     "name": "Edda Sallow",
+     "mood": 4325,
+     "dead": false
+    },
+    {
+     "id": 30,
+     "name": "Cade Fallow",
+     "mood": 6578,
+     "dead": false
+    },
+    {
+     "id": 31,
+     "name": "Bramm Coalvein",
+     "mood": 3919,
+     "dead": false
+    },
+    {
+     "id": 46,
+     "name": "Cade Dunmore",
+     "mood": 5600,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 1746000,
+   "hash": "5667bd9406be365e"
+  },
+  "day2": {
+   "tick": 1760400,
+   "hash": "30a25b19be0cebf3"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": [],
+   "reloadAtHourSameDay2Hash": true
+  }
+ },
+ "ms": 768828
+}

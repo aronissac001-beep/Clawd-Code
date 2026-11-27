@@ -188,7 +188,7 @@ add('mark.blueprint', { kind: 'mark', base: 'ghost', tint: PAL.shallow, label: '
 
 // People (the band of 1a is Human; the other ancestries are variants of the same rig).
 add('colonist.human', { kind: 'colonist', base: 'body.human', props: ['hair', 'beard', 'clothes'], tint: 'look', size: [1, 1], label: 'Human' });
-add('colonist.sylvari', { kind: 'colonist', base: 'body.sylvari', props: ['hair', 'clothes'], tint: 'look', label: 'Sylvari', stage: '2' });
+add('colonist.sylvari', { kind: 'colonist', base: 'body.sylvari', props: ['hair', 'clothes'], tint: 'look', label: 'Thornwake', stage: '2' });
 add('colonist.deepforge', { kind: 'colonist', base: 'body.deepforge', props: ['hair', 'beard', 'clothes'], tint: 'look', label: 'Deepforge', stage: '2' });
 add('colonist.emberkin', { kind: 'colonist', base: 'body.emberkin', props: ['hair', 'beard', 'clothes'], tint: 'look', label: 'Emberkin', stage: '2' });
 for (const [k, l] of [['miner', 'Miner'], ['cleric', 'Cleric'], ['runesmith', 'Runesmith']]) add(`look.${k}`, { kind: 'look', base: `outfit.${k}`, tint: 'look', label: `${l} look`, stage: '2' });

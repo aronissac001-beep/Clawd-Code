@@ -26,7 +26,7 @@ import { migrateWorld, preMigration, checkMigrated, v3to4, MIG4 } from '../../js
 
 const HOUR = 600, DAY = 14400, FIX5 = 5 * 100;   // mood is fixed-point x100
 const FIX = new URL('../fixtures/', import.meta.url);
-const NAMES = readdirSync(FIX).filter((f) => /\.ecsave$/.test(f)).sort();
+const NAMES = readdirSync(FIX).filter((f) => /^v[123]-.*\.ecsave$/.test(f)).sort();   // v4-* saves are already v4 (fixtures-v4.test.mjs)
 installSim({ stage: '2' });
 
 // rt.cover and rt.skyZ are not rows of the C13 contract yet (rtcontract.js, A): without them every coverAt read

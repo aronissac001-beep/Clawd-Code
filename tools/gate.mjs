@@ -1,23 +1,32 @@
 // The gate (doc 14.4): runs every check that exists at the given stage. Must pass on every merge.
-//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|z1|z2|z3|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
+//   node tools/gate.mjs [--stage=0|1a|1b|2|2.9|z1|z2|z3|w0..w7|3 (default 2.9)] [--no-browser] [--browser=webkit|chromium] [--strict] [--quick]
+//                       [--write-baseline]
+//   node tools/gate.mjs --legacy [--stage=wN] [--seeds=1-5] [--days=120] [--jobs=3] [--write-baseline] [--out=<file>]
+//     the legacy-hash rule (EMBERCROWN-WORLD.md 12.1): bot v4 on realm-less holds, seeds 1-5, its stateHash at the
+//     checkpoint days, and the three W0 fixtures (tools/fixtures/v4-z3-*) continued 2 days, against the latest
+//     tools/out/baseline-wK.json (K <= the stage); --write-baseline writes tools/out/baseline-<stage>.json instead (the
+//     W0 gate after W0.5, and each re-baselining step: W4.8, W5.1, W5.9). It also writes the bot report (survival, tier
+//     and rank days, idle share, haul latency, tick p95) to --out (default tools/out/gate/legacy.json); W0.1 wrote
+//     tools/out/w0.json with --report-only --out=tools/out/w0.json on HEAD (--report-only: no baseline read or written).
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
 // "later"; checks not yet enforced at this stage run as INFO (their result never fails the gate).
 import { spawnSync, spawn } from 'node:child_process';
-import { existsSync, unlinkSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, unlinkSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : d; };
 const has = (f) => process.argv.includes(f);
-const STAGES = ['0', '1a', '1b', '2', '2.9', 'z1', 'z2', 'z3', '3'];
+// W0-W7 (EMBERCROWN-WORLD.md 12.1, G31) come after Z3
+const STAGES = ['0', '1a', '1b', '2', '2.9', 'z1', 'z2', 'z3', 'w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', '3'];
 const stage = arg('stage', '2.9');    // the current stage (14.8; EMBERCROWN-FORTRESS.md 8.2); pass --stage=2, 1b, 1a or 0 for the earlier sets
 if (!STAGES.includes(stage)) { console.error(`gate: unknown stage ${stage} (${STAGES.join(', ')})`); process.exit(2); }
 const atLeast = (s) => STAGES.indexOf(stage) >= STAGES.indexOf(s);
 // Stage 2.9 ships on the Stage 2 engine: tools that take a sim stage get '2'
-const simStage = stage === '2.9' || stage === 'z1' || stage === 'z2' || stage === 'z3' ? '2' : stage;
+const simStage = stage === '2.9' || /^[zw]\d$/.test(stage) ? '2' : stage;
 const browser = arg('browser', 'webkit');
 const noBrowser = has('--no-browser');
 const strict = has('--strict');
@@ -78,9 +87,16 @@ const CHECKS = [
   // determinism and cache-drop mid-flood and mid-beast (the Z3 gate) and the Z3 phone flows (Z3.5)
   { name: 'Z3 mid-flood and mid-beast (save, cache drop)', starts: 'z3', node: ['--test', 'tools/tests/z3-midflood.test.mjs'] },
   { name: 'Phone UI (Z3 threats on levels)', starts: 'z3', file: 'tools/ui-phone-z3.mjs', args: [`--browser=${browser}`], browser: true },
+  // Stage W0 (EMBERCROWN-WORLD.md 12.2, W0.1): the three v4 fixtures made by HEAD (bot seed 3 at day 120, a flood in
+  // progress, a great beast loose) load and continue to their sidecar hashes; and the legacy-hash rule (12.1): bot v4
+  // seeds 1-5 and the fixtures continued 2 days hash as the latest baseline-wK.json. The legacy run starts once the
+  // Z3 soak is read (its tick p95 must not share the CPU) and is read at the end
+  { name: 'Save fixtures (three v4, Z3)', starts: 'w0', node: ['--test', 'tools/tests/fixtures-v4.test.mjs'] },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
+  // read last: it runs beside the browser rows and the balance report
+  { name: 'Legacy hashes (bot v4 seeds 1-5, W0 fixtures)', starts: 'w0', file: 'tools/gate.mjs', args: ['--legacy', `--stage=${stage}`, '--jobs=3', ...(has('--write-baseline') ? ['--write-baseline'] : [])], bg: true, startAfter: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, timeout: 5400000, skip: quick ? '--quick' : null },
 ];
 
 // ---- Stage 2.9 checks (EMBERCROWN-FORTRESS.md 8.2) -----------------------------------------------------------------
@@ -132,6 +148,97 @@ function botVsBaseline() {
   const detail = rows.map((x) => `${x.k} ${f(x.c, x.k)} vs ${f(x.b, x.k)} (${x.d >= 0 ? '+' : ''}${(x.d * 100).toFixed(1)}%)`).join(', ');
   return { ok: rows.every((x) => x.ok), detail: `${detail}; baseline ${base.commit}`, lines: rows.filter((x) => !x.ok).map((x) => `FAIL ${x.k} worse than the baseline by more than 10%`) };
 }
+
+// ---- Stage W0 (EMBERCROWN-WORLD.md 12.1): the legacy-hash rule -------------------------------------------------------
+// Checkpoint days of the bot runs (a baseline records the ones it ran; a later run uses the baseline's seeds and days).
+const CHECK_DAYS = [1, 2, 5, 10, 20, 30, 60, 90, 120];
+const W0_FIXTURES = ['v4-z3-day120', 'v4-z3-flood', 'v4-z3-beast'];
+const baselineFile = (st) => join(ROOT, 'tools/out', `baseline-${st}.json`);
+/** The latest baseline at or before this stage (a re-baselining step writes baseline-wN.json). */
+function latestBaseline() {
+  for (let k = STAGES.indexOf(stage); k >= STAGES.indexOf('w0'); k--) { const f = baselineFile(STAGES[k]); if (existsSync(f)) return { st: STAGES[k], file: f, b: JSON.parse(readFileSync(f, 'utf8')) }; }
+  return null;
+}
+/** One seed in this process: bot v4 (every Z3 system, as the Z3 soak plays it) with its hash at each checkpoint. */
+async function legacySeed(seed, days) {
+  const [{ runBot4 }, { stateHash }] = await Promise.all([import('./lib/bot4.mjs'), import('../js/game/core/state.js')]);
+  const marks = new Set(CHECK_DAYS.filter((d) => d <= days).concat([days]));
+  const hashes = {};
+  const r = await runBot4({ seed, days, onDay: (s, d) => { if (marks.has(d)) hashes[d] = stateHash(s); } });
+  const m = r.metrics, ser = (m.series || []).filter((x) => x.tickP95 !== undefined), f = (r.z2 && r.z2.report && r.z2.report.first) || {};
+  const err = m.checks.filter((c) => !c.ok && !c.info && !c.na && /exception|state valid/.test(c.name)).map((c) => `${c.name}: ${c.detail}`);
+  return {
+    seed, days, hash: r.hash, hashes, ms: r.ms, errors: err,
+    alive: m.colonists.alive, total: m.colonists.total, peak: m.colonists.peak, fallen: r.s.colony.fallen === true, deathCauses: m.deathCauses,
+    hamletDay: m.hamletDay ?? null, villageDay: m.villageDay ?? null, thaneDay: f.thane ?? null, lordDay: f.lord ?? null,
+    idleWork: m.idle ? m.idle.work : null, idle10: m.idle10 ?? null,
+    haulMedianH: m.haul ? m.haul.medianH : null, haulStoredMedianH: m.haul ? m.haul.medianStoredH : null, haulP90H: m.haul ? (m.haul.p90H ?? null) : null,
+    tickP95: ser.length ? ser[ser.length - 1].tickP95 : null, tickP95Worst: Math.max(0, ...ser.map((x) => x.tickP95 || 0)),
+  };
+}
+async function legacyMain() {
+  const one = arg('legacy-seed', null);
+  if (one !== null) { console.log(JSON.stringify(await legacySeed(+one, +arg('days', '120')))); return; }
+  const write = has('--write-baseline'), reportOnly = has('--report-only');
+  const base = write || reportOnly ? null : latestBaseline();
+  if (!write && !reportOnly && !base) {
+    if (stage === 'w0') { console.log('legacy hashes: no baseline yet (the W0 gate writes tools/out/baseline-w0.json after W0.5: --write-baseline)'); return; }
+    console.log(`legacy hashes: FAIL no tools/out/baseline-wK.json at or before ${stage}`); process.exitCode = 1; return;
+  }
+  const span = (a) => { const [x, y] = a.split('-').map(Number); return y ? Array.from({ length: y - x + 1 }, (_, k) => x + k) : [x]; };
+  const seeds = base ? base.b.seeds : span(arg('seeds', '1-5')), days = base ? base.b.days : +arg('days', '120'), jobs = +arg('jobs', '3');
+  const t0 = Date.now();
+  // the seeds in child processes, `jobs` at a time; the fixtures in this process meanwhile
+  const results = new Array(seeds.length);
+  let next = 0;
+  const worker = async () => { while (next < seeds.length) { const k = next++; results[k] = await new Promise((res) => {
+    const ch = spawn(process.execPath, [fileURLToPath(import.meta.url), `--legacy-seed=${seeds[k]}`, `--days=${days}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', errt = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { errt += d; });
+    ch.on('exit', (code) => { try { res(JSON.parse(out.trim().split('\n').pop())); } catch (_) { res({ seed: seeds[k], days, failed: `exit ${code}: ${errt.slice(-400)}` }); } });
+  }); } };
+  const pool = Promise.all(Array.from({ length: Math.min(jobs, seeds.length) }, worker));
+  const fixtures = {};
+  const { continueBlob } = await import('./capture-fixture.mjs');
+  for (const n of W0_FIXTURES) {
+    const f = join(ROOT, 'tools/fixtures', `${n}.ecsave`);
+    if (!existsSync(f)) { fixtures[n] = { missing: true }; continue; }
+    const c = await continueBlob(new Uint8Array(readFileSync(f)), { days2: true });
+    fixtures[n] = { day: c.day.hash, day2: c.day2.hash, reloadSame: c.checks.reloadAtHourSameDay2Hash };
+  }
+  await pool;
+  const mean = (k) => { const v = results.map((r) => r[k]).filter((x) => typeof x === 'number'); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(3) : null; };
+  const median = (k) => { const v = results.map((r) => r[k]).filter((x) => typeof x === 'number').sort((a, b) => a - b); return v.length ? v[(v.length - 1) >> 1] : null; };
+  const summary = {
+    survival: { seedsAlive: results.filter((r) => r.alive > 0 && !r.fallen).length, of: results.length, aliveMean: mean('alive'), peakMean: mean('peak') },
+    rankDays: { hamlet: mean('hamletDay'), village: mean('villageDay'), thane: mean('thaneDay'), lord: mean('lordDay'), note: 'means over the seeds that reached it' },
+    idleWorkMean: mean('idleWork'), idle10Mean: mean('idle10'),
+    haulMedianH: { mean: mean('haulMedianH'), medianOfSeeds: median('haulMedianH'), storedMean: mean('haulStoredMedianH') },
+    tickP95Ms: { lastDayMax: Math.max(0, ...results.map((r) => r.tickP95 || 0)), worstDayMax: Math.max(0, ...results.map((r) => r.tickP95Worst || 0)), note: `seeds run ${jobs} at a time` },
+  };
+  let commit = 'unknown'; try { commit = spawnSync('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(); } catch (_) { /* no git */ }
+  const report = { what: 'bot v4 (every Z3 system) on realm-less holds: state hashes at the checkpoint days, and the W0 fixtures continued 2 days', commit, stage, date: new Date().toISOString().slice(0, 10), seeds, days, checkDays: CHECK_DAYS.filter((d) => d <= days), summary, fixtures, results, ms: Date.now() - t0 };
+  const outF = resolve(ROOT, arg('out', 'tools/out/gate/legacy.json'));
+  mkdirSync(dirname(outF), { recursive: true });
+  writeFileSync(outF, JSON.stringify(report, null, 1) + '\n');
+  const bad = results.filter((r) => r.failed || (r.errors && r.errors.length)).map((r) => `seed ${r.seed}: ${r.failed || r.errors.join('; ')}`);
+  if (reportOnly) { console.log(`legacy report: ${relOf(outF)} (${commit}; ${seeds.length} seeds x ${days} days)${bad.length ? `; ${bad.join(' | ')}` : ''}`); if (results.some((r) => r.failed)) process.exitCode = 1; return; }
+  for (const [n, f] of Object.entries(fixtures)) if (f.missing) bad.push(`${n}: fixture missing`); else if (!f.reloadSame) bad.push(`${n}: a reload at +1 h changes the 2-day hash`);
+  if (write) {
+    if (bad.length) { console.log(`legacy hashes: FAIL not written: ${bad.join(' | ')}`); process.exitCode = 1; return; }
+    const b = { stage, commit, date: report.date, seeds, days, checkDays: report.checkDays, bot: Object.fromEntries(results.map((r) => [r.seed, r.hashes])), fixtures: Object.fromEntries(Object.entries(fixtures).map(([n, f]) => [n, { day: f.day, day2: f.day2 }])) };
+    writeFileSync(baselineFile(stage), JSON.stringify(b, null, 1) + '\n');
+    console.log(`legacy hashes: wrote tools/out/baseline-${stage}.json (${commit}; ${seeds.length} seeds x ${b.checkDays.length} checkpoints, ${Object.keys(b.fixtures).length} fixtures) in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    return;
+  }
+  for (const r of results) for (const [d, h] of Object.entries(base.b.bot[r.seed] || {})) if (!r.failed && r.hashes[d] !== h) bad.push(`seed ${r.seed} day ${d}: ${r.hashes[d]} (baseline ${h})`);
+  for (const [n, f] of Object.entries(base.b.fixtures || {})) { const c = fixtures[n] || {}; if (c.day !== f.day || c.day2 !== f.day2) bad.push(`${n}: day ${c.day} day2 ${c.day2} (baseline ${f.day} ${f.day2})`); }
+  for (const l of bad) console.log(`FAIL ${l}`);
+  console.log(`legacy hashes: ${bad.length ? `FAIL ${bad.length} differ from` : 'identical to'} baseline-${base.st} (${base.b.commit}): ${seeds.length} seeds x ${report.checkDays.length} checkpoints, ${Object.keys(base.b.fixtures || {}).length} fixtures, in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+  if (bad.length) process.exitCode = 1;
+}
+
+// `--legacy` (see the header) runs only the legacy-hash check
+if (has('--legacy') || arg('legacy-seed', null) !== null) { await legacyMain(); process.exit(process.exitCode || 0); }
 
 // the balance report reads this run's v2 and soak results: clear the old ones first
 if (atLeast('2') && !quick) for (const f of ['stage2.json', 'soak.json']) { try { unlinkSync(join(ROOT, OUT, f)); } catch (_) { /* none yet */ } }

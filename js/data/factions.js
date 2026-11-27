@@ -39,7 +39,7 @@ export const FACTIONS = {
     colors: ['#c8902e', '#2f4d7a'], sigil: 'sun',
   },
   sylvari: {
-    id: 'sylvari', name: 'Sylvari', people: 'Elves', playable: true,
+    id: 'sylvari', name: 'Thornwake', people: 'Thornwake', playable: true,
     passive: 'Forest-kin: woodcutters also bring home food (1 for every 2 wood), and felled trees regrow after 3 nights. Unique: Thornwardens (longbows) and the Heart Tree (healing).',
     drawback: 'Stone costs 25% more.',
     unit: 'thornwarden', building: 'hearttree', heroClass: 'ranger',

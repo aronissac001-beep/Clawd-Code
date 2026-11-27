@@ -1,0 +1,170 @@
+{
+ "file": "v4-z3-flood.ecsave",
+ "what": "A real Stage Z3 save with a flood in progress: colony bot v4, seed 3, water let in from below (the rock under the first water voxel over mineable rock, lowest level first, mined out) at the start of day 40, then the fluid active set at least 8 for 30 ticks running.",
+ "made": "node tools/capture-fixture.mjs --bot=v4 --seed=3 --at=flood --breach-day=40 --out=/tmp/claude-0/-home-user-Clawd-Code/ebc4371c-fbfa-5aa9-b9db-34342a9a0671/scratchpad/overhaul/build/W0.1/fix/v4-z3-flood.ecsave --root=<worktree of 547800a>",
+ "commit": "547800a",
+ "dirty": false,
+ "bytes": 68002,
+ "stateVersion": 4,
+ "formatVersion": 3,
+ "compression": "deflate-raw",
+ "seed": 3,
+ "tick": 565277,
+ "hashAtSave": "e75b31d22daecca8",
+ "at": {
+  "fluidActive": 19,
+  "fluidMin": 8,
+  "forTicks": 30,
+  "breach": {
+   "tick": 565200,
+   "voxel": 16883,
+   "x": 115,
+   "y": 3,
+   "z": 1
+  },
+  "hash": "e75b31d22daecca8",
+  "tick": 565277
+ },
+ "colonists": [
+  "Isolde Dunmore",
+  "Cade Thorne",
+  "Juno Thorne",
+  "Fenwick Ravel",
+  "Rowena Pellam",
+  "Saelor Willowmere",
+  "Cade Coldwater",
+  "Lirra Ashbough",
+  "Saffi Thorne",
+  "Maren Thorne",
+  "Bramm Emberdelve",
+  "Szara Smokeborn",
+  "Wenna Coldwater"
+ ],
+ "alive": 13,
+ "foes": 0,
+ "reavers": 0,
+ "items": 223,
+ "buildings": 185,
+ "raids": [],
+ "commands": 1140,
+ "colony": {
+  "difficulty": "warden",
+  "storyteller": "steady"
+ },
+ "perks": {
+  "Isolde Dunmore": [
+   "cave_sense"
+  ]
+ },
+ "bot": "v4",
+ "pristineEmbedded": true,
+ "fortress": {
+  "w": 128,
+  "d": 20,
+  "zS": 14
+ },
+ "fluidActive": 19,
+ "beasts": 0,
+ "continue": {
+  "what": "loaded from the blob by the capturing build in a fresh process, ticked with no commands",
+  "hour": {
+   "tick": 565877,
+   "hash": "9c0d6457a49d7dbd",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 4469,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5820,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5393,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Fenwick Ravel",
+     "mood": 5600,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Rowena Pellam",
+     "mood": 5060,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Saelor Willowmere",
+     "mood": 5663,
+     "dead": false
+    },
+    {
+     "id": 10,
+     "name": "Cade Coldwater",
+     "mood": 5200,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Lirra Ashbough",
+     "mood": 6401,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Saffi Thorne",
+     "mood": 5825,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Maren Thorne",
+     "mood": 5480,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Bramm Emberdelve",
+     "mood": 5800,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Szara Smokeborn",
+     "mood": 5820,
+     "dead": false
+    },
+    {
+     "id": 18,
+     "name": "Wenna Coldwater",
+     "mood": 6100,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 579677,
+   "hash": "68141f2558c7a0e3"
+  },
+  "day2": {
+   "tick": 594077,
+   "hash": "6e95195a7b3c9154"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": [],
+   "reloadAtHourSameDay2Hash": true
+  }
+ },
+ "ms": 218462
+}

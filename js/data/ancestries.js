@@ -6,7 +6,7 @@ export const DATA = {
   ancestry: [
     { id: 'human', name: 'Human', mods: [], passions: 1, art: 'colonist.human', look: { skin: 6, hair: 4, hairC: 6, beard: 5, cloth: 6 },
       text: 'One extra passion. Underground and open-sky thoughts are halved.' },
-    { id: 'sylvari', name: 'Sylvari', learn: { growing: 125, animals: 125 }, mods: [], art: 'colonist.sylvari', look: { skin: 4, hair: 4, hairC: 6, beard: 1, cloth: 6 },
+    { id: 'sylvari', name: 'Thornwake', learn: { growing: 125, animals: 125 }, mods: [], art: 'colonist.sylvari', look: { skin: 4, hair: 4, hairC: 6, beard: 1, cloth: 6 },
       text: 'Growing and Animals learn faster; happier among trees, pressed under stone.' },
     { id: 'deepforge', name: 'Deepforge', learn: { mining: 125, smithing: 125 }, mods: [{ key: 'move.speed', op: 'pct', value: -8 }], art: 'colonist.deepforge',
       look: { skin: 5, hair: 4, hairC: 6, beard: 5, cloth: 6 }, text: 'Mining and Smithing learn faster; at home under rock, a little slow on foot.' },
