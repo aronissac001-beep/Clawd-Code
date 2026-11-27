@@ -53,6 +53,7 @@ import { WORLD, WATER_Y } from './world/gen.js';
 import { DECK, DOCK_TIME, HACK_T } from './cargo.js';
 import { TREE_KINDS } from './gfx/veg.js';
 import { Sfx } from './audio.js';
+import { Recycler, RC } from './recycler.js';
 import { rand, randi, pick, chance, dist, clamp, angDiff, weighted } from './util.js';
 
 const NAMES = ['Rustbucket', 'quietfox', 'Grandma_Joy', 'TacticalTim', 'nakedbob', 'Moonshine', 'SgtPickles', 'BaconPaladin', 'Hemp_Lord', 'Doorcamper', 'Kev', 'BeachRat',
@@ -298,7 +299,7 @@ export const Bots = {
     a.bot = b; a.hp = b.hp || 100; b.actor = a; a.name = b.name;
     this.dress(b); this.equipBest(b);
   },
-  dematerialize(b) { const a = b.actor; b.x = a.x; b.z = a.z; b.hp = a.hp; removeActor(a); b.actor = null; },
+  dematerialize(b) { const a = b.actor; if (b.rcAt) this.unloadRecycler(b, b.rcAt); /* its things out of the recycler first */ b.x = a.x; b.z = a.z; b.hp = a.hp; removeActor(a); b.actor = null; },
   respawn(b) {
     b.dead = false; b.hp = 100; b.food = 70; b.water = 70; b.goal = null;
     const bag = b.bag && !b.bag.dead ? b.bag : null;
@@ -371,7 +372,8 @@ export const Bots = {
     // ---- choose a goal (now and then just stand a moment and look around between jobs)
     if (!b.pace) b.pace = rand(0.9, 1.08);
     if (!b.goal && !threat && !b.team && !b.paused && chance(0.35)) { b.goal = { type: 'pause', t: rand(1.2, 3.5), base: a.ang }; b.paused = true; }
-    if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
+    if (b.rcAt && !threat && (!b.goal || b.goal.type !== 'recycle')) b.goal = { type: 'recycle', u: b.rcAt, loaded: 1, t: 0 }; // back to the recycler it left running
+    if (!b.goal || b.thinkT <= 0 && !['fight', 'flee', 'pause'].includes(b.goal.type) && !(b.goal.type === 'recycle' && b.goal.loaded)) { b.thinkT = rand(1.2, 2.5); const g = this.chooseGoal(b, a); if (!b.goal || g.type !== b.goal.type || g.force) b.goal = g; b.paused = false; }
     if ((b.wT = (b.wT || 0) - dt) <= 0) { b.wT = 4; const gt = b.goal && b.goal.type; if (!['gather', 'fight', 'hunt', 'loot', 'raid'].includes(gt)) this.pickWeapon(b); }
     if (a.climb) Nav.climbStep(a, dt); else if (!(G.nadeDodge && G.nadeDodge(a, dt))) this.act(b, a, dt); // a live grenade close by: run first (ai.js)
     if (b.faceP > 0 && P && !threat) { b.faceP -= dt; if (a.speedNow < 1) a.ang += clamp(angDiff(a.ang, Math.atan2(P.z - a.z, P.x - a.x)), -dt * 4, dt * 4); }
@@ -748,7 +750,28 @@ export const Bots = {
     }
     return out;
   },
-  /** the recycler: everything in recyclables(); far away (fromBoxes) the junk in its boxes goes too */
+  /** put its recyclables into a recycler's input (the machine was idle and empty); returns how many items went in */
+  loadRecycler(b, u) {
+    Recycler.of(u); const vin = Recycler.view(u, 'in'); let n = 0;
+    for (const [id, k] of this.recyclables(b)) { const got = b.inv.take(id, k); if (!got) continue; const left = vin.add(id, got); if (left) b.inv.add(id, left); n += got - left; }
+    if (n) { b.recycled = (b.recycled || 0) + n; if (G.netWorld) G.netWorld.diffT = 0; }
+    return n;
+  },
+  /** take what's come out (what it already has plenty of stays in the output for whoever wants it) */
+  takeOutput(b, u) {
+    if (!u.inv) return 0; const vout = Recycler.view(u, 'out'); let moved = 0;
+    for (let i = 0; i < RC.OUT; i++) { const s = vout.slots[i]; if (!s || this.fullOn(b, s.id)) continue; const left = b.inv.add(s.id, s.n); moved += s.n - left; if (left) s.n = left; else vout.slots[i] = null; }
+    if (moved && G.netWorld) G.netWorld.diffT = 0;
+    return moved;
+  },
+  /** done (or out of patience): the output, then whatever is left in the input, back into the pack; switch it off */
+  unloadRecycler(b, u) {
+    if (b.rcAt === u) b.rcAt = null; if (!u.inv) return; this.takeOutput(b, u);
+    const vin = Recycler.view(u, 'in'); for (let i = 0; i < RC.IN; i++) { const s = vin.slots[i]; if (!s) continue; const left = b.inv.add(s.id, s.n); if (left) s.n = left; else vin.slots[i] = null; }
+    if (u.state && u.state.on) Recycler.stop(u);
+    if (G.netWorld) G.netWorld.diffT = 0;
+  },
+  /** the recycler, simplified (a survivor far away): everything in recyclables(); fromBoxes: the junk in its boxes goes too */
   recycleAll(b, fromBoxes) {
     if (fromBoxes) { const kept = this.keptGear(b); for (const d of this.boxes(b)) for (let i = 0; i < d.inv.slots.length; i++) { const s = d.inv.slots[i]; if (s && this.isJunk(b, s, kept)) { d.inv.slots[i] = null; if (!RECYCLE[s.id]) continue; for (const [o, v] of Object.entries(RECYCLE[s.id])) { if (this.fullOn(b, o)) continue; const left = d.inv.add(o, v * s.n); if (left) b.inv.add(o, left); } b.recycled = (b.recycled || 0) + s.n; } } }
     let n = 0; for (const [id, k] of this.recyclables(b)) { const got = b.inv.take(id, k); for (const [o, v] of Object.entries(RECYCLE[id])) if (!this.fullOn(b, o)) b.inv.add(o, v * got); n += got; }
@@ -866,11 +889,23 @@ export const Bots = {
         if (this.walkTo(b, a, tc.x, tc.z, dt, 1.7, tc.y)) { this.stockTc(b); a.st.use = 0; b.goal = null; }
         return;
       }
-      case 'recycle': { // take components and valuables to a monument recycler
-        const u = g.u || (g.u = recyclerNear(a.x, a.z)); if (!u) { b.goal = null; return; }
-        if (!this.walkTo(b, a, u.x, u.z, dt, 2.1, u.y)) return;
-        a.speedNow = 0; g.t = (g.t || 0) + dt; a.st.use = g.t < 2.5 ? 0.5 : -1;
-        if (g.t > 2.5) { this.recycleAll(b); this.equipBest(b); b.goal = null; }
+      case 'recycle': { // take components and valuables to a recycler and use it like a player: load it, switch it on,
+        // wait by it taking the output as it comes out, then take back whatever it didn't get to and go
+        let u = g.u; if (!u || u.dead || (!g.loaded && !rcIdle(u))) u = g.u = recyclerNear(a.x, a.z); if (!u) { b.goal = null; return; }
+        if (!g.loaded) {
+          if (!this.walkTo(b, a, u.x, u.z, dt, 2.1, u.y)) return;
+          a.speedNow = 0; a.ang += angDiff(a.ang, Math.atan2(u.z - a.z, u.x - a.x)) * Math.min(1, dt * 6);
+          g.t = (g.t || 0) + dt; a.st.use = 0.5; if (g.t < 1.4) return; // reaching in
+          a.st.use = -1; g.loaded = this.loadRecycler(b, u); g.t = 0; if (g.loaded) b.rcAt = u;
+          if (!g.loaded || !Recycler.toggle(u, true, true)) { this.unloadRecycler(b, u); b.goal = null; }
+          return;
+        }
+        // waiting by it: stay close, face it, glance round now and then; empty the output every couple of seconds
+        if (dist(a.x, a.z, u.x, u.z) > 3.2) { if (!this.walkTo(b, a, u.x, u.z, dt, 2.1, u.y)) return; }
+        a.speedNow = 0; g.t += dt;
+        if ((g.pull = (g.pull || 0) - dt) <= 0) { g.pull = rand(1.6, 2.6); this.takeOutput(b, u); a.st.use = 0.3; a.ang = Math.atan2(u.z - a.z, u.x - a.x) + (chance(0.3) ? rand(-1.2, 1.2) : 0); }
+        const done = !(u.state && u.state.on);
+        if (done || g.t > 110) { this.unloadRecycler(b, u); this.equipBest(b); b.goal = null; }
         return;
       }
       case 'home': {
@@ -1603,7 +1638,9 @@ function clearShot(a, t) {
   return true;
 }
 function findWater(x, z) { let best = null, bd = 120 * 120; for (const l of G.W.lakes) { const d = (l.x - x) ** 2 + (l.z - z) ** 2; if (d < bd) { bd = d; const ang = Math.atan2(z - l.z, x - l.x); best = { x: l.x + Math.cos(ang) * (l.r + 0.5), z: l.z + Math.sin(ang) * (l.r + 0.5) }; } } return best; }
-function recyclerNear(x, z) { let best = null, bd = 380 * 380; for (const u of G.uses) { if (u.type !== 'recycler') continue; const d = (u.x - x) ** 2 + (u.z - z) ** 2; if (d < bd) { bd = d; best = u; } } return best; }
+/** the nearest recycler nobody is using (switched off, nothing in it): monument ones and placed ones */
+function recyclerNear(x, z) { let best = null, bd = 380 * 380; for (const u of Recycler.all()) { if (!rcIdle(u)) continue; const d = (u.x - x) ** 2 + (u.z - z) ** 2; if (d < bd) { bd = d; best = u; } } return best; }
+function rcIdle(u) { return !u.dead && !(u.state && u.state.on) && (!u.inv || u.inv.empty()); }
 /** a barrel along a road (they line the roads) not looted lately */
 function roadsideBarrel(x, z) { let best = null, bd = 180 * 180; for (const c of G.containers) { if (c.gone || !c.def.breakable || c.mon || (c.botLooted && G.t - c.botLooted < 300)) continue; const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < bd && G.W.isRoad && G.W.isRoad(c.x, c.z, 6)) { bd = d; best = c; } } return best; }
 /** things survivors leave where they lie (the Nuclear Bunker's controller and launch fuse: data.js noBot) */
