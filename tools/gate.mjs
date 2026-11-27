@@ -94,6 +94,16 @@ const CHECKS = [
   { name: 'Save fixtures (three v4, Z3)', starts: 'w0', node: ['--test', 'tools/tests/fixtures-v4.test.mjs'] },
   // W0.2: the stock chip equals Hold / Stock and every line names levels as the HUD does, on the three v4 fixtures
   { name: 'Stock chip and level words (W0.2)', starts: 'w0', node: ['--test', 'tools/tests/stock-chip.test.mjs', 'tools/tests/level-words.test.mjs'] },
+  // Stage W1 (EMBERCROWN-WORLD.md 12.3, W1.10): the new shell is on (js/game/core/flags.js SHELL2). The strings lint
+  // (W1.1), the art contact sheet and integer frame scaling (W1.5), the pixel FX particle bench (W1.8), and every W1
+  // phone flow group at the eight W1 viewports (the six plus landscape-left and -right): sheets (W1.2), ia-people
+  // (W1.3a), ia (W1.3b), cards and settings (W1.4), front (W1.6), coach (W1.7), a11y (W1.9). The shell changes no
+  // sim: the legacy-hash row below holds it to baseline-w0.json. The R2 10 budgets (44 pt targets, 14 px text, 130 %
+  // text, no horizontal overflow) are each flow's probe
+  { name: 'Strings (W1.1)', starts: 'w1', file: 'tools/check-strings.mjs' },
+  { name: 'Render (art contact sheet, W1.5)', starts: 'w1', file: 'tools/render-check.mjs', args: ['--scene=art', `--browser=${browser}`], browser: true },
+  { name: 'Bench (pixel FX particles, W1.8)', starts: 'w1', file: 'tools/bench.mjs', args: ['--scene=particles'] },
+  { name: 'Phone UI (W1 shell flows, 8 viewports)', starts: 'w1', file: 'tools/ui-phone.mjs', args: ['--flows=w1', `--browser=${browser}`], browser: true, timeout: 3600000 },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },

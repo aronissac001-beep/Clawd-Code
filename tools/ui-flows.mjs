@@ -13,6 +13,7 @@
 // horizontal overflow, every visible interactive element >= 44 x 44 pt, every visible text >= 14 px.
 // Drags use pointer events (mouse pointers: the gesture layer reads any pointer type); taps use the
 // touch screen. Screenshots: tools/out/ui-flows/<viewport>-<screen>.png (look at them).
+// W1.10: in the new shell (SHELL2) the taps on Orders, Zones and Colony go to Mark's segments and to People.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -68,7 +69,16 @@ async function runViewport(vp) {
   page.on('requestfailed', (r) => { if (!/favicon/.test(r.url())) errs.push('failed: ' + r.url()); });
   page.on('response', (r) => { if (r.status() >= 400) errs.push(`HTTP ${r.status()}: ${r.url()}`); });
   let taps = 0;
-  const tap = async (sel) => { taps++; await page.locator(sel).first().tap(); await page.waitForTimeout(120); };
+  const tap0 = async (sel) => { taps++; await page.locator(sel).first().tap(); await page.waitForTimeout(120); };
+  // the new shell (flags.js SHELL2, on since W1.10): Orders and Zones are the two segments of Mark, and the Colony
+  // sheet's people and work grid live in People (its Grid view)
+  const NEW_SHELL = { orders: ['mark', 'mark-orders'], zones: ['mark', 'mark-zones'], colony: ['people', null] };
+  const tap = async (sel) => {
+    const m = /^\[data-act=tab\]\[data-tab=(orders|zones|colony)\]$/.exec(sel);
+    if (m && await page.locator('[data-act=tab][data-tab=mark]').count()) { const [tab, seg] = NEW_SHELL[m[1]]; if (!(seg && await ev(() => window.__ecUI.shell.ui.panel === 'mark'))) await tap0(`[data-act=tab][data-tab=${tab}]`); if (seg) await tap0(`[data-act=${seg}]`); return; }
+    if (sel === '[data-act=sheet-tab][data-tab=Work]' && await page.locator('[data-act=sheet-tab][data-tab=Grid]').count()) return tap0('[data-act=sheet-tab][data-tab=Grid]');
+    return tap0(sel);
+  };
   const screen = async (name) => {
     await page.waitForTimeout(150);
     const p = await probe(page);

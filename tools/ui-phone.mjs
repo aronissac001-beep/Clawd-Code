@@ -1,5 +1,8 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|front|coach|all] [--a11y] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|all] [--a11y] [--json]
+// W1.10 (EMBERCROWN-WORLD.md 12.3): the new shell is on (flags.js SHELL2). --flows=w1 runs every W1 group (the gate's
+// w1 row); the W1 groups and the Stage 1a/1b flows run at the eight W1 viewports (W1_VPS: the six below plus
+// landscape-left and -right, ?safe=); in the new shell the 1a/1b flows tap Build, Mark (Orders, Zones), People, Hold, World.
 // Playwright with touch emulation (hasTouch, deviceScaleFactor 2), at every gate viewport:
 //   portrait 375 x 635, 390 x 664, 430 x 740 (Safari), 390 x 763 (Home Screen app);
 //   landscape 844 x 335, 932 x 380 (Safari).
@@ -43,11 +46,38 @@ export const VIEWPORTS = [
   { name: 'p430x740-safari', width: 430, height: 740 }, { name: 'p390x763-app', width: 390, height: 763 },
   { name: 'l844x335-safari', width: 844, height: 335 }, { name: 'l932x380-safari', width: 932, height: 380 },
 ];
+// the eight W1 viewports (EMBERCROWN-WORLD.md 12.3 W1.10 "flows green at 8 viewports"): the six plus landscape-left
+// and landscape-right (the notch's safe area on one side, the home indicator below: ?safe=top,right,bottom,left)
+export const W1_VPS = [...VIEWPORTS,
+  { name: 'l844x335-left', width: 844, height: 335, safe: '0,0,21,47' }, { name: 'l844x335-right', width: 844, height: 335, safe: '0,47,21,0' }];
 const WORLD_MIN = { vp: 'p390x664-safari', none: 480, peek: 400 };
 
 const which = browserArg('webkit');
 const flowsArg = arg('flows', 'all');
 const only = arg('vp', null);
+// --flows=w1 (W1.10, the w1 gate row): every W1 flow group, each in its own run, at the eight W1 viewports; exit 0 when
+// all pass, 2 when the browser is not installed, else 1. A summary line per group, then the failing lines.
+export const W1_GROUPS = ['sheets', 'ia-people', 'ia', 'cards,settings', 'front', 'coach', 'a11y'];
+if (flowsArg === 'w1') {
+  const { spawnSync } = await import('node:child_process');
+  const res = [];
+  for (const g of W1_GROUPS) {
+    const t0 = Date.now();
+    const p = spawnSync(process.execPath, [fileURLToPath(import.meta.url), `--flows=${g}`, `--browser=${which}`, ...(only ? [`--vp=${only}`] : [])], { encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+    const lines = ((p.stdout || '') + (p.stderr || '')).trim().split('\n');
+    const vps = lines.filter((l) => /^(ok  |FAIL) \S/.test(l));
+    const nflows = lines.filter((l) => /^ {6}(ok  |FAIL) /.test(l)).length;
+    res.push({ g, status: p.status, vps: vps.length, okVps: vps.filter((l) => l.startsWith('ok')).length, nflows, s: ((Date.now() - t0) / 1000).toFixed(0), bad: lines.filter((l) => /^FAIL|^ {6}FAIL|^ {6}\[|harness|Error/.test(l)).slice(0, 12), last: lines[lines.length - 1] });
+  }
+  for (const r of res) {
+    console.log(`${r.status === 0 ? 'ok  ' : r.status === UNAVAILABLE ? 'n/a ' : 'FAIL'} --flows=${r.g}: ${r.okVps}/${r.vps} viewports clean, ${r.nflows} flow rows (${r.s} s)`);
+    if (r.status !== 0) for (const l of r.bad.length ? r.bad : [r.last]) console.log('      ' + l.slice(0, 220));
+  }
+  const nbad = res.filter((r) => r.status !== 0).length;
+  const st = res.some((r) => r.status === UNAVAILABLE) ? UNAVAILABLE : nbad ? 1 : 0;
+  console.log(`ui-phone --flows=w1 [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${st === 0 ? `all ${res.length} groups green at ${W1_VPS.length} viewports` : st === UNAVAILABLE ? 'browser unavailable' : `${nbad} of ${res.length} groups failing`}`);
+  process.exit(st);
+}
 const browser = await launch(which);
 if (!browser) { console.log(`ui-phone [${which}]: UNAVAILABLE - Playwright ${which} is not installed; try --browser=chromium`); process.exit(UNAVAILABLE); }
 const srv = await serve(0);
@@ -253,11 +283,16 @@ async function runFortress(vp) {
     await tap(page, '[data-act=level-up]'); const z2 = await Z();
     flow('F4', 'go down one level and back', z1 === z0 - 1 && z2 === z0, `${z0} > ${z1} > ${z2} in 2 taps (budget ${BUDGET.F4})`);
   }
+  // the new shell (SHELL2, on since W1.10): Orders is Mark's first segment (one more tap when Mark last showed Zones),
+  // and a long-press on Mark re-arms the last tool as the Orders tab's did
+  const markTab = await page.evaluate(() => !!document.querySelector('[data-act=tab][data-tab=mark]'));
+  const ordersTab = markTab ? '[data-act=tab][data-tab=mark]' : '[data-act=tab][data-tab=orders]';
+  const openOrders = async () => { let n = 0; if (await tap(page, ordersTab)) n++; if (markTab && !(await find(page, '.ec-panel [data-act=order-mine]')) && await tap(page, '[data-act=mark-orders]')) n++; return n; };
   // F1: Stairs down 3, then view the bottom (6): Orders, Stairs, tap a tile, Down 3, Done, the -3 tick
   {
     let taps = 0; const tile = { x: 40, y: 58 };
     await focusTiles(page, { x0: 36, y0: 54, x1: 44, y1: 62 }, 1);
-    if (await tap(page, '[data-act=tab][data-tab=orders]')) taps++;
+    taps += await openOrders();
     if (await tap(page, '[data-act=order-stairs]')) taps++;
     const p = await tileScreen(page, tile.x, tile.y); await tapAt(page, p.x, p.y); taps++;
     if (await tap(page, '[data-act=lv-depth-down-3]')) taps++;
@@ -275,7 +310,7 @@ async function runFortress(vp) {
   {
     let taps = 0; const tile = { x: 42, y: 61 };
     await focusTiles(page, { x0: 40, y0: 59, x1: 44, y1: 63 }, 1);
-    const ob = await find(page, '[data-act=tab][data-tab=orders]');
+    const ob = await find(page, ordersTab);
     if (ob) { await holdAt(page, ob.x, ob.y); taps++; }
     const open = await page.evaluate(() => { const t = window.__ecUI.shell.ui.tool; return t ? `${t.kind} ${t.id}` : 'none'; });
     const p = await tileScreen(page, tile.x, tile.y); await tapAt(page, p.x, p.y); taps++;
@@ -341,7 +376,7 @@ async function runFortress(vp) {
   {
     let taps = 0; const q = { x0: 30, y0: 66, x1: 34, y1: 70 };
     await focusTiles(page, q, 1);
-    if (await tap(page, '[data-act=tab][data-tab=orders]')) taps++;
+    taps += await openOrders();
     if (await tap(page, '[data-act=order-mine]')) taps++;
     const a = await tileScreen(page, q.x0, q.y0), b = await tileScreen(page, q.x1, q.y1);
     await dragWorld(page, a, b); taps++;
@@ -457,7 +492,7 @@ async function runViewport(vp) {
   };
   const flow = (id, name, ok, detail, owner = 'I') => flows.push({ id, name, ok: !!ok, detail, owner });
 
-  await page.goto(srv.url + '?debug=1');
+  await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(900);
   await screen('title');
   if (flowsArg === 'title') { await ctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; }
@@ -514,11 +549,14 @@ async function runViewport(vp) {
   if (vp.name === WORLD_MIN.vp) flow(6, 'world height at 390 x 664', hNone >= WORLD_MIN.none && peekOpen && hPeek >= WORLD_MIN.peek, `nothing selected ${hNone} pt (>= ${WORLD_MIN.none}); with a peek card ${peekOpen ? hPeek + ' pt' : 'no peek card opened'} (>= ${WORLD_MIN.peek})${rail ? '' : '; no colonist on the rail'}`);
   await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.closePeek) sh.closePeek(); });
 
-  // the menus: Build, Orders, Zones panels, the Colony sheet and the Menu sheet
-  for (const tab of ['build', 'orders', 'zones', 'colony']) {
+  // the menus: the bar's panels and sheets, then the Menu sheet. The old shell: Build, Orders, Zones, Colony; the new
+  // shell (SHELL2, on since W1.10): Build, Mark (its Orders and Zones segments), People, Hold, World
+  const shell2 = await page.evaluate(() => !!document.querySelector('[data-act=tab][data-tab=mark]'));
+  for (const tab of shell2 ? ['build', 'mark', 'people', 'hold', 'world'] : ['build', 'orders', 'zones', 'colony']) {
     const t = await tap(page, `[data-act=tab][data-tab=${tab}]`);
     if (!t) { problems.push(`[${tab}] no ${tab} tab`); continue; }
-    await screen(tab);
+    await screen(tab === 'mark' ? 'orders' : tab);
+    if (tab === 'mark') { if (await tap(page, '[data-act=mark-zones]')) await screen('zones'); else problems.push('[mark] no Zones segment'); }
     await tap(page, '[data-act=close], [data-act=close-sheet]');
     await page.evaluate(() => { const sh = window.__ecUI.shell; if (sh.togglePanel && sh.ui.panel) sh.togglePanel(sh.ui.panel); });
   }
@@ -545,7 +583,12 @@ async function runViewport(vp) {
   {
     let taps = 0, detail = '';
     const before = await stateOf(page, () => { const s = window.__ec.state; let m = 0; for (const v of s.L.desig) if (v & 1) m++; return { plans: s.colony.plans.length, mine: m }; });
-    const o = await tap(page, '[data-act=tab][data-tab=orders]'); if (o) taps++;
+    // the new shell: Mark opens on its Orders segment (or on the last one: tap Orders then, one more tap)
+    const o = await tap(page, `[data-act=tab][data-tab=${shell2 ? 'mark' : 'orders'}]`); if (o) taps++;
+    if (o && shell2 && !(await find(page, '.ec-panel [data-act=order-mine]')) && await tap(page, '[data-act=mark-orders]')) taps++;
+    // a player scrolls the panel to the card (landscape: the Mark panel's cards run below its fold)
+    await page.evaluate(() => { const e = [...document.querySelectorAll('.ec-panel [data-act=order-carve], .ec-panel .ec-card')].find((x) => /carve/i.test(x.textContent || '')); if (e) e.scrollIntoView({ block: 'center' }); });
+    await page.waitForTimeout(150);
     const c = await find(page, '[data-act=order-carve], .ec-card', 'carve');
     if (!rock) detail = 'no 9 x 9 rock area found';
     else if (!c) detail = 'no Carve hall card in Orders';
@@ -558,7 +601,7 @@ async function runViewport(vp) {
       const after = await stateOf(page, () => { const s = window.__ec.state; let m = 0; for (const v of s.L.desig) if (v & 1) m++; const p = s.colony.plans[s.colony.plans.length - 1]; return { plans: s.colony.plans.length, mine: m, last: p ? { kind: p.kind, rect: p.rect, pillars: p.pillars.length } : null }; });
       const okc = after.plans > before.plans && after.mine > before.mine && after.last && after.last.kind === 'carve';
       detail = `${taps} taps; mine designations ${before.mine} > ${after.mine}; plans ${before.plans} > ${after.plans}${after.last ? ` (last: ${after.last.kind} ${JSON.stringify(after.last.rect)}, ${after.last.pillars} pillars)` : ''}`;
-      await screen('carve');
+      if (okc) await screen('carve'); else await page.screenshot({ path: join(OUT, `${vp.name}-carve-failed.png`) });
       flow(2, 'Carve hall 9 x 9: mine designations and a pillar plan', okc, detail);
     }
     if (!flows.some((f) => f.id === 2)) flow(2, 'Carve hall 9 x 9: mine designations and a pillar plan', false, detail);
@@ -633,7 +676,19 @@ async function runViewport(vp) {
     let d8 = '';
     const col = await page.evaluate(() => window.__ec.state.col.find((c) => !c.hp.dead && !c.hp.down).id);
     await page.evaluate(() => { const sh = window.__ecUI.shell; sh.closePeek(); });
-    const rb = await tap(page, `[data-act=colonist][data-col="${col}"]`);
+    // the portrait on the rail; where the new shell's rail has folded it into "+N" (landscape), the colonist itself on
+    // the map, as a player would select it
+    // (the rail re-renders on the next frame once the letter has closed: wait for it)
+    await page.evaluate(() => window.__ecUI.shell.loop.poke());
+    try { await page.waitForFunction((id) => { const e = document.querySelector(`[data-act=colonist][data-col="${id}"]`); return !!e && e.getBoundingClientRect().width > 0; }, col, { timeout: 1500 }); } catch (_) { /* folded into +N */ }
+    let rb = await tap(page, `[data-act=colonist][data-col="${col}"]`);
+    if (!rb && shell2) {
+      const cp = await page.evaluate((id) => { const sh = window.__ecUI.shell, c = window.__ec.state.col.find((x) => x.id === id); if (sh.setLevel) sh.setLevel(c.z | 0); sh.camera.setZoom(1); sh.camera.centerOn(c.x, c.y, false); sh.loop.poke(); return { x: c.x, y: c.y }; }, col);
+      await page.waitForTimeout(200);
+      const q = await page.evaluate(([x, y]) => window.__ecUI.shell.worldToScreen(x, y), [cp.x, cp.y]);
+      await tapAt(page, q.x, q.y);
+      rb = await page.evaluate(() => { const p = document.querySelector('.ec-peek'); return !!p && !p.hidden ? 'map' : null; });
+    }
     const db = rb ? await tap(page, '.ec-peek [data-act=draft]') : null;
     const drafted = await stateOf(page, () => window.__ec.state.col.filter((c) => c.drafted).map((c) => c.id));
     const peekScreen = drafted.length ? await screen('drafted') : null; void peekScreen;
@@ -668,7 +723,8 @@ async function runViewport(vp) {
       await tapAt(page, p.x, p.y);
       order = await page.evaluate(([id, t]) => { const c = window.__ec.state.col.find((x) => x.id === id); const j = c.job; return j ? { type: j.type, order: j.order, tile: j.order === 'move' ? [Math.floor(j.hx / 32), Math.floor(j.hy / 32)] : null } : null; }, [col, tgt]);
     }
-    d8 = `${rb ? 'portrait' : 'no portrait'} > ${db ? 'Draft' : 'no Draft button'} > drafted [${drafted}] > tap ${tgt ? tgt.x + ',' + tgt.y : 'no tile'}: job ${JSON.stringify(order)}`;
+    if (!order) await page.screenshot({ path: join(OUT, `${vp.name}-draft-failed.png`) });
+    d8 = `${rb === 'map' ? 'colonist on the map' : rb ? 'portrait' : 'no portrait'} > ${db ? 'Draft' : 'no Draft button'} > drafted [${drafted}] > tap ${tgt ? tgt.x + ',' + tgt.y : 'no tile'}: job ${JSON.stringify(order)}`;
     flow(8, 'draft > move order', drafted.includes(col) && order && order.type === 'order' && order.order === 'move' && order.tile && order.tile[0] === tgt.x && order.tile[1] === tgt.y, d8);
     await page.evaluate((id) => { window.__ec.send({ t: 'draft', colIds: [id], on: false }); const sh = window.__ecUI.shell; sh.closePeek(); }, col);
     // the prompt cards (1b): Add to Home Screen and Back up your hold, then the raid peek card
@@ -841,7 +897,7 @@ async function runCards(vp, want) {
   const tapIn = async (sel, block = 'nearest') => { await page.evaluate(([sel, block]) => { const e = [...document.querySelectorAll(sel)].find((x) => !x.closest('[hidden]')); if (e && e.scrollIntoView) e.scrollIntoView({ block, inline: 'nearest' }); }, [sel, block]); await page.waitForTimeout(80); return tap(page, sel); };
   const text = async (pct) => { await page.evaluate((pct) => { if (pct === 100) delete document.documentElement.dataset.ecText; else document.documentElement.dataset.ecText = String(pct); window.dispatchEvent(new Event('resize')); }, pct); await page.waitForTimeout(150); };
   const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
-  await page.goto(srv.url + '?debug=1');
+  await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
   await page.evaluate(() => { try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('ec2.seen.')) localStorage.removeItem(k); } } catch (_) { /* none */ } });
   if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
@@ -988,7 +1044,7 @@ if (flowsArg.split(',').some((f) => f === 'cards' || f === 'settings')) {
   const want = new Set(flowsArg.split(','));
   const rep = [];
   let nbad = 0;
-  for (const vp of VIEWPORTS) {
+  for (const vp of W1_VPS) {
     if (only && !only.split(',').includes(vp.name)) continue;
     let r;
     try { r = await runCards(vp, want); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
@@ -1019,8 +1075,7 @@ if (flowsArg.split(',').some((f) => f === 'cards' || f === 'settings')) {
 //      the colonist left of it inside the world
 //   S4 "? paragraphs": the colonist sheet's paragraph shows on the first visit only, then behind "?"
 // and the 14.4 probe (44 pt targets, 14 px text, no horizontal overflow) on every sheet screen at 100 % and 130 % text.
-const SHEET_VPS = [...VIEWPORTS,
-  { name: 'l844x335-left', width: 844, height: 335, safe: '0,0,21,47' }, { name: 'l844x335-right', width: 844, height: 335, safe: '0,47,21,0' }];
+const SHEET_VPS = W1_VPS;
 async function runSheets(vp) {
   const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
   const page = await bctx.newPage();
@@ -1128,13 +1183,16 @@ async function runSheets(vp) {
   await page.evaluate(() => window.__ecUI.shell.ctx.closeSheet());
 
   // S2: Colony > Hold > Offices > back, one sheet throughout
+  // the new shell (SHELL2, on since W1.10): Offices is a tab of the Hold sheet, so the push checked is Hold > Halls
+  // ("Hold / Halls"), and back returns to the Hold sheet's Overview
   const counts = [];
-  const tabB = await tap(page, '[data-act=tab][data-tab=colony]');
+  const shell2 = await page.evaluate(() => !!document.querySelector('[data-act=tab][data-tab=hold]'));
+  const tabB = await tap(page, `[data-act=tab][data-tab=${shell2 ? 'hold' : 'colony'}]`);
   await page.waitForTimeout(150);
-  const holdB = await tapIn('.ec-sheet [data-act=sheet-tab][data-tab=Hold]');
+  const holdB = shell2 ? await tapIn('.ec-sheet [data-act=sheet-tab][data-tab=Overview]') || tabB : await tapIn('.ec-sheet [data-act=sheet-tab][data-tab=Hold]');
   await page.waitForTimeout(150);
   const h0 = await sheetNow(); counts.push(h0.count);
-  const offB = await tapIn('[data-act=hold-offices]');
+  const offB = await tapIn(shell2 ? '[data-act=hold-halls]' : '[data-act=hold-offices]');
   await page.waitForTimeout(200);
   const o = await sheetNow(); counts.push(o.count);
   await screen('hold-offices');
@@ -1144,9 +1202,9 @@ async function runSheets(vp) {
   const backB = await tap(page, '[data-act=sheet-back]');
   await page.waitForTimeout(150);
   const k = await sheetNow(); counts.push(k.count);
-  const crumbOk = /^(Hold|Colony) \/ Offices$/.test(o.crumb || '');
-  flow('S2', 'Hold / Offices / back without a second sheet', tabB && holdB && offB && backB && crumbOk && o.depth === 1 && k.open && k.tab === 'Hold' && k.depth === 0 && counts.every((n) => n === 1),
-    `${h0.open ? `${h0.title}/${h0.tab}` : 'no Colony sheet'} > "${o.crumb}" (depth ${o.depth}) > back: ${k.open ? `${k.title}/${k.tab} depth ${k.depth}` : 'closed'}; sheets visible ${counts.join(', ')}`);
+  const crumbOk = shell2 ? /^Hold \/ Halls$/.test(o.crumb || '') : /^(Hold|Colony) \/ Offices$/.test(o.crumb || '');
+  flow('S2', `Hold / ${shell2 ? 'Halls' : 'Offices'} / back without a second sheet`, tabB && holdB && offB && backB && crumbOk && o.depth === 1 && k.open && (shell2 ? k.title === 'Hold' && k.tab === 'Overview' : k.tab === 'Hold') && k.depth === 0 && counts.every((n) => n === 1),
+    `${h0.open ? `${h0.title}/${h0.tab}` : 'no Hold sheet'} > "${o.crumb}" (depth ${o.depth}) > back: ${k.open ? `${k.title}/${k.tab} depth ${k.depth}` : 'closed'}; sheets visible ${counts.join(', ')}`);
   // Menu > Settings: a push at the large detent (portrait)
   await page.evaluate(() => window.__ecUI.shell.ctx.closeSheet());
   await tap(page, '[data-act=menu]');
@@ -1403,7 +1461,7 @@ async function runFront(vp) {
   const inGame = () => page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }).then(() => true, () => false);
   /** Tap a title control after scrolling it into view (the column scrolls on short screens). */
   const tapT = async (sel) => { await page.evaluate((sel) => { const e = document.querySelector(sel); if (e && e.scrollIntoView) e.scrollIntoView({ block: 'nearest' }); }, sel); await page.waitForTimeout(60); return tap(page, sel); };
-  await page.goto(srv.url + '?debug=1');
+  await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
   // F1: the first run
   const a0 = await acts();
@@ -1453,7 +1511,7 @@ async function runFront(vp) {
   const same = cont ? await page.evaluate((id) => window.__ec.state.id === id, held.id) : false;
   flow('F2', 'Continue names the hold and enters in 1 tap', a1.includes('holds') && contText.includes(held.name) && cont && same, `[${a1.join(' ')}]; "${contText.slice(0, 60)}"; ${cont ? (same ? 'entered the same hold' : 'entered ANOTHER hold') : 'did not enter'}`);
   // F5: Worlds behind REALM (debug URL)
-  await page.goto(srv.url + '?debug=1&realm=1'); await page.waitForTimeout(700);
+  await page.goto(srv.url + '?debug=1&realm=1' + (vp.safe ? '&safe=' + vp.safe : '')); await page.waitForTimeout(700);
   const a2 = await acts();
   flow('F5', 'Worlds only with REALM', !a1.includes('worlds') && !a0.includes('worlds') && a2.includes('worlds'), `default [${a1.includes('worlds') ? 'shown' : 'hidden'}], ?realm=1 [${a2.includes('worlds') ? 'shown' : 'hidden'}]`);
   return done();
@@ -1461,7 +1519,7 @@ async function runFront(vp) {
 if (flowsArg === 'front') {
   const rep = [];
   let nbad = 0;
-  for (const vp of VIEWPORTS) {
+  for (const vp of W1_VPS) {
     if (only && !only.split(',').includes(vp.name)) continue;
     let r;
     try { r = await runFront(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
@@ -2058,7 +2116,8 @@ if (flowsArg === 'coach') {
 
 const report = [];
 let bad = 0;
-for (const vp of VIEWPORTS) {
+// from W1.10 the Stage 1a/1b flows also run at landscape-left and -right (the eight W1 viewports)
+for (const vp of W1_VPS) {
   if (only && !only.split(',').includes(vp.name)) continue;
   let r;
   if (flowsArg === 'omen') { r = { vp: vp.name, flows: [], screens: [], problems: [] }; if (vp.name === 'p390x664-safari') r.flows.push(await runOmenClock(vp)); else continue; r.ok = r.flows.every((f) => f.ok); if (!r.ok) bad++; report.push(r); continue; }

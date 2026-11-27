@@ -15,5 +15,5 @@ export function fortressRequested(search = '') {
 }
 
 // SHELL2: the new shell (EMBERCROWN-WORLD.md 8.1, Stage W1): the 5-slot bar, the People, Hold and World sheets.
-// UI only, never read by the sim. Off until W1.10; the debug URL ?shell=2 turns it on (js/ui/peopleui.js SHELL2_ON).
-export const SHELL2 = false;
+// UI only, never read by the sim. On since W1.10 (the w1 gate); before it the debug URL ?shell=2 turned it on (js/ui/peopleui.js SHELL2_ON).
+export const SHELL2 = true;
