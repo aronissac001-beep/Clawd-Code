@@ -362,10 +362,14 @@ export function setForbidden(s, id, on) {
  * Stockpile edits (stockpiles.js): run `fn` (which changes s.L.zone or zone types for `tiles`)
  * with the stock kept exact: stacks on those tiles are uncounted before and recounted after.
  */
+let zoneEdits = 0;
+/** How many zone edits ran in this process (stockpiles.js keys its per-tick full-store memo on it; never saved). */
+export const zoneEditCount = () => zoneEdits;
 export function withZoneEdit(s, tiles, fn) {
   const each = (d) => { for (const i of tiles) for (const id of stacksOn(s, i)) { const it = s.items[id]; if (counts(s, it)) stockAdd(s, it.k, d * it.n); } };
   each(-1);
   fn();
+  zoneEdits++;
   each(1);
 }
 

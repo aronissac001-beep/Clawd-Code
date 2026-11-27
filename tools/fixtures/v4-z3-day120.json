@@ -229,10 +229,10 @@
  },
  "ms": 768828,
  "rebaselined": {
-  "commit": "bff98d5",
+  "commit": "c941464",
   "dirty": true,
   "date": "2026-11-27",
-  "note": "W0.5 haul: landing only when it can take the stack, top-ups of 6 within 5 tiles (re-baseline allowed by 12.1)",
+  "note": "W0 gate: a rescue across levels carries the patient's level (care.js follow and layDown set z); re-baselined before baseline-w0",
   "hour": {
    "tick": 1732200,
    "hash": "7132869080cfb4d2",
@@ -371,7 +371,7 @@
   },
   "day2": {
    "tick": 1760400,
-   "hash": "550612a7462cd9a5"
+   "hash": "45ed7e6a742da338"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

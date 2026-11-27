@@ -176,5 +176,115 @@
    "reloadAtHourSameDay2Hash": true
   }
  },
- "ms": 270037
+ "ms": 270037,
+ "rebaselined": {
+  "commit": "c941464",
+  "dirty": true,
+  "date": "2026-11-27",
+  "note": "W0 gate: a rescue across levels carries the patient's level (care.js follow and layDown set z); re-baselined before baseline-w0",
+  "hour": {
+   "tick": 676229,
+   "hash": "04811167b54a2b4d",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 5302,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 4400,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 4660,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Fenwick Ravel",
+     "mood": 4004,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Rowena Pellam",
+     "mood": 5012,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Saelor Willowmere",
+     "mood": 5218,
+     "dead": false
+    },
+    {
+     "id": 10,
+     "name": "Cade Coldwater",
+     "mood": 4303,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Lirra Ashbough",
+     "mood": 5500,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Saffi Thorne",
+     "mood": 4706,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Maren Thorne",
+     "mood": 4700,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Bramm Emberdelve",
+     "mood": 5083,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Szara Smokeborn",
+     "mood": 4700,
+     "dead": false
+    },
+    {
+     "id": 18,
+     "name": "Wenna Coldwater",
+     "mood": 5056,
+     "dead": false
+    },
+    {
+     "id": 21,
+     "name": "Szara Ashfang",
+     "mood": 4900,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 690029,
+   "hash": "6b2426846f4d6dfa"
+  },
+  "day2": {
+   "tick": 704429,
+   "hash": "7ddbbd71925dd31f"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": [],
+   "reloadAtHourSameDay2Hash": true
+  }
+ }
 }

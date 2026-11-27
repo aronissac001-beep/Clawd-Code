@@ -48,7 +48,7 @@ import { onTileWrite, compOf } from '../world/terrain.js';
 import { linkRow, linkH } from '../world/regions.js';
 import { footprint } from '../world/pass.js';
 import { WORK, keyTile, isReserved } from './jobs.js';
-import { categoryOf, stackLimit, setCellHook, getItem, capAt, countOn, stacksOn, storeBldAt, storeCapOf, setRemoving, take, put, putAt, withZoneEdit } from './items.js';
+import { categoryOf, stackLimit, setCellHook, getItem, capAt, countOn, stacksOn, storeBldAt, storeCapOf, setRemoving, take, put, putAt, withZoneEdit, zoneEditCount } from './items.js';
 import { registerIdxPart } from './jobs.js';
 import { registerApplier } from '../core/commands.js';
 import { SLICE_APPLIERS } from '../core/apply.js';
@@ -198,6 +198,7 @@ export const freeCells = (s, zid) => { const l = listOf(s, zid); return l ? l.ce
 
 /** Re-derive whether storage tile i is free (after its stack, building or terrain changed). */
 export function cellChanged(s, i, ignoreBld = -1) {
+  cellGen++;
   const zf = s.rt.zoneFree;
   if (!zf || !zf.rank || zf.rank.length !== N) return;
   const r = zf.rank[i];
@@ -284,6 +285,18 @@ function slotOpen(s, i, comp = -1) {
   for (let k = 0; k < 8; k++) { const nx = x + DX8[k], ny = y + DY8[k]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && ok(idx(nx, ny, z))) return true; }
   return false;
 }
+// (W0 gate: the tick p95 spikes W0.5 traced to the haul giver) a think scans up to WORK.scanMax ground stacks, and
+// while the stores are full each one walked every full store's footprint again. A store found with no free slot at
+// all is remembered for the rest of that tick until any item cell, building or terrain under a store changes (cellGen
+// counts cellChanged calls) or a zone is painted (items.zoneEditCount), so the answer is exactly the walk's; nothing
+// of it is saved.
+let cellGen = 0;
+const fullMemo = { s: null, tick: -1, gen: -1, zones: -1, ids: new Set() };
+function fullStores(s) {
+  const z = zoneEditCount();
+  if (fullMemo.s !== s || fullMemo.tick !== s.tick || fullMemo.gen !== cellGen || fullMemo.zones !== z) { fullMemo.s = s; fullMemo.tick = s.tick; fullMemo.gen = cellGen; fullMemo.zones = z; fullMemo.ids.clear(); }
+  return fullMemo.ids;
+}
 /** Storage buildings off any stockpile with a free slot that take `it`: [[b, pri]] (idx.stores order). */
 function storesFor(s, it) {
   const out = [];
@@ -299,9 +312,12 @@ function storesFor(s, it) {
     // scan below cost every haul candidate a footprint walk (bench: 0.6 ms a haul think on day 30)
     const r = ownRule(s, b);
     if (!r.ok(it)) continue;
-    let room = false;
-    for (const i of footprint(s, b)) if (ownTile(s, i) && countOn(s, i) < capAt(s, i) && slotOpen(s, i, comp)) { room = true; break; }
+    const full = fullStores(s);
+    if (full.has(b.id)) continue;
+    let room = false, free = false;
+    for (const i of footprint(s, b)) if (ownTile(s, i) && countOn(s, i) < capAt(s, i)) { free = true; if (slotOpen(s, i, comp)) { room = true; break; } }
     if (room) out.push([b, r.pri]);
+    else if (!free) full.add(b.id);
   }
   return out;
 }
