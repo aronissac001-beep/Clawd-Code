@@ -15,8 +15,8 @@ import * as J from '../game/colony/justice.js';
 import { TEXT, WARDEN } from '../data/laws.js';
 
 const ROW = { minHeight: '44px' };
-const CARD = { border: '1px solid rgba(201, 151, 62, 0.28)', borderRadius: '10px', padding: '10px 12px', margin: '10px 0', background: 'rgba(0, 0, 0, 0.16)' };
-const MET = { color: '#9cc27a', fontWeight: '650' }, UNMET = { color: '#e08a6a', fontWeight: '650' };
+const CARD = { border: '1px solid var(--line-soft)', borderRadius: 'var(--r-lg)', padding: '10px 12px', margin: '10px 0', background: 'var(--surface-2)', boxShadow: 'var(--bevel)' };
+const MET = { color: 'var(--good)', fontWeight: '650' }, UNMET = { color: 'var(--bad-text)', fontWeight: '650' };
 const CASES_SHOWN = 12;
 
 function send(ctx, cmd, okText) {
