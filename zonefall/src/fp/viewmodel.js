@@ -243,7 +243,7 @@ const ITEM = {
     magOut: [0.02, -0.32, -0.08, 0.0, 0.3, -0.35], magPivot: [0.11, 0.0, -0.03], coverHinge: [-0.05, 0.149, 0],
   },
   minigun: {
-    grip: GUN_GRIP(0.35, -0.08, -0.028), sup: { a: [1, 0, 0], f: [0, -0.3, 1], p: [0.1, -0.03, 0.004] },
+    grip: GUN_GRIP(0.35, -0.08, -0.028), sup: { a: [1, 0, 0], f: [0, -1, 0.3], p: [0.15, 0.085, -0.125] }, // left hand on the side of the rotor housing, where you can see it
     sights: [[-0.1, 0.27, 0], [0.9, 0.24, 0]], relief: 0.32, rec: [0.012, 0.02, 0.025, 0.004], auto: 1, reload: 'box', flashS: 2.4,
     hip: [0.26, -0.3, -0.42, 0.02, 0.05, -0.04],
     parts: { mag: { col: ['#4a5440', '#3a4333', '#e3c35a'] }, spin: { col: ['#4a4f57', '#c3c8cf'] } },
