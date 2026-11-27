@@ -12,6 +12,7 @@ import { availableIn } from '../data/schema.js';
 import { costText } from '../game/tools/place.js';
 import { stampDefs } from '../game/tools/stamp.js';
 import { lockedWhy as researchLocked } from '../game/colony/research.js';
+import { defThumb } from './thumbs.js';
 
 import { STAGE } from './stage.js';
 export { STAGE };
@@ -79,8 +80,8 @@ const tierBadge = (d) => { if (!d.tier || d.tier === 'camp') return null; const 
  * the shell between openings, so the last tab stays chosen).
  */
 export function buildPanel(el, ctx, state) {
-  const strip = h('div.ec-strip', { role: 'tablist', 'aria-label': 'Build categories' });
-  const grid = h('div.ec-grid', { role: 'tabpanel' });
+  const strip = h('div.ec-strip.ec-bstrip', { role: 'tablist', 'aria-label': 'Build categories' });
+  const grid = h('div.ec-grid.ec-bgrid', { role: 'tabpanel' });
   const show = (id) => {
     state.tab = id;
     for (const b of strip.children) { const on = b.dataset.tab === id; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }
@@ -99,16 +100,20 @@ export function buildPanel(el, ctx, state) {
   for (const t of BUILD_TABS) {
     if (t.pick && !tabDefs(t.id).length) continue;
     const b = h('button.ec-strip-tab', { type: 'button', role: 'tab', 'data-tab': t.id, 'data-act': 'build-tab-' + t.id }, h('span', { html: icon(t.icon) }), h('span', { text: t.label }));
-    onTap(b, () => show(t.id));
+    onTap(b, () => { show(t.id); if (b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
     strip.append(b);
   }
   el.append(strip, grid);
   show(state.tab || 'rooms');
 }
 
-export function card(label, ic, { sub = null, locked = null, act, onPick, toast, badge = null } = {}) {
-  const b = h('button.ec-card' + (locked ? '.locked' : ''), { type: 'button', 'data-act': act || 'card', 'aria-disabled': locked ? 'true' : null },
-    h('span.ec-card-ic', { html: icon(ic) }), h('span.ec-card-n', null, label, badge ? h('span.ec-tier', { text: badge }) : null),
+export function card(label, ic, { sub = null, locked = null, act, onPick, toast, badge = null, thumb = undefined } = {}) {
+  // build cards (thumb given, even null) show the item's pixel art in a well, its cost and a lock badge
+  const art = thumb !== undefined;
+  const pic = art ? h('span.ec-card-ic.ec-bcard-art', thumb ? null : { html: icon(ic) }, thumb || null) : h('span.ec-card-ic', { html: icon(ic) });
+  if (art && locked) pic.append(h('span.ec-bcard-lock', { html: icon('lock') }));
+  const b = h('button.ec-card' + (art ? '.ec-bcard' : '') + (locked ? '.locked' : ''), { type: 'button', 'data-act': act || 'card', 'aria-disabled': locked ? 'true' : null },
+    pic, h('span.ec-card-n', null, label, badge ? h('span.ec-tier', { text: badge }) : null),
     locked ? h('span.ec-card-why', { text: locked }) : sub ? h('span.ec-card-sub', { text: sub }) : null);
   onTap(b, () => (locked ? toast && toast(`${label}: ${locked}`) : onPick && onPick()));
   return b;
@@ -116,7 +121,7 @@ export function card(label, ic, { sub = null, locked = null, act, onPick, toast,
 
 function defCard(ctx, d) {
   const why = lockedWhy(ctx.s, d);
-  return card(d.name, defIcon(d), { sub: costText(d), locked: why, badge: tierBadge(d), act: 'build-' + d.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'place', def: d.id }) });
+  return card(d.name, defIcon(d), { thumb: defThumb(d), sub: costText(d), locked: why, badge: tierBadge(d), act: 'build-' + d.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'place', def: d.id }) });
 }
 
 function roomCards(grid, ctx) {
@@ -126,11 +131,12 @@ function roomCards(grid, ctx) {
     // its reason (X 2.7 play-test: it built an empty "Hall" with no word why)
     let locked = null;
     for (const f of sd.furnish || []) { const fd = def('structure', f.def); if (fd && fd.kind !== 'zone' && (locked = lockedWhy(ctx.s, fd))) break; }
-    grid.append(card(sd.name, STAMP_ICON[sd.id] || 'rooms', { sub: STAMP_TEXT[sd.id] || 'A room stamp.', locked, act: 'stamp-' + sd.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) }));
+    const main = (sd.furnish || []).map((f) => def('structure', f.def)).find((fd) => fd && fd.kind !== 'zone');
+    grid.append(card(sd.name, STAMP_ICON[sd.id] || 'rooms', { thumb: main ? defThumb(main) : null, sub: STAMP_TEXT[sd.id] || 'A room stamp.', locked, act: 'stamp-' + sd.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) }));
   }
   const tms = ctx.s.colony.templates;
   for (const tm of tms) {
-    grid.append(card(tm.name, 'copy', { sub: `Copied room, ${tm.w} x ${tm.h}`, act: 'paste-' + tm.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'paste', templateId: tm.id }) }));
+    grid.append(card(tm.name, 'copy', { thumb: null, sub: `Copied room, ${tm.w} x ${tm.h}`, act: 'paste-' + tm.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'paste', templateId: tm.id }) }));
   }
   if (!tms.length) grid.append(h('p.ec-note.ec-span', { text: 'Copy a room from its card to paste it here.' }));
 }

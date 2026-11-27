@@ -18,6 +18,7 @@ import { applyCommand } from '../game/core/commands.js';
 import { mountTitle, unmountTitle } from './colonies.js';
 import { mountShell } from './shell.js';
 import { emulateInsets } from './layout.js';
+import { installFrame } from './frame.js';
 
 const IN_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
@@ -105,6 +106,7 @@ function boot() {
   ui.params = new URLSearchParams(location.search);
   if (ui.params.has('debug') && ui.params.get('scene')) return;
   if (ui.params.has('debug')) emulateInsets(ui.params);
+  installFrame();
   showTitle();
   // main.js promotes a pagehide quick-save asynchronously at boot; show its colony once it lands
   const again = () => { if (ui.title && !ui.shell) ui.title.refresh(); };
