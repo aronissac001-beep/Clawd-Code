@@ -34,6 +34,7 @@
 // the top right (portrait). Long-press Orders reopens the last Orders tool (Recent). A D = 1 colony is unchanged.
 import { militaryTap, militaryPicking } from './military.js';
 import { h, clear, onTap, icon, Toaster } from './kit.js';
+import { RES_COLORS } from './icons.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets } from './layout.js';
 import { SpeedButton } from './speed.js';
 import { Loupe } from './loupe.js';
@@ -292,8 +293,11 @@ export function mountShell(root, api) {
   let lastChip = '', lastStrip = '';
   function renderStock() {
     const rows = stockRows();
-    const chip = `<span class="ec-chip-t">${rows[0][1].toLowerCase()} ${rows[0][2]}</span>${icon('chevDown', 'chevd')}`;
-    if (chip !== lastChip) { lastChip = chip; stock.innerHTML = chip; }
+    // the lead resource as a glyph and its value; food running short turns the chip amber, then red
+    const days = rows[0][0] === 'food' && /d$/.test(rows[0][2]) ? parseInt(rows[0][2], 10) : NaN;
+    const tone = days < 1 ? 'bad' : days < 3 ? 'warn' : '';
+    const chip = `<span class="ec-chip-g" style="--res:${RES_COLORS[rows[0][0]] || 'var(--brass-hi)'}">${icon(rows[0][0])}</span><span class="ec-chip-t"><span class="ec-chip-k">${rows[0][1].toLowerCase()} </span>${rows[0][2]}</span>${icon('chevDown', 'chevd')}`;
+    if (chip !== lastChip) { lastChip = chip; stock.innerHTML = chip; stock.className = 'ec-chip ec-stock' + (tone ? ' ' + tone : ''); stock.setAttribute('aria-label', `Stock: ${rows[0][1]} ${rows[0][2]}`); }
     if (ui.stockOpen) { const st = rows.map(([ic, n, v]) => `<div class="ec-stock-cell">${icon(ic)}<span>${n}</span><b>${v}</b></div>`).join(''); if (st !== lastStrip) { lastStrip = st; strip.innerHTML = st; } }
   }
   let stockT = 0;

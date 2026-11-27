@@ -291,7 +291,7 @@ function holdTab(el, ctx) {
   el.append(h('div.ec-hold-tier', null, h('span.ec-letter-ic', { html: icon('crown') }), h('div', null, h('b', { text: tv.name || 'Camp' }), h('p.ec-bio-d', { text: tv.text || '' }))));
   if (tv.next) {
     const n = tv.next;
-    el.append(h('h3.ec-sub', { text: `Toward ${n.name}` }), bar('Wealth', n.wealth[0], n.wealth[1]), bar('Colonists', n.colonists[0], n.colonists[1]), bar('Hearth level', n.hearth[0], n.hearth[1]),
+    el.append(banner('crown', `Toward ${n.name}`), bar('Wealth', n.wealth[0], n.wealth[1]), bar('Colonists', n.colonists[0], n.colonists[1]), bar('Hearth level', n.hearth[0], n.hearth[1]),
       h('p.ec-note', { text: 'All three must hold for a full day.' }));
   }
   // the Hearth and its upgrade
@@ -299,7 +299,7 @@ function holdTab(el, ctx) {
   if (hb) {
     const d = structDef(hb.def) || {};
     const lv = (d.levels || [])[(hb.lvl | 0) - 1] || null;
-    el.append(h('h3.ec-sub', { text: `The Hearth, level ${hb.lvl | 0}` }));
+    el.append(banner('flame', `The Hearth, level ${hb.lvl | 0}`));
     const facts = h('div.ec-facts');
     facts.append(h('div.ec-fact', null, h('span', { text: 'Fuel' }), h('b', { text: `${Math.floor((hr.fuel | 0) / 600)} h of wood` })));
     el.append(facts);
@@ -314,7 +314,7 @@ function holdTab(el, ctx) {
   }
   // wealth
   let w = null; try { w = computeWealth(s); } catch (_) { w = null; }
-  if (w) el.append(h('h3.ec-sub', { text: `Wealth ${w.total}` }), h('div.ec-facts', null,
+  if (w) el.append(banner('gold', `Wealth ${w.total}`), h('div.ec-facts', null,
     h('div.ec-fact', null, h('span', { text: 'Goods' }), h('b', { text: String(Math.round(w.items / 10)) })),
     h('div.ec-fact', null, h('span', { text: 'Buildings' }), h('b', { text: String(Math.round(w.bld / 10)) })),
     h('div.ec-fact', null, h('span', { text: 'People' }), h('b', { text: String(w.pop) }))), h('p.ec-note', { text: 'Raids grow with wealth: walls and defences count less.' }));
@@ -322,7 +322,7 @@ function holdTab(el, ctx) {
   const sd = def('storyteller', s.colony.storyteller), diff = s.colony.difficulty;
   const wx = (() => { try { return weatherText(s); } catch (_) { return null; } })();
   const tmp = (() => { try { return Math.round(outdoorTemp(s.tick, s)); } catch (_) { return null; } })();
-  el.append(h('h3.ec-sub', { text: 'The world' }), h('div.ec-facts', null,
+  el.append(banner('map', 'The world'), h('div.ec-facts', null,
     h('div.ec-fact', null, h('span', { text: 'Season' }), h('b', { text: `${SEASON_NAMES[seasonOf(s.tick)]}, day ${dayOfSeason(s.tick) + 1} of 10` })),
     wx ? h('div.ec-fact', null, h('span', { text: 'Weather' }), h('b', { text: wx })) : null,
     tmp !== null ? h('div.ec-fact', null, h('span', { text: 'Outside' }), h('b', { text: `${tmp} C` })) : null,
@@ -331,7 +331,7 @@ function holdTab(el, ctx) {
     h('div.ec-fact', null, h('span', { text: 'Day' }), h('b', { text: String(dayOf(s.tick) + 1) }))));
   // factions
   if (S2) {
-    el.append(h('h3.ec-sub', { text: 'Factions' }));
+    el.append(banner('banner', 'Factions'));
     for (const f of GOODWILL_IDS) {
       const d = def('faction', f) || { name: f };
       const g = goodwill(s, f);
@@ -345,7 +345,7 @@ function holdTab(el, ctx) {
   // nemeses (9.10)
   const nems = (s.st && s.st.nemeses) || [];
   if (S2) {
-    el.append(h('h3.ec-sub', { text: nems.length ? 'Nemeses' : 'No nemeses' }));
+    el.append(banner('skull', nems.length ? 'Nemeses' : 'No nemeses'));
     if (!nems.length) el.append(h('p.ec-note', { text: 'A raid leader who escapes, wounded or ransomed, remembers the hold, and comes back.' }));
     for (const n of nems) el.append(nemesisRow(ctx, n));
   }
@@ -354,7 +354,7 @@ function holdTab(el, ctx) {
 function holdZ2(el, ctx) {
   const s = ctx.s;
   const go = (label, act, fn) => { const b = h('button.ec-act', { type: 'button', 'data-act': act, text: label }); onTap(b, () => fn(ctx)); return b; };
-  el.append(h('h3.ec-sub', { text: 'The hold' }), h('div.ec-rchips.ec-hold-go', { style: { justifyContent: 'flex-start', flexWrap: 'wrap', gap: '6px' } },
+  el.append(banner('castle', 'The hold'), h('div.ec-rchips.ec-hold-go', { style: { justifyContent: 'flex-start', flexWrap: 'wrap', gap: '6px' } },
     go('Offices', 'hold-offices', openOffices), go('Justice', 'hold-justice', openJustice), go('Annals', 'hold-annals', (c) => openAnnals(c)), go('The dead', 'hold-dead', openDead)));
   // renown: what the hold is known for (it steers who visits)
   let rl = [];
@@ -366,12 +366,12 @@ function holdZ2(el, ctx) {
   let hv = [];
   try { hv = hallsView(s); } catch (_) { hv = []; }
   if (hv.length) {
-    el.append(h('h3.ec-sub', { text: 'Halls and visitors' }));
+    el.append(banner('merchant', 'Halls and visitors'));
     for (const x of hv) el.append(h('div.ec-thought.' + (x.count ? 'good' : 'bad'), null, h('span.ec-thought-n', { text: x.name }), h('span.ec-thought-w', { text: x.visitors.length ? x.visitors.map((v) => `${v.name} (${v.kind.toLowerCase()})`).join(', ') : x.count ? 'no visitors now' : 'none yet' }), h('b', { text: String(x.count) })));
     el.append(h('p.ec-note', { text: 'A tavern, temple or library draws visitors; one who likes the hold may write asking to stay.' }));
   }
   // customs: births and the laws (each can be turned off)
-  el.append(h('h3.ec-sub', { text: 'Customs' }));
+  el.append(banner('book', 'Customs'));
   const on = birthsOn(s);
   const row = h('div.ec-laws', { 'data-births': on ? 'on' : 'off' });
   const b = h('button.ec-act', { type: 'button', 'data-act': 'births-toggle', text: on ? 'Stop births' : 'Allow births' });
@@ -380,6 +380,8 @@ function holdZ2(el, ctx) {
   el.append(row);
   lawsSwitch(el, s, ctx, () => ctx.refreshSheet());
 }
+/** An illustrated section header of the Hold tab: a pixel glyph on a brass-edged banner. */
+const banner = (ic, text) => h('h3.ec-sub.ec-banner', null, h('span.ec-banner-ic', { html: icon(ic) }), h('span', { text }));
 const AFFIX = { armoured: 'Armoured', swift: 'Swift', rallying: 'Rallying', burning: 'Burning' };
 /** One nemesis: name and epithet, what it is, its scar, grudge and returns. */
 export function nemesisRow(ctx, n) {

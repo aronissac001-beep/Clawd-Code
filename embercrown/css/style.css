@@ -977,3 +977,173 @@ body.land .ec-sheet, body.land .ec-panel, body.land .ec-peek { animation-name: e
   .ec-levels, .ec-alerts { transition: none !important; }
 }
 .ec-close, .ec-help { box-shadow: none; border-color: var(--line-faint); }
+
+/* ---------- UI pass 2: the hold's frame, chips, build cards, headers, title (owner I) ---------- */
+/* frame.js paints --px-stone (16 x 8 ashlar) and --px-trim (8 x 6 riveted brass) at start-up; drawn at 2x, nearest */
+.ec-top, .ec-bottom {
+  background: linear-gradient(rgba(24, 19, 23, 0.55), rgba(24, 19, 23, 0.7)), var(--px-stone, none) 0 0 / 32px 16px repeat, var(--surface);
+  image-rendering: pixelated;
+}
+.ec-top { border-bottom: 0; box-shadow: none; }
+.ec-bottom { border-top: 0; box-shadow: none; }
+.ec-top::after, .ec-bottom::before {
+  content: ""; position: absolute; left: 0; right: 0; height: 6px; pointer-events: none; image-rendering: pixelated;
+  background: var(--px-trim, linear-gradient(#15131c 0 1px, #ffe07a 1px 2px, #f4b13c 2px 3px, #b07a2e 3px 4px, #4d3226 4px 5px, #15131c 5px)) 0 0 / 16px 6px repeat-x;
+}
+.ec-top::after { top: 100%; }
+.ec-bottom::before { bottom: 100%; transform: scaleY(-1); }
+body.land .ec-bottom { border-left: 0; }
+body.land .ec-bottom::before {
+  left: auto; right: 100%; top: 0; bottom: 0; width: 6px; height: auto; transform: none;
+  background: var(--px-trim-v, linear-gradient(to right, #15131c 0 1px, #ffe07a 1px 2px, #f4b13c 2px 3px, #b07a2e 3px 4px, #4d3226 4px 5px, #15131c 5px)) 0 0 / 6px 16px repeat-y;
+}
+/* the landscape top bar meets the side rail: its trim stops at the rail's trim */
+body.land .ec-top::after { right: 0; }
+/* the rail under the top bar starts below the trim */
+body:not(.land) .ec-rail { padding-top: 6px; }
+
+/* chips: a sunken plate with the resource glyph in a coin; warning states colour the whole chip */
+.ec-chip { background: linear-gradient(rgba(10, 8, 12, 0.5), rgba(10, 8, 12, 0.3)), var(--glass); border: 1px solid var(--line); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 226, 170, 0.08); }
+.ec-chip-g {
+  width: 26px; height: 26px; flex: none; display: grid; place-items: center; border-radius: 50%; margin-left: -4px;
+  color: var(--res, var(--brass-hi)); background: radial-gradient(circle at 40% 35%, rgba(255, 240, 200, 0.16), rgba(0, 0, 0, 0.35)); box-shadow: 0 0 0 1px rgba(201, 151, 62, 0.45);
+}
+.ec-chip-g .ic { width: 18px; height: 18px; }
+.ec-chip-k { display: none; }
+.ec-stock { min-width: 84px; gap: 6px; padding: 0 8px 0 10px; }
+.ec-stock .ec-chip-t { font-weight: 700; color: var(--text); }
+.ec-stock.warn, .ec-threat.warn { color: #ffd08a; border-color: var(--warn); background: linear-gradient(rgba(232, 176, 74, 0.2), rgba(232, 176, 74, 0.08)), var(--glass); }
+.ec-stock.warn .ec-chip-t { color: #ffd08a; }
+.ec-stock.bad, .ec-threat.bad { color: var(--bad-text); border-color: var(--bad); background: linear-gradient(rgba(239, 107, 85, 0.3), rgba(80, 22, 18, 0.9)); box-shadow: 0 0 0 1px rgba(239, 107, 85, 0.35), 0 0 10px rgba(239, 107, 85, 0.35); }
+.ec-stock.bad .ec-chip-t { color: var(--bad-text); }
+.ec-threat { gap: 6px; }
+.ec-threat .ic { color: currentColor; }
+.ec-threat .ec-chip-t { font-weight: 700; }
+
+/* build menu: one scrolling row of icon tabs, then a grid of cards with the item's own pixel art */
+.ec-strip.ec-bstrip, body:not(.land) .ec-strip.ec-bstrip { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; padding-right: 24px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+.ec-bstrip .ec-strip-tab, body:not(.land) .ec-bstrip .ec-strip-tab { flex: none; flex-direction: column; justify-content: center; gap: 2px; height: 58px; min-width: 70px; padding: 0 8px; scroll-snap-align: start; font-size: var(--fs-1); }
+.ec-bstrip .ec-strip-tab .ic { display: block; width: 22px; height: 22px; }
+body.land .ec-bstrip .ec-strip-tab .ic { display: block; }
+.ec-bstrip .ec-strip-tab.on .ic { color: var(--brass-hi); filter: drop-shadow(0 0 4px rgba(242, 162, 74, 0.5)); }
+.ec-bgrid, body.land .ec-bgrid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.ec-card.ec-bcard {
+  grid-template-columns: 1fr; justify-items: center; align-content: start; text-align: center; row-gap: 4px; padding: 8px 6px 10px; min-height: 0;
+  background: linear-gradient(var(--raised-hi), var(--raised) 46%); border-color: var(--line-soft);
+}
+.ec-bcard .ec-card-ic.ec-bcard-art {
+  position: relative; grid-row: auto; width: 56px; height: 52px; display: grid; place-items: center; border-radius: var(--r-md);
+  background: radial-gradient(circle at 50% 70%, rgba(242, 162, 74, 0.18), transparent 70%), var(--well); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 226, 170, 0.08);
+}
+.ec-bcard-art .ic { width: 28px; height: 28px; }
+.ec-bcard .ec-thumb { display: block; image-rendering: pixelated; }
+.ec-bcard .ec-card-n { font-size: var(--fs-2); line-height: 1.2; overflow-wrap: anywhere; }
+.ec-bcard .ec-card-sub { font-size: var(--fs-1); color: var(--brass-hi); line-height: 1.25; grid-column: 1; }
+.ec-bcard .ec-card-why { font-size: var(--fs-1); color: #ffd08a; line-height: 1.25; grid-column: 1; }
+.ec-bcard .ec-tier { display: block; margin: 2px auto 0; width: max-content; }
+.ec-bcard.locked { background: var(--surface-2); border-style: dashed; }
+.ec-bcard.locked .ec-thumb { filter: grayscale(0.85) brightness(0.65); }
+.ec-bcard-lock {
+  position: absolute; right: -6px; bottom: -6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--surface); border: 1px solid #ffd08a; color: #ffd08a;
+}
+.ec-bcard-lock .ic { width: 14px; height: 14px; }
+.ec-card.ec-bcard:not(.locked):active { border-color: var(--brass-hi); }
+
+/* colonist sheet: the name on a brass plate, a portrait medallion with the colonist's own figure, a role ribbon */
+.ec-sheet:has(.ec-chead) .ec-panel-head h2 {
+  display: inline-block; padding: 4px 14px; border-radius: var(--r-sm); color: var(--on-primary);
+  background: var(--primary-bg); border: 1px solid var(--primary-line); box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.45), inset 0 -2px 0 rgba(120, 70, 20, 0.45), var(--sh-1);
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.4); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ec-chead {
+  position: relative; padding: 10px 10px 10px 8px; border-radius: var(--r-lg); margin-bottom: 8px; align-items: center;
+  background: radial-gradient(ellipse at 12% 50%, rgba(242, 162, 74, 0.22), transparent 55%), linear-gradient(rgba(24, 19, 23, 0.6), rgba(24, 19, 23, 0.75)), var(--px-stone, none) 0 0 / 32px 16px, var(--surface-2);
+  border: 1px solid var(--line-soft); box-shadow: inset 0 1px 0 rgba(255, 226, 170, 0.08);
+}
+.ec-medal {
+  flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%;
+  background: conic-gradient(from 0deg, #f4b13c, #9a6a42, #ffe07a, #714a32, #f4b13c); box-shadow: 0 0 0 2px var(--ink, #15131c), 0 3px 0 rgba(0, 0, 0, 0.45), 0 0 16px rgba(242, 162, 74, 0.3);
+}
+.ec-medal .ec-portrait { box-shadow: 0 0 0 3px var(--ring), inset 0 0 0 2px rgba(0, 0, 0, 0.4); overflow: hidden; }
+.ec-medal .ec-portrait.has-fig { background: radial-gradient(circle at 50% 35%, #4d3722, #261f23 70%); }
+.ec-medal .ec-portrait.has-fig .ec-portrait-i { display: none; }
+.ec-medal .ec-thumb { display: block; image-rendering: pixelated; transform: scale(1.5) translateY(10%); }
+.ec-chead-n { margin-bottom: 4px; }
+.ec-ribbon {
+  position: relative; display: inline-block; padding: 3px 14px 3px 10px; font-size: var(--fs-2); font-weight: 700; color: var(--text);
+  background: linear-gradient(#8a3a2a, #6e2419); border-top: 1px solid #c25a3e; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 50%, 100% 100%, 0 100%); letter-spacing: 0.01em;
+}
+
+/* the Hold tab (and other sheets using banners): a glyph on a brass-edged banner across the column */
+.ec-sub.ec-banner {
+  display: flex; align-items: center; gap: 8px; margin: 20px 0 10px; padding: 0 10px 0 0; min-height: 34px; color: var(--brass-hi);
+  background: linear-gradient(to right, rgba(201, 151, 62, 0.22), rgba(201, 151, 62, 0.04) 70%, transparent); border-left: 3px solid var(--brass);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.ec-sub.ec-banner::after { content: ""; flex: 1; height: 2px; min-width: 12px; background: linear-gradient(to right, var(--line), transparent); }
+.ec-banner-ic {
+  width: 34px; height: 34px; flex: none; display: grid; place-items: center; margin-left: -3px; color: var(--brass-hi);
+  background: var(--well); border-right: 1px solid var(--line-soft); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.ec-banner-ic .ic { width: 20px; height: 20px; }
+.ec-sheet-body > .ec-sub.ec-banner:first-child { margin-top: var(--sp-2); }
+
+/* title: a vignette, a slow ember glow from the hold below, the menu on a stone panel with brass trim */
+.ec-title-bg { z-index: 0; }
+.ec-title::before, .ec-title::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.ec-title::before { z-index: 1; background: radial-gradient(ellipse 70% 38% at 50% 100%, rgba(242, 130, 50, 0.32), transparent 70%); animation: ec-ember 5.5s ease-in-out infinite; }
+.ec-title::after { z-index: 2; background: radial-gradient(ellipse 85% 75% at 50% 45%, transparent 55%, rgba(6, 4, 8, 0.78) 100%); }
+.ec-title-col { z-index: 3; }
+@keyframes ec-ember { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ec-title::before { animation: none; } }
+:root[data-ec-motion="reduce"] .ec-title::before, :root[data-ec-battery="saver"] .ec-title::before { animation: none; }
+.ec-title-name {
+  background: linear-gradient(#ffe9a8 10%, #f4b13c 55%, #c46a2a 95%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: none; filter: drop-shadow(0 2px 0 #2a1a10) drop-shadow(0 0 14px rgba(242, 162, 74, 0.35));
+}
+.ec-title-sub { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.ec-title-sub::before, .ec-title-sub::after { content: ""; width: 36px; height: 2px; background: linear-gradient(to right, transparent, var(--brass)); }
+.ec-title-sub::after { transform: scaleX(-1); }
+.ec-title-actions {
+  position: relative; padding: 14px 12px 12px; border-radius: var(--r-lg);
+  background: linear-gradient(rgba(24, 19, 23, 0.72), rgba(24, 19, 23, 0.86)), var(--px-stone, none) 0 0 / 32px 16px, var(--surface);
+  border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  image-rendering: pixelated;
+}
+.ec-title-actions::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--px-trim, linear-gradient(#ffe07a 0 2px, #b07a2e 2px)) 0 0 / 16px 6px repeat-x; pointer-events: none;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .ec-title-sub { justify-content: flex-start; }
+  .ec-title-sub::before { display: none; }
+  .ec-title-actions { padding: 12px 10px 10px; gap: 8px; }
+}
+
+/* landscape coach card (pass 2 fix): text left, the button at the right, so it never scrolls its button away;
+   the depth ruler and section view take the left edge, so the card steps aside while one is open */
+body.land .ec-guide:not(.small):not(.ec-intro) {
+  width: min(460px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - 220px)); max-height: none; overflow: visible;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: start;
+}
+body.land .ec-guide:not(.small):not(.ec-intro) .ec-guide-head { grid-column: 1 / -1; }
+body.land .ec-guide:not(.small):not(.ec-intro) .ec-guide-t { grid-column: 1; grid-row: 2; }
+body.land .ec-guide:not(.small):not(.ec-intro) .ec-guide-how { grid-column: 1; grid-row: 3; }
+body.land .ec-guide:not(.small):not(.ec-intro) .ec-guide-go { grid-column: 2; grid-row: 2 / span 2; margin: 0 6px 0 0; align-self: start; }
+body.land.has-guide .ec-lv-plate { display: none; }
+body.land.has-guide .ec-levels { z-index: 8; }
+body.land.has-panel .ec-guide:not(.small):not(.ec-intro) { width: min(460px, calc(100% - var(--sa-l) - var(--sa-r) - var(--side) - var(--panelw) - 84px)); }
+/* the card's own hide rules win over its landscape grid */
+body.tooling .ec-guide, body.has-sheet .ec-guide, body.land.has-peek .ec-guide, body.has-ledger .ec-guide, body.has-prompt .ec-guide,
+body.has-intro .ec-guide:not(.ec-intro), body.rail-hidden:not(.land) .ec-guide,
+.ec-guide[hidden], body:has(.ec-ruler:not([hidden])) .ec-guide, body:has(.ec-section:not([hidden])) .ec-guide { display: none !important; }
+/* landscape: the medallion shrinks so the sheet's tabs stay in the 335 pt view */
+body.land .ec-chead { padding: 4px 8px 4px 4px; margin-bottom: 4px; }
+body.land .ec-medal { width: 54px; height: 54px; }
+body.land .ec-medal .ec-portrait { width: 46px !important; height: 46px !important; }
+body.land .ec-medal .ec-thumb { width: 46px !important; height: 46px !important; }
+body.land .ec-chead-n { margin-bottom: 2px; }
+body.land .ec-ribbon { padding: 1px 14px 1px 8px; }

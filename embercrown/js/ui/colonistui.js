@@ -11,6 +11,7 @@
 //   Log     the Chronicle lines that name the colonist, newest first
 //   Bio     ancestry, backstory, traits with their plain-language effects, attributes, age
 // Swipe the header for the next colonist.
+import { colonistThumb } from './thumbs.js';
 import { h, onTap, icon } from './kit.js';
 import { def } from '../game/core/content.js';
 import { SKILL_IDS, ATTR_IDS, FIX } from '../game/core/schema.js';
@@ -145,10 +146,13 @@ export function profession(c) {
 /** Header block of the colonist sheet. ctx: shell context; nav(dir) moves to the next colonist. */
 export function colonistHeader(ctx, c, nav) {
   const mood = Math.round(c.mood / FIX);
+  // the medallion: the colonist's own pixel figure in a brass ring (its colour the mood), the role ribbon under the name
+  const por = ctx.portrait(c, 64), fig = colonistThumb(c, 64);
+  if (fig) { por.classList.add('has-fig'); por.append(fig); }
   const head = h('div.ec-chead', { 'aria-label': `${c.name}, swipe for the next colonist` },
-    ctx.portrait(c, 52),
+    h('span.ec-medal', null, por),
     h('div.ec-chead-t', null,
-      h('div.ec-chead-n', { text: profession(c) }),
+      h('div.ec-chead-n', null, h('span.ec-ribbon', { text: profession(c) })),
       h('div.ec-peek-sub', { text: `${c.age}, ${(def('ancestry', c.anc) || { name: '' }).name} · ${jobText(c)}` }),
       h('div.ec-moodbar.big', { role: 'meter', 'aria-label': `Mood ${mood}`, 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
   let x0 = null;
