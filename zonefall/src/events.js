@@ -15,7 +15,7 @@
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
-import { spawnProjectile, explode, fireWeapon, hurt } from './combat.js';
+import { spawnProjectile, explode, fireWeapon, hurt, damageStruct } from './combat.js';
 import { Live } from './world/live.js';
 import { Build } from './build.js';
 import { spawnActor, removeActor, airborne } from './actors.js';
@@ -493,13 +493,56 @@ function runOver(a, v) {
     if (!o.crushT || G.t > o.crushT) { o.crushT = G.t + 1; hurt(o, 18 * v / 3, { owner: a, kind: 'crush', dir: a.ang }); }
   }
 }
+/** what people built on the road ahead of the tracks: walls, doorways, windows, high walls, stairs, solid deployables
+ *  (foundations it climbs onto; floors overhead it drives under). [{ o, k }] with k the metres of road to it, nearest first */
+function apcBlockers(a, A) {
+  const pts = []; for (let k = 1.5; k <= 9.01; k += 1.5) { const S = sampleRoad(A.R, A.s + A.dir * k); pts.push([S.x, S.z, k]); }
+  const out = [], R2 = 14 * 14, lo = a.y + 0.45, hi = a.y + 2.5;
+  const test = (o, x, z, rad, y0, y1) => {
+    if (y1 < lo || y0 > hi) return;
+    for (const [px, pz, k] of pts) if ((px - x) ** 2 + (pz - z) ** 2 < (rad + 1.45) ** 2) { out.push({ o, k }); return; }
+  };
+  for (const e of Build.edges.values()) {
+    if (e.dead || e.owner === 'mon') continue; const [x, z] = Build.pieceXZ(e); if ((x - a.x) ** 2 + (z - a.z) ** 2 > R2) continue;
+    const b = e.base ?? e.level ?? 0; test(e, x, z, e.hw ? 1.5 : 1.3, b, b + (e.type === 'lowwall' ? 1.1 : e.hw ? 6 : 3));
+  }
+  for (const c of Build.cells.values()) for (let s = 0; s < 3; s++) { const st = c['stair' + s]; if (!st || st.dead) continue; const [x, z] = Build.pieceXZ(st); if ((x - a.x) ** 2 + (z - a.z) ** 2 < R2) test(st, x, z, 1.5, st.base ?? 0, (st.base ?? 0) + 3); }
+  for (const d of Build.deploys) { if (d.dead || !d.col || DEPLOY_LADDER(d)) continue; if ((d.x - a.x) ** 2 + (d.z - a.z) ** 2 < R2) test(d, d.x, d.z, Math.min(1.5, d.r || 0.5), d.y ?? 0, (d.y ?? 0) + 1.5); }
+  return out.sort((p, q) => p.k - q.k);
+}
+const DEPLOY_LADDER = d => d.type === 'ladder';
+/** ram what's in the way: a jolt, dust and a thud, and real damage (twig and wood go fast, armour barely) */
+function apcRam(a, A, list) {
+  const P = G.player, k0 = list[0].k; // returns whether anything gave way
+  for (const { o, k } of list) {
+    if (k > k0 + 1.6) break;
+    damageStruct(o, 140, 'explosive');
+    if (o.door && !o.door.dead) damageStruct(o.door, 140, 'explosive');
+    const [x, z] = o.sk === 'deploy' ? [o.x, o.z] : Build.pieceXZ(o);
+    if (G.fx && P && dist(P.x, P.z, x, z) < 120) { G.fx.debris(x, a.y + 1, z, o.tier || 'metal'); G.fx.emit({ x, y: a.y + 0.6, z, vy: 0.6, life: 1.6, size: 1.2, size1: 3.4, r: 0.55, g: 0.5, b: 0.42, a: 0.6, a1: 0, drag: 0.6 }); }
+    Sfx.thud(x, z);
+  }
+  if (P && G.rend) { const d = dist(P.x, P.z, a.x, a.z); if (d < 30) G.rend.shake = Math.max(G.rend.shake || 0, clamp(1.1 - d / 30, 0.15, 1.1)); }
+  A.jolt = 0.35; // it rocks back on its tracks
+  return list.some(q => q.o.dead);
+}
 function updateApc(a, dt) {
   const A = E.apc; if (!A || A.a !== a) { if (!a.removed) removeActor(a); return; }
   if (a.dead) { apcWreck(a); return; }
   A.life -= dt; a.cd -= dt; a.cannonCd -= dt;
   if ((A.scanT -= dt) <= 0) { A.scanT = 0.4; const t = apcTarget(a); if (t) { A.tgt = t; A.seenT = G.t; } }
   const T = A.tgt && !A.tgt.dead && G.t - A.seenT < 6 ? A.tgt : null; // keeps at it where it last saw you for a moment
-  const want = T ? 0 : APC_DEF.speed; A.v += clamp(want - A.v, -4 * dt, 1.4 * dt);
+  // something built on the road ahead: slow down, drive up to it and ram it until it gives; if it won't (armour), turn back
+  if ((A.blkT = (A.blkT || 0) - dt) <= 0) { A.blkT = 0.3; A.blk = apcBlockers(a, A); }
+  const blk = A.blk && A.blk.length ? A.blk : null, contact = blk && blk[0].k <= 3.2;
+  let want = T ? 0 : APC_DEF.speed;
+  if (blk) want = Math.min(want, contact ? 0 : 1.6);
+  if (contact) {
+    A.ramT = (A.ramT || 0) + dt;
+    if (A.ramT > 1.6 && !T) { A.ramT = 0; A.rams = apcRam(a, A, blk) ? 0 : (A.rams || 0) + 1; A.blkT = 0; }
+    if ((A.rams || 0) >= 7) { A.dir = -A.dir; A.rams = 0; A.ramT = 0; A.v = 0; A.blk = null; } // seven rams and nothing gave: back the way it came
+  } else if (!blk) { A.rams = 0; A.ramT = 0; }
+  A.v += clamp(want - A.v, -4 * dt, 1.4 * dt);
   // patrols its stretch of road to and fro: at each end it stops and pivots round on its tracks
   if (!A.loop && ((A.dir > 0 && A.s >= A.s1) || (A.dir < 0 && A.s <= A.s0))) { A.s = clamp(A.s, A.s0, A.s1); A.dir = -A.dir; A.v = 0; }
   const S0 = sampleRoad(A.R, A.s), head = A.dir > 0 ? S0.ang : S0.ang + Math.PI, turning = Math.abs(angDiff(a.ang, head)) > 0.6;
@@ -511,6 +554,7 @@ function updateApc(a, dt) {
     if (!turning) a.ang += angDiff(a.ang, ang) * Math.min(1, dt * 2.5);
     runOver(a, A.v);
   }
+  if (A.jolt > 0) { A.jolt = Math.max(0, A.jolt - dt); const j = Math.sin(A.jolt / 0.35 * Math.PI) * 0.35, S = sampleRoad(A.R, A.s - A.dir * j); a.x = S.x; a.z = S.z; } // the jolt of a ram
   a.speedNow = A.v;
   const aim = T ? Math.atan2(T.z - a.z, T.x - a.x) : a.ang;
   a.turY += clamp(angDiff(a.turY, aim), -dt * 1.5, dt * 1.5); a.st.aim = !!T;
