@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|all] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|front|all] [--json]
 // Playwright with touch emulation (hasTouch, deviceScaleFactor 2), at every gate viewport:
 //   portrait 375 x 635, 390 x 664, 430 x 740 (Safari), 390 x 763 (Home Screen app);
 //   landscape 844 x 335, 932 x 380 (Safari).
@@ -1360,6 +1360,316 @@ if (flowsArg === 'ia-people') {
   console.log(`ui-phone --flows=ia-people [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/ia-*.png)`);
   process.exit(nbad ? 1 : 0);
 }
+
+// ---- W1.6 --flows=front (EMBERCROWN-WORLD.md 8.3, 3.1, 12.3 W1.6; js/ui/front.js) -----------------------------
+// The title and Holds and ruins, from an empty browser (a fresh context per viewport):
+//   F1 "cold start to the map in 2 taps": no Continue, no Holds and ruins and no Worlds (REALM off) on the first
+//      run; New hold reaches the map (renderer frames) in <= 2 taps
+//   F2 "Continue names the hold": after a reload the title leads with "Continue: <name>" and enters in 1 tap
+//   F3 "Holds and ruins": lists the hold with Continue and Delete, has Import a file, Back returns to the title
+//   F4 "Options, Settings and Help": each opens in 1 tap and Back returns; Options founds from its own button
+//   F5 "Worlds only with REALM": hidden by default, shown with the debug URL ?realm=1
+// and the 14.4 probe (44 pt targets, 14 px text, no horizontal overflow) on each title screen at 100 % and 130 %.
+async function runFront(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [];
+  const screen = async (name, pcts = [100, 130]) => {
+    for (const pct of pcts) {
+      await page.evaluate((pct) => { if (pct === 100) delete document.documentElement.dataset.ecText; else document.documentElement.dataset.ecText = String(pct); window.dispatchEvent(new Event('resize')); }, pct);
+      await page.waitForTimeout(220);
+      // the title column scrolls: probe it scrolled to the top and to the bottom
+      const list = [];
+      for (const end of [0, 1]) {
+        await page.evaluate((end) => { const t = document.querySelector('.ec-title'); if (t) t.scrollTop = end ? t.scrollHeight : 0; }, end);
+        await page.waitForTimeout(60);
+        const p = await probe(page);
+        list.push(...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x));
+      }
+      const uniq = [...new Set(list)];
+      for (const x of uniq) problems.push(`[${name}@${pct}] ${x}`);
+      screens.push({ name: `${name}@${pct}`, ok: !uniq.length, n: uniq.length });
+      await page.evaluate(() => { const t = document.querySelector('.ec-title'); if (t) t.scrollTop = 0; });
+      await page.screenshot({ path: join(OUT, `front-${vp.name}-${name}-${pct}.png`) });
+    }
+    await page.evaluate(() => { delete document.documentElement.dataset.ecText; });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  const acts = () => page.evaluate(() => [...document.querySelectorAll('.ec-title [data-act]')].filter((e) => e.getBoundingClientRect().height > 0).map((e) => e.dataset.act));
+  const inGame = () => page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }).then(() => true, () => false);
+  /** Tap a title control after scrolling it into view (the column scrolls on short screens). */
+  const tapT = async (sel) => { await page.evaluate((sel) => { const e = document.querySelector(sel); if (e && e.scrollIntoView) e.scrollIntoView({ block: 'nearest' }); }, sel); await page.waitForTimeout(60); return tap(page, sel); };
+  await page.goto(srv.url + '?debug=1');
+  await page.waitForTimeout(700);
+  // F1: the first run
+  const a0 = await acts();
+  await screen('first');
+  const firstOk = !a0.includes('continue') && !a0.includes('holds') && !a0.includes('worlds') && a0.includes('new') && a0.includes('import');
+  let taps = 0, entered = false;
+  const t0 = Date.now();
+  if (await tapT('[data-act=new]')) { taps++; entered = await inGame(); }
+  if (!entered && (await tapT('[data-act=quick]'))) { taps++; entered = await inGame(); }   // W2: New hold > Quick start
+  flow('F1', 'cold start to the map in 2 taps', firstOk && entered && taps <= 2, `first run shows [${a0.join(' ')}]; ${entered ? `on the map after ${taps} tap(s), ${Date.now() - t0} ms` : 'never reached the map'}`);
+  if (!entered) return done();
+  const held = await page.evaluate(() => ({ id: window.__ec.state.id, name: window.__ec.state.name }));
+  await page.evaluate(() => window.__ec.saveNow && window.__ec.saveNow('test')).catch(() => null);
+  await page.waitForTimeout(400);
+  // F2: reload; Continue leads
+  await page.reload(); await page.waitForTimeout(900);
+  await page.evaluate(() => window.__ecUI && window.__ecUI.title && window.__ecUI.title.refresh());
+  await page.waitForTimeout(150);
+  const a1 = await acts();
+  const contText = await page.evaluate(() => { const b = document.querySelector('[data-act=continue]'); return b ? b.innerText.replace(/\s+/g, ' ').trim() : ''; });
+  await screen('saved');
+  // F3: Holds and ruins
+  let f3 = 'no Holds and ruins button';
+  let f3ok = false;
+  if (await tapT('[data-act=holds]')) {
+    const ah = await acts();
+    const row = await page.evaluate(() => [...document.querySelectorAll('.ec-colony-row')].map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
+    await screen('holds');
+    const backOk = !!(await tapT('[data-act=title-back]')) && (await acts()).includes('continue');
+    f3ok = row.length === 1 && ah.includes('colony-open') && ah.includes('colony-delete') && ah.includes('import') && backOk;
+    f3 = `${row.length} row(s) "${(row[0] || '').slice(0, 50)}"; [${ah.join(' ')}]; back ${backOk ? 'to the title' : 'FAILED'}`;
+  }
+  flow('F3', 'Holds and ruins lists the hold, Import, Back', f3ok, f3);
+  // F4: Options, Settings, Help
+  const opened = {};
+  for (const [act, want, name] of [['new-options', 'opt-found', 'options'], ['title-settings', 'title-back', 'settings'], ['title-help', 'title-back', 'help']]) {
+    if (!(await tapT(`[data-act=${act}]`))) { opened[name] = 'missing'; continue; }
+    const ok = (await acts()).includes(want) && (await page.evaluate(() => !!document.querySelector('.ec-title-h')));
+    await screen(name, name === 'options' ? [100, 130] : [100]);
+    const back = !!(await tapT('[data-act=title-back]')) && (await acts()).includes('new');
+    opened[name] = ok && back ? 'ok' : `${ok ? 'opened' : 'did not open'}, ${back ? 'back' : 'no way back'}`;
+  }
+  flow('F4', 'Options, Settings and Help open in 1 tap and come back', Object.values(opened).every((x) => x === 'ok'), JSON.stringify(opened));
+  // F2 (last: it leaves the title)
+  let cont = false;
+  if (await tapT('[data-act=continue]')) cont = await inGame();
+  const same = cont ? await page.evaluate((id) => window.__ec.state.id === id, held.id) : false;
+  flow('F2', 'Continue names the hold and enters in 1 tap', a1.includes('holds') && contText.includes(held.name) && cont && same, `[${a1.join(' ')}]; "${contText.slice(0, 60)}"; ${cont ? (same ? 'entered the same hold' : 'entered ANOTHER hold') : 'did not enter'}`);
+  // F5: Worlds behind REALM (debug URL)
+  await page.goto(srv.url + '?debug=1&realm=1'); await page.waitForTimeout(700);
+  const a2 = await acts();
+  flow('F5', 'Worlds only with REALM', !a1.includes('worlds') && !a0.includes('worlds') && a2.includes('worlds'), `default [${a1.includes('worlds') ? 'shown' : 'hidden'}], ?realm=1 [${a2.includes('worlds') ? 'shown' : 'hidden'}]`);
+  return done();
+}
+if (flowsArg === 'front') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of VIEWPORTS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runFront(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-front-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=front [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/front-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+
+// ---- W1.3b --flows=ia (EMBERCROWN-WORLD.md 8.1, 8.5, G21, 11 item 28, 12.3 W1.3b) -----------------------------------
+// The Hold and World sheets in the new shell (?shell=2 until A's flags.js SHELL2 is on), at the six viewports plus
+// landscape-left and -right:
+//   I1-I4 "Annals, Offices, Stock and Letters each <= 2 taps from the map" (taps counted from the map)
+//   I5 "Research and Stock cards above the fold": the first tech card and the first stock row lie wholly inside
+//      the sheet body when the tab opens, on the first visit (the paragraph shows on Overview, then goes behind
+//      "?" at the tab change) and after it; "?" shows the paragraph of the tab on show
+//   I6 "the 31 screens of today checked reachable": the list below (the in-play screens at aebe07c), each reached
+//      from the map by taps in the new shell and identified by what it shows
+//   I7 "no stacked sheet": at most one sheet on screen after every step, and every sub-screen pushed inside the
+//      sheet (depth 1, a breadcrumb under its slot, the back arrow returns to it)
+// and the 14.4 probe on every Hold and World screen at 100 % (and Hold / Overview at 130 %) text.
+const TODAY_SCREENS = Object.freeze([
+  'build', 'orders', 'zones', 'people', 'work-roles', 'work-grid', 'schedule', 'schedule-editor', 'military', 'colonist',
+  'research', 'stock', 'hold', 'chronicle', 'offices', 'justice', 'halls', 'annals', 'annals-entry', 'letters', 'factions',
+  'dead', 'menu', 'settings', 'help', 'holds-and-ruins', 'peek', 'building', 'levels', 'minimap', 'stock-strip',
+]);
+async function runIa(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [], reach = [], stacked = [];
+  const ev = (fn, a) => page.evaluate(fn, a);
+  const screen = async (name) => {
+    await page.waitForTimeout(200);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    screens.push({ name, ok: !list.length, n: list.length });
+    await page.screenshot({ path: join(OUT, `iab-${vp.name}-${name}.png`) });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, reach, problems: [...errs, ...problems] }; };
+  const toMap = async () => { await ev(() => { const sh = window.__ecUI.shell; if (sh.ctx.ui.tool) sh.ctx.endTool(); sh.ctx.closeSheet(); sh.ctx.closePanel(); sh.ctx.closePeek(); const m = document.querySelector('.ec-ctx-scrim'); if (m) m.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); }); await page.waitForTimeout(120); };
+  const sheetNow = () => ev(() => {
+    const e = document.querySelector('.ec-sheet'), eng = window.__ecUI.shell.ctx.sheets;
+    const vis = [...document.querySelectorAll('.ec-sheet')].filter((x) => !x.hidden && x.getBoundingClientRect().height > 0).length;
+    if (!e || e.hidden) return { open: false, count: vis, crumbs: [] };
+    return { open: true, count: vis, crumbs: eng.crumbs(), title: eng.title(), tab: eng.tab(), depth: eng.depth(), detent: e.dataset.detent };
+  });
+  const has = (sel) => ev((sel) => [...document.querySelectorAll(sel)].some((x) => { if (x.closest('[hidden]')) return false; const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0; }), sel);
+  /** Wholly inside the sheet body's visible box (the fold) right now. */
+  const aboveFold = (sel) => ev((sel) => {
+    const b = document.querySelector('.ec-sheet .ec-sheet-body'), e = b && b.querySelector(sel);
+    if (!e) return { ok: false, why: 'none' };
+    const r = e.getBoundingClientRect(), br = b.getBoundingClientRect(), bottom = Math.min(br.bottom, innerHeight);
+    return { ok: r.top >= br.top - 1 && r.bottom <= bottom + 1, why: `${Math.round(r.top - br.top)}..${Math.round(r.bottom - br.top)} of ${Math.round(bottom - br.top)}` };
+  }, sel);
+  const watch = async (step) => { const n = await sheetNow(); if (n.count > 1) stacked.push(`${step}: ${n.count} sheets`); return n; };
+  /** Tap through `path` (selectors, or functions run in the page) from the map; count the taps. */
+  const go = async (path) => {
+    let taps = 0;
+    for (const p of path) {
+      if (typeof p === 'function') { await ev(p); await page.waitForTimeout(150); continue; }
+      const already = /data-act=sheet-tab/.test(p) && (await ev((sel) => { const e = document.querySelector('.ec-sheet ' + sel); return !!e && e.classList.contains('on'); }, p));
+      if (already) continue;
+      await ev((sel) => { const e = [...document.querySelectorAll(sel)].find((x) => !x.closest('[hidden]')); if (e && e.closest('.ec-sheet-body') && e.scrollIntoView) e.scrollIntoView({ block: 'center' }); }, p);
+      if (!(await tap(page, p))) return { taps, missing: p };
+      taps++;
+      await page.waitForTimeout(160);
+      await watch(p);
+    }
+    return { taps, missing: null };
+  };
+  await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
+  await page.waitForTimeout(700);
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
+  await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
+  await page.waitForTimeout(300);
+  const HOLD = '[data-act=tab][data-tab=hold]', WORLD = '[data-act=tab][data-tab=world]', PEOPLE = '[data-act=tab][data-tab=people]';
+  const tab = (n) => `[data-act=sheet-tab][data-tab="${n}"]`;
+  // I5 first: the first visit of Research and Stock (the paragraph shows), then again behind "?"
+  const fold = {};
+  await go([HOLD]); const intro0 = await has('.ec-sheet .ec-sheet-intro');
+  await go([tab('Research')]); fold.r1 = await aboveFold('.ec-tech'); const intro1 = await has('.ec-sheet .ec-sheet-intro');
+  await screen('hold-research');
+  await go([tab('Stock')]); fold.s1 = await aboveFold('[data-act^=stock-]');
+  await screen('hold-stock');
+  await toMap(); await go([HOLD, tab('Research')]); fold.r2 = await aboveFold('.ec-tech'); const intro2 = await has('.ec-sheet .ec-sheet-intro');
+  await go([tab('Stock')]); fold.s2 = await aboveFold('[data-act^=stock-]');
+  await tap(page, '[data-act=sheet-intro]'); await page.waitForTimeout(120);
+  const q = await ev(() => { const p = document.querySelector('.ec-sheet .ec-sheet-intro'); return p ? p.textContent : null; });
+  flow('I5', 'Research and Stock cards above the fold', fold.r1.ok && fold.s1.ok && fold.r2.ok && fold.s2.ok && intro0 && !intro1 && !intro2 && /stack/.test(q || ''),
+    `first visit (paragraph ${intro0 ? 'shown' : 'not shown'} on Overview, ${intro1 ? 'still shown' : 'behind ?'} on Research): research ${fold.r1.why}, stock ${fold.s1.why}; later (${intro2 ? 'shown' : 'behind ?'}): research ${fold.r2.why}, stock ${fold.s2.why}; "?" shows "${(q || '').slice(0, 30)}"`);
+  // I1-I4: the four screens and their taps from the map
+  const four = [
+    ['I1', 'Annals', [WORLD, tab('Annals')], '.ec-sheet .ec-annals [data-act^=annals-]', 'World'],
+    ['I2', 'Offices', [HOLD, tab('Offices')], '.ec-sheet .ec-office', 'Hold'],
+    ['I3', 'Stock', [HOLD, tab('Stock')], '.ec-sheet [data-act^=stock-]', 'Hold'],
+    ['I4', 'Letters', [WORLD, tab('Letters')], '.ec-sheet [data-world=letters] .ec-sub', 'World'],
+  ];
+  for (const [id, name, path, sel, title] of four) {
+    await toMap();
+    const r = await go(path);
+    const n = await sheetNow(), ok = !r.missing && (await has(sel));
+    flow(id, `${name} <= 2 taps from the map`, ok && r.taps <= 2 && n.title === title && n.count === 1, `${r.taps} taps${r.missing ? ', missing ' + r.missing : ''}; ${n.open ? n.crumbs.join(' / ') + ' on ' + n.tab : 'no sheet'}; content ${ok}`);
+    if (id === 'I1') await screen('world-annals');
+    if (id === 'I2') await screen('hold-offices');
+    if (id === 'I4') await screen('world-letters');
+  }
+  // I6 and I7: the 31 screens of today
+  const pushed = [];
+  const subIs = (slot) => async () => { const n = await sheetNow(); const ok = n.open && n.depth === 1 && n.crumbs[0] === slot && n.count === 1; pushed.push({ slot, crumbs: n.crumbs.join(' / '), ok }); return ok; };
+  const sheetIs = (title, sel = null) => async () => { const n = await sheetNow(); return n.open && n.title === title && n.count === 1 && (!sel || (await has(sel))); };
+  const panelIs = (id, sel) => async () => (await ev(() => window.__ecUI.shell.ctx.ui.panel)) === id && (await has(sel));
+  const firstHearth = () => { const sh = window.__ecUI.shell, s = sh.state, hr = s.colony.hearth, b = hr && hr.id !== null ? s.bld[hr.id] : s.bld.find((x) => x && x.st === 'done'); if (b) sh.ctx.select({ kind: 'building', id: b.id }); };
+  const ROUTES = {
+    build: [['[data-act=tab][data-tab=build]'], panelIs('build', '.ec-panel .ec-card')],
+    orders: [['[data-act=tab][data-tab=mark]', '[data-act=mark-orders]'], panelIs('mark', '[data-act=order-mine]')],
+    zones: [['[data-act=tab][data-tab=mark]', '[data-act=mark-zones]'], panelIs('mark', '[data-act=zone-stockpile]')],
+    people: [[PEOPLE, tab('List')], sheetIs('People', '.ec-sheet .ec-prow')],
+    'work-roles': [[PEOPLE, tab('List')], sheetIs('People', '.ec-sheet [data-act=role-primary]')],
+    'work-grid': [[PEOPLE, tab('Grid')], sheetIs('People', '.ec-sheet .ec-wgrid')],
+    schedule: [[PEOPLE, tab('Schedule')], sheetIs('People', '.ec-sheet [data-act=sched-edit]')],
+    'schedule-editor': [[PEOPLE, tab('Schedule'), '[data-act=sched-edit]'], subIs('People')],
+    military: [[PEOPLE, tab('List'), '[data-act=people-squads]'], subIs('People')],
+    colonist: [[PEOPLE, tab('List'), '[data-act=person-open]'], subIs('People')],
+    research: [[HOLD, tab('Research')], sheetIs('Hold', '.ec-sheet .ec-tech')],
+    stock: [[HOLD, tab('Stock')], sheetIs('Hold', '.ec-sheet [data-act^=stock-]')],
+    hold: [[HOLD, tab('Overview')], sheetIs('Hold', '.ec-sheet [data-act=hold-chronicle]')],
+    chronicle: [[HOLD, tab('Overview'), '[data-act=hold-chronicle]'], subIs('Hold')],
+    offices: [[HOLD, tab('Offices'), '[data-act=hold-seg-offices]'], sheetIs('Hold', '.ec-sheet .ec-office')],
+    justice: [[HOLD, tab('Offices'), '[data-act=hold-seg-justice]'], sheetIs('Hold', '.ec-sheet .ec-justice')],
+    halls: [[HOLD, tab('Overview'), '[data-act=hold-halls]'], subIs('Hold')],
+    annals: [[WORLD, tab('Annals')], sheetIs('World', '.ec-sheet .ec-annals')],
+    'annals-entry': [[WORLD, tab('Annals'), '[data-act=annals-figures]', '[data-act=annals-entry]'], subIs('World')],
+    letters: [[WORLD, tab('Letters')], sheetIs('World', '.ec-sheet [data-world=letters]')],
+    factions: [[WORLD, tab('Factions')], sheetIs('World', '.ec-sheet .ec-thought')],
+    dead: [[WORLD, tab('The dead')], sheetIs('World', '.ec-sheet [data-world=dead] p')],
+    menu: [['[data-act=menu]'], sheetIs('Menu', '.ec-sheet [data-act=menu-settings]')],
+    settings: [['[data-act=menu]', '[data-act=menu-settings]'], async () => (await sheetNow()).count === 1 && (await has('.ec-sheet .ec-swrow, .ec-sheet [role=switch]'))],
+    help: [['[data-act=menu]', '[data-act=menu-help]'], async () => (await sheetNow()).count === 1 && (await has('.ec-sheet .ec-helpcard'))],
+    'holds-and-ruins': [['[data-act=menu]'], async () => has('.ec-sheet [data-act=menu-holds]')],
+    peek: [['[data-act=colonist]'], async () => has('.ec-peek [data-act=peek-open]')],
+    building: [[firstHearth, '[data-act=peek-open]'], async () => { const n = await sheetNow(); return n.open && n.count === 1 && (await ev(() => { const sh = window.__ecUI.shell; return !!(sh.ctx.ui.sel && sh.ctx.ui.sel.kind === 'building'); })); }],
+    levels: [['[data-act=level-chip]'], async () => (await sheetNow()).open || (await has('.ec-lvlist, [data-act=ruler-row]'))],
+    minimap: [['[data-act=map]'], async () => ev(() => !!window.__ecUI.shell.ctx.ui.map || !!document.querySelector('.ec-minimap:not([hidden])'))],
+    'stock-strip': [['[data-act=stock]'], async () => ev(() => !!window.__ecUI.shell.ctx.ui.stockOpen)],
+  };
+  for (const name of TODAY_SCREENS) {
+    await toMap();
+    const rt = ROUTES[name];
+    if (!rt) { reach.push({ name, ok: false, detail: 'no route' }); continue; }
+    const r = await go(rt[0]);
+    let ok = false;
+    try { ok = !r.missing && (await rt[1]()); } catch (e) { ok = false; }
+    const n = await watch(name);
+    if (name === 'minimap' || name === 'stock-strip') await tap(page, name === 'minimap' ? '[data-act=map]' : '[data-act=stock]');
+    reach.push({ name, ok, taps: r.taps, detail: r.missing ? 'missing ' + r.missing : n.open ? n.crumbs.join(' / ') + (n.tab ? ' on ' + n.tab : '') : 'map' });
+    if (['chronicle', 'justice', 'halls', 'factions', 'dead', 'annals-entry'].includes(name)) await screen((name.startsWith('annals') ? 'world-' : ['factions', 'dead'].includes(name) ? 'world-' : 'hold-') + name);
+    // the back arrow of a pushed screen returns to its slot's sheet
+    if (n.open && n.depth === 1) { await tap(page, '[data-act=sheet-back]'); await page.waitForTimeout(150); const b = await sheetNow(); if (!(b.open && b.depth === 0 && b.crumbs[0] === n.crumbs[0])) stacked.push(`${name}: back went to ${b.open ? b.crumbs.join(' / ') : 'the map'}`); }
+  }
+  await toMap(); await go([HOLD, tab('Overview')]);
+  await screen('hold-overview');
+  await ev(() => { document.documentElement.dataset.ecText = '130'; window.__ecUI.shell.ctx.refreshSheet(); });
+  await screen('hold-overview-130');
+  await ev(() => { delete document.documentElement.dataset.ecText; });
+  const bad = reach.filter((x) => !x.ok);
+  flow('I6', `the ${TODAY_SCREENS.length} screens of today reachable`, TODAY_SCREENS.length === 31 && !bad.length, `${reach.length - bad.length} of ${TODAY_SCREENS.length}${bad.length ? '; not reached: ' + bad.map((x) => `${x.name} (${x.detail})`).join(', ') : ''}; max ${Math.max(...reach.map((x) => x.taps || 0))} taps`);
+  flow('I7', 'no stacked sheet', !stacked.length && pushed.length >= 5 && pushed.every((p) => p.ok), stacked.length ? stacked.join('; ') : `${pushed.length} sub-screens pushed: ${pushed.map((p) => p.crumbs).join(', ')}`);
+  return done();
+}
+if (flowsArg === 'ia') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of SHEET_VPS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runIa(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], reach: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-ia-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=ia [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/iab-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+
 
 const report = [];
 let bad = 0;

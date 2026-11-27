@@ -106,7 +106,7 @@ const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return
 const relOf = (p) => p.slice(ROOT.length + 1).split('\\').join('/');
 /** The 8.2 greps: what each finds must be only the files listed (the storage row; the migration and compat code). */
 const GREPS = [
-  { what: 'classic (S9.2)', re: /classic/, in: ['js', 'sw.js', 'index.html'], allow: ['js/game/save/slots.js', 'js/ui/colonies.js', 'js/main.js'], why: 'the one-release Old roguelite saves row' },
+  { what: 'classic (S9.2)', re: /classic/, in: ['js', 'sw.js', 'index.html'], allow: ['js/game/save/slots.js', 'js/ui/front.js', 'js/main.js'], why: 'the one-release Old roguelite saves row' },
   { what: 'ironhold|pendingChoices|challenge|lordsDone|wonder (S9.5)', re: /ironhold|pendingChoices|challenge|lordsDone|wonder/, in: ['js'], allow: ['js/game/core/state.js', 'js/game/core/schema.js'], why: 'migration code' },
   { what: 'roguelite tables and pickers (1.1, 1.2)', re: /\b(MATCHUPS|DEFAULT_MODS|takePerk|letter_charter)\b|kind: 'perk'/, in: ['js'], allow: [], why: '' },
 ];

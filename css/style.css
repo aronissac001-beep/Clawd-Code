@@ -1122,6 +1122,15 @@ body.land .ec-bstrip .ec-strip-tab .ic { display: block; }
   .ec-title-sub::before { display: none; }
   .ec-title-actions { padding: 12px 10px 10px; gap: 8px; }
 }
+/* W1.6: the title's paired rows (New hold + Options, Settings + Help) and the stone 9-slice on its buttons (8.9) */
+.ec-title-actions { min-width: 0; }
+.ec-title-pair { display: flex; gap: 8px; align-items: stretch; }
+.ec-title-pair > .ec-btn { flex: 1 1 0; width: 0; min-width: 0; }
+.ec-title-pair > .ec-btn[data-side] { flex: 0 0 auto; width: auto; min-width: 104px; }
+.ec-title-actions .ec-btn {
+  border-style: solid; border-color: transparent; border-width: var(--px-frame-stone-w, 1px);
+  border-image: var(--px-frame-stone, none) var(--px-frame-stone-slice, 1) / var(--px-frame-stone-w, 1px) repeat;
+}
 
 /* landscape coach card (pass 2 fix): text left, the button at the right, so it never scrolls its button away;
    the depth ruler and section view take the left edge, so the card steps aside while one is open */

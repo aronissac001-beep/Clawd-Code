@@ -3,16 +3,31 @@
 // code as pixel art at a small native size and shown at a whole-number scale with smoothing off; the
 // native canvas is sized to the box it fills, so the scene widens on landscape screens instead of
 // stretching. Colours come from palette.js only. Browser only (nothing runs at import).
-//   mountTitleArt(host)   fill `host` (the title's .ec-title-bg) with the canvas; redraws on resize and
-//                         flickers the gate fire twice a second (not with prefers-reduced-motion).
-//                         Returns { canvas, destroy() }.
-//   paintTitle(p, w, h, frame)   paint the scene into a Px painter of w x h native px (contact sheet, icons)
+//   mountTitleArt(host, { season })   fill `host` (the title's .ec-title-bg) with the canvas; redraws on
+//                         resize and flickers the gate fire twice a second (not under Reduce motion, the
+//                         OS setting or the game's, nor Battery saver). Returns { canvas, setSeason(s), destroy() }.
+//   paintTitle(p, w, h, frame, { season })   paint the scene into a Px painter of w x h native px (contact
+//                         sheet, icons)
+// season (W1.6, EMBERCROWN-WORLD.md 8.3: the title shows the last save's season): 0 Thaw, 1 Highsun, 2 Ashfall,
+// 3 Deepcold, as js/game/core/time.js SEASON_NAMES; null or absent is the plain dusk scene (first run). Seasons
+// change the snow line, the turf, the pines and a few static motes (blossom, ash, flakes); no gradients, no arcs.
 
 import { PAL, dith } from './palette.js';
 import { Px } from './pixel.js';
 
 /** A small integer hash (render only; stable across frames so the scene never shimmers). */
 const hash = (x, y = 0) => { let n = (x * 374761393 + y * 668265263) | 0; n = (n ^ (n >>> 13)) * 1274126177; return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+
+/** Per-season knobs; DUSK is the scene as it was before seasons (so the first run is unchanged). */
+const DUSK = Object.freeze({ cap: 0.16, shoulder: 0.05, depth: 4, turf: PAL.moss0, pineLit: PAL.moss1, pineTop: null, speck: null, sky: null });
+const LOOKS = Object.freeze([
+  Object.freeze({ ...DUSK, cap: 0.13, shoulder: 0.03, turf: PAL.moss1, speck: PAL.peach }),                        // Thaw: blossom in the turf
+  Object.freeze({ ...DUSK, cap: 0.08, shoulder: 0, turf: PAL.moss2, pineLit: PAL.moss2 }),                         // Highsun: the snow is gone
+  Object.freeze({ ...DUSK, cap: 0.12, shoulder: 0.03, turf: PAL.umber1, pineLit: PAL.umber3, speck: PAL.gold, sky: PAL.stone1 }), // Ashfall: ember-gold, ash
+  Object.freeze({ ...DUSK, cap: 0.26, shoulder: 0.13, depth: 7, turf: PAL.mist, pineTop: PAL.bone, sky: PAL.bone }), // Deepcold: snow everywhere
+]);
+/** The look of a season index (anything else: DUSK). */
+export const titleLook = (season) => (Number.isInteger(season) && season >= 0 && season < 4 ? LOOKS[season] : DUSK);
 
 /** Ridge height (native y of the mountain's top edge) at column x: three peaks with a jagged edge. */
 function ridge(x, w, h) {
@@ -32,7 +47,8 @@ function ridge(x, w, h) {
  * Paint the scene: w x h native px, light from the top-left, 2-3 tones per surface with Bayer dither.
  * frame (0, 1) flickers the gate fire.
  */
-export function paintTitle(p, w, h, frame = 0) {
+export function paintTitle(p, w, h, frame = 0, opts = {}) {
+  const look = titleLook(opts && opts.season);
   const cx = Math.round(w / 2);
   const groundY = h - Math.max(8, Math.round(h * 0.1));
   // 1. the massif: lit (left) and shadowed (right) faces, darker toward the base, snow on the high peak
@@ -49,8 +65,8 @@ export function paintTitle(p, w, h, frame = 0) {
       if (!r.left && depth >= 0.42 && depth < 0.58 && dith(x, y, Math.round((depth - 0.42) * 100))) c = PAL.slate0;
       if (depth > 0.7 && dith(x, y, Math.round((depth - 0.7) * 40))) c = PAL.night;
       // snow on the main peak and the shoulders' tops
-      if (fromTop < h * (r.peak === 0 ? 0.16 : 0.05) && y - r.y < 4) c = r.left ? PAL.bone : PAL.mist;
-      if (r.peak === 0 && fromTop < h * 0.2 && y - r.y < 6 && dith(x, y, 6)) c = r.left ? PAL.mist : PAL.slate3;
+      if (fromTop < h * (r.peak === 0 ? look.cap : look.shoulder) && y - r.y < look.depth) c = r.left ? PAL.bone : PAL.mist;
+      if (r.peak === 0 && fromTop < h * (look.cap + 0.04) && y - r.y < look.depth + 2 && dith(x, y, 6)) c = r.left ? PAL.mist : PAL.slate3;
       p.px(x, y, c);
     }
     // the ridge outline
@@ -105,12 +121,19 @@ export function paintTitle(p, w, h, frame = 0) {
   // 3. the foreground: a dark ridge of ground and pine silhouettes on both sides
   for (let x = 0; x < w; x++) {
     const top = groundY + Math.round(Math.sin(x * 0.13) * 1.5 + hash(x >> 2, 11) * 1.5) - (Math.abs(x - cx) < gateW ? 0 : 1);
-    for (let y = top; y < h; y++) p.px(x, y, y === top ? PAL.moss0 : PAL.night);
+    for (let y = top; y < h; y++) p.px(x, y, y === top ? look.turf : look.pineTop && y === top + 1 && dith(x, y, 8) ? PAL.slate3 : PAL.night);
+    // blossom (Thaw) or fallen embers (Ashfall) in the turf, fixed by column so they never shimmer
+    if (look.speck && Math.abs(x - cx) > 3 && hash(x, 41) < 0.12) p.px(x, top + 1, look.speck);
   }
   const pine = (bx, by, s) => {
     for (let y = 0; y < s * 3; y++) {
       const tier = y % s, half = Math.round(1 + tier * 0.7 + (y / s) * 1.2);
-      for (let x = -half; x <= half; x++) p.px(bx + x, by - s * 3 + y, x < 0 && tier < s - 1 ? PAL.moss1 : PAL.moss0);
+      for (let x = -half; x <= half; x++) {
+        let c = x < 0 && tier < s - 1 ? look.pineLit : PAL.moss0;
+        if (look.pineTop && tier === 0 && x <= 0) c = PAL.bone;            // snow along each tier's top, lit side
+        else if (look.pineTop && tier === 1 && x < 0 && dith(bx + x, y, 8)) c = PAL.mist;
+        p.px(bx + x, by - s * 3 + y, c);
+      }
     }
     p.rect(bx, by - 1, 1, 2, PAL.umber0);
   };
@@ -118,6 +141,13 @@ export function paintTitle(p, w, h, frame = 0) {
     const x = Math.round((k + 0.5) * 14 + (hash(k, 2) - 0.5) * 8);
     if (Math.abs(x - cx) < gateW * 2.2) continue;
     pine(x, groundY + 3 + Math.floor(hash(k, 4) * 3), 4 + Math.floor(hash(k, 6) * 3));
+  }
+  // the sky's motes (Ashfall ash, Deepcold flakes): placed by hash, stepping down one pixel with the frame
+  if (look.sky) {
+    for (let k = 0; k < Math.round(w * h / 90); k++) {
+      const x = Math.floor(hash(k, 51) * w), y = Math.floor(hash(k, 53) * (groundY - 2)) + (frame & (k & 1));
+      if (y < ridge(x, w, h).y - 1 || (look.pineTop && hash(k, 57) < 0.5)) p.px(x, y, look.sky);
+    }
   }
   // embers drifting up out of the gate
   for (let k = 0; k < 5; k++) { const ex = cx + Math.round((hash(k, 21 + frame) - 0.5) * gateW * 1.4), ey = gy - 3 - Math.floor(hash(k, 31) * gateH); if (ey > ridge(ex, w, h).y) p.px(ex, ey, k & 1 ? PAL.orange : PAL.gold); }
@@ -130,14 +160,18 @@ function nativeOf(cw, ch, dpr) {
 }
 
 /** Fill host with the title canvas (see the header). */
-export function mountTitleArt(host) {
+export function mountTitleArt(host, opts = {}) {
   const c = document.createElement('canvas');
   c.className = 'ec-title-art';
   c.setAttribute('aria-hidden', 'true');
   c.style.cssText = 'position:absolute;left:50%;bottom:0;image-rendering:pixelated;image-rendering:crisp-edges;';
   host.appendChild(c);
-  let frame = 0, size = null, timer = 0, ro = null;
-  const reduce = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
+  let frame = 0, size = null, timer = 0, ro = null, season = opts && Number.isInteger(opts.season) ? opts.season : null;
+  const reduce = () => {
+    const d = document.documentElement && document.documentElement.dataset;
+    if (d && (d.ecMotion === 'reduce' || d.ecBattery === 'saver')) return true;
+    try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
+  };
   const draw = () => {
     const cw = host.clientWidth, ch = host.clientHeight;
     if (!cw || !ch) return;
@@ -150,16 +184,17 @@ export function mountTitleArt(host) {
     }
     const g = c.getContext('2d');
     g.clearRect(0, 0, n.w, n.h);
-    paintTitle(new Px(g), n.w, n.h, frame);
+    paintTitle(new Px(g), n.w, n.h, reduce() ? 0 : frame, { season });
   };
   draw();
   if (typeof ResizeObserver === 'function') { ro = new ResizeObserver(() => draw()); ro.observe(host); }
   if (!reduce()) {
     timer = setInterval(() => {
       if (!c.isConnected) { if (size) { clearInterval(timer); if (ro) ro.disconnect(); } return; }
-      if (document.hidden) return;
+      if (document.hidden || reduce()) return;
       frame ^= 1; draw();
     }, 480);
   }
-  return { canvas: c, destroy() { clearInterval(timer); if (ro) ro.disconnect(); c.remove(); } };
+  const setSeason = (x) => { const v = Number.isInteger(x) && x >= 0 && x < 4 ? x : null; if (v !== season) { season = v; draw(); } };
+  return { canvas: c, setSeason, destroy() { clearInterval(timer); if (ro) ro.disconnect(); c.remove(); } };
 }

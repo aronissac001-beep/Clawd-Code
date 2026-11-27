@@ -125,6 +125,12 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
       paintTitle(new Px(c.getContext('2d')), w, h, 0);
       cap.innerHTML = `<b>title</b> ${w} x ${h} native, 2x`; f.append(c, cap); grid.appendChild(f);
     }
+    for (const [s, name] of [[0, 'Thaw'], [1, 'Highsun'], [2, 'Ashfall'], [3, 'Deepcold']]) { // W1.6: the season variants
+      const f = document.createElement('figure'), c = document.createElement('canvas'), cap = document.createElement('figcaption');
+      c.width = 130; c.height = 115; c.style.width = '260px';
+      paintTitle(new Px(c.getContext('2d')), 130, 115, 0, { season: s });
+      cap.innerHTML = `<b>title</b> ${name} 130 x 115, 2x`; f.append(c, cap); grid.appendChild(f);
+    }
     for (const [s, m, label] of [[192, false, '192'], [180, false, '180 (apple-touch)'], [512, true, '512 maskable']]) {
       const f = document.createElement('figure'), c = drawAppIcon(s, m), cap = document.createElement('figcaption');
       c.style.width = `${Math.min(192, s)}px`; cap.innerHTML = `<b>app icon</b> ${label}`; f.append(c, cap); grid.appendChild(f);

@@ -19,7 +19,7 @@ import { pendingLetters, letterById } from '../game/threat/letters.js';
 import { fullName, nemesisById } from '../game/threat/nemesis.js';
 import { demandCard } from '../game/people/embertouch.js';
 import { buyPrice, sellPrice, colonyCoins } from '../game/colony/trade.js';
-import { nemesisRow } from './colonyui.js';
+import { nemesisRow } from './worldui.js';
 import { W, PLANE, D, TER, DESIG } from '../game/core/grid.js';
 import { stoneId } from '../game/world/defs.js';
 import { vdigAt } from '../game/work/vdig.js';

@@ -31,7 +31,7 @@ export function openMenu(ctx, api) {
         try { const r = await api.saveNow(); if (r) savedAt = Date.now(); ctx.toast(r ? t('menu.saved') : t('menu.nothing')); if (r) ctx.refreshSheet(); } catch (e) { ctx.toast(t('menu.saveFailed', { why: e && e.message ? e.message : String(e) }), 'bad'); }
       } }),
       row(ctx, { ic: 'export', label: t('menu.backup'), act: 'menu-back-up', fn: () => backUpNow(ctx, api) }),
-      row(ctx, { ic: 'castle', label: t('menu.holds'), act: 'menu-holds', fn: () => { ctx.toast(t('menu.holdsToast')); ctx.quit(); } }));
+      row(ctx, { ic: 'castle', label: t('menu.holds'), act: 'menu-holds', fn: () => { ctx.toast(t('menu.holdsToast')); ctx.quit({ view: 'holds' }); } }));
     const app = h('div.ec-menu-group', { role: 'group', 'aria-label': t('menu.app') },
       row(ctx, { ic: 'gear', label: t('menu.settings'), act: 'menu-settings', fn: () => openSettings(ctx, api) }),
       row(ctx, { ic: 'info', label: t('menu.help'), act: 'menu-help', fn: () => openHelp(ctx) }),

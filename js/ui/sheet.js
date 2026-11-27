@@ -6,7 +6,7 @@
 // at full height. A sheet's paragraph (opts.intro) shows on the first visit only, then sits behind "?". The
 // shell hands the engine its hooks and moves the camera (hooks.cover) so the selection stays visible.
 // Subjects: colonist (colonistui.js), building (bills, billsui.js; info; the room it stands in), zone
-// (zonesui.js), animal, item and tile (details, the room). The Colony sheet lives in colonyui.js; the Menu
+// (zonesui.js), animal, item and tile (details, the room). The Colony sheet lives in holdui.js; the Menu
 // and Settings in menu.js and settingsui.js (re-exported here).
 import { h, clear, onTap, icon } from './kit.js';
 import { t as tx } from './strings.js';   // aliased: openSubjectSheet has a local t (the terrain)
@@ -16,7 +16,7 @@ import { colonistHeader, colonistTab, COLONIST_TABS } from './colonistui.js';
 import { billsTab, benchRecipes } from './billsui.js';
 import { zoneSheet } from './zonesui.js';
 import { buildingStatus } from './peek.js';
-import { openColony as colonySheet, COLONY_TABS as TABS } from './colonyui.js';
+import { openColony as colonySheet, COLONY_TABS as TABS } from './holdui.js';
 import { roomInfo } from '../game/world/rooms.js';
 import { FIX } from '../game/core/schema.js';
 
@@ -128,7 +128,7 @@ export function createSheets(el, hooks = {}) {
       const st = h('div.ec-strip', { role: 'tablist' });
       for (const n of cur.opts.tabs) {
         const b = h('button.ec-strip-tab' + (n === cur.tab ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': n === cur.tab ? 'true' : 'false', 'data-tab': n, 'data-act': 'sheet-tab', text: n });
-        onTap(b, () => { cur.tab = n; render(false); });
+        onTap(b, () => { cur.tab = n; if (!cur.introAsked) cur.intro = false; render(false); });
         st.append(b);
       }
       el.append(st, bodyEl);
@@ -164,7 +164,7 @@ export function createSheets(el, hooks = {}) {
     let q = null;
     if (ii) {
       q = h('button.ec-ibtn.ec-help', { type: 'button', 'data-act': 'sheet-intro', 'aria-expanded': cur.intro ? 'true' : 'false', 'aria-label': tx('sheet.about', { title: cur.title }), text: '?' });
-      onTap(q, () => { cur.intro = !cur.intro; render(true); });
+      onTap(q, () => { cur.intro = !cur.intro; cur.introAsked = cur.intro; render(true); });
     } else if (hooks.help) q = hooks.help(cur.opts.help || cur.title);
     row.append(nav, h('span.ec-head-r', null, q, x));
     return row;
@@ -308,7 +308,7 @@ function buildingInfo(el, ctx, b, d) {
 }
 
 export const COLONY_TABS = TABS;
-/** The Colony sheet (10.3; colonyui.js). */
+/** The Colony sheet (10.3; holdui.js). */
 export function openColony(ctx, tab = 'People') { colonySheet(ctx, tab); }
 
 // The Menu and Settings (W1.4, EMBERCROWN-WORLD.md 8.7) live in menu.js and settingsui.js.

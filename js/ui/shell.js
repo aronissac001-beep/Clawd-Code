@@ -34,7 +34,7 @@
 // the top right (portrait). Long-press Orders reopens the last Orders tool (Recent). A D = 1 colony is unchanged.
 import { militaryTap, militaryPicking } from './military.js';
 import { SHELL2_ON, openPeople, railMore } from './peopleui.js';
-import { openWorld } from './colonyui.js';
+import { openWorld } from './worldui.js';
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { RES_COLORS } from './icons.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets, sheetCover, keepVisible, centreFor } from './layout.js';
@@ -941,7 +941,7 @@ export function mountShell(root, api) {
     isLand: () => ui.landscape,
     /** The view level (4.4) and its setter; levels: the level controls (null on a D = 1 map). */
     z: viewZ, setLevel: (z) => setZ(z, 'ctx'), get levels() { return levels; }, deep,
-    quit: () => { shell.destroy(); api.quit(); },
+    quit: (o) => { shell.destroy(); api.quit(o); },
     get prevColonist() { return ui.prevColonist; },
     openColony: (tab) => openColony(ctx, tab),
     openPeople: (o) => openPeople(ctx, o), openWorld: () => openWorld(ctx),

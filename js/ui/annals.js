@@ -6,6 +6,11 @@
 //   annalsView(el, s, ctx, state)   the same view into any element (ctx null: read-only, no Show on map)
 //   annalsText(s)                   the whole Annals as plain text (the export; for a Ruin, the keepsake)
 //
+// W1.3b (EMBERCROWN-WORLD.md 8.5): the World sheet's Annals tab is this view; the filters are one row of chips in
+// the order Years, Figures, Places, Artifacts (Wars and World come with the realm's history, W3), and in the game
+// an entry pushes inside the open sheet ("World / <entry>", the sheet's back arrow returns) instead of paging
+// inside the view; read-only views (the ruin, the title) still page inside with a Back chip.
+//
 // Years opens with the vale's pre-history ("Before the Hearth"), then the hold's years from the Chronicle and
 // the legend records. Every entry is a short page with 44 pt links to related entries and, for a place or a
 // colonist the hold can see, "Show on map" (it sets the level). Pre-history places stay off the map until the
@@ -49,18 +54,34 @@ export function annalsView(el, s, ctx = null, state = { tab: 'Years', page: [] }
     clear(box);
     if (state.page.length) { pageView(box, s, ctx, state, index, draw); return; }
     const seg = h('div.ec-seg', { role: 'tablist', 'aria-label': 'Annals' });
-    for (const t of T.tabs) {
+    for (const t of filterOrder()) {
       const b = h('button.ec-seg-b' + (t === state.tab ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': t === state.tab ? 'true' : 'false', 'data-act': 'annals-' + t.toLowerCase(), text: t });
       onTap(b, () => { state.tab = t; draw(); });
       seg.append(b);
     }
     box.append(seg);
-    const open = (key) => { state.page.push(key); draw(); };
+    // in the game an entry pushes inside the sheet (one sheet, the back arrow); elsewhere it pages in the view
+    const open = (key) => { if (ctx && ctx.openSheet && ctx.sheets) pushEntry(ctx, s, key); else { state.page.push(key); draw(); } };
     if (state.tab === 'Years') yearsTab(box, s, index, open);
     else listTab(box, s, state.tab, index, open);
   };
   draw();
   return el;
+}
+
+/** The filter chips in reading order (8.5): Years, Figures, Places, Artifacts, then any others the words add. */
+const ORDER = ['Years', 'Figures', 'Places', 'Artifacts'];
+const filterOrder = () => [...ORDER.filter((x) => T.tabs.includes(x)), ...T.tabs.filter((x) => !ORDER.includes(x))];
+
+/** An entry pushed inside the open sheet; its links push further ("World / Annals entry / ..."). */
+export function pushEntry(ctx, s, key) {
+  const index = annalsIndex(s), e = index.get(key);
+  ctx.openSheet(e && e.name ? e.name : T.title, (el) => {
+    el.classList.add('ec-annals');
+    const box = h('div.ec-annals-box');
+    el.append(box);
+    entryView(box, s, ctx, key, annalsIndex(s), (k) => pushEntry(ctx, s, k));
+  }, { push: true });
 }
 
 function row(label, sub, act, fn, tint = null) {
@@ -109,12 +130,18 @@ function listTab(el, s, tab, index, open) {
 }
 
 function pageView(el, s, ctx, state, index, draw) {
-  const key = state.page[state.page.length - 1], e = index.get(key);
+  const key = state.page[state.page.length - 1];
   const back = h('button.ec-rchip', { type: 'button', 'data-act': 'annals-back', text: 'Back' });
   onTap(back, () => { state.page.pop(); draw(); });
   el.append(h('div.ec-rchips', { style: { justifyContent: 'flex-start' } }, back));
+  entryView(el, s, ctx, key, index, (k) => { state.page.push(k); draw(); });
+}
+
+/** One entry: what it is, what happened, Show on map, the related entries (follow(key) opens a link). */
+function entryView(el, s, ctx, key, index, follow) {
+  const e = index.get(key);
   if (!e) { el.append(h('p.ec-note', { text: 'This entry is gone.' })); return; }
-  el.append(h('h3.ec-sub', { text: e.name }));
+  if (!(ctx && ctx.sheets)) el.append(h('h3.ec-sub', { text: e.name }));
   if (e.sub) el.append(h('p.ec-bio-d', { text: e.sub }));
   if (e.text) el.append(h('p.ec-bio-d', { text: e.text }));
   if (e.from !== undefined && e.from !== null) el.append(h('p.ec-bio-d', { text: e.to !== undefined && e.to !== null ? `Crown years ${e.from} to ${e.to}.` : `From Crown year ${e.from}.` }));
@@ -149,7 +176,7 @@ function pageView(el, s, ctx, state, index, draw) {
   if (rel.length) {
     el.append(h('h3.ec-sub', { text: T.related }));
     const chips = h('div.ec-rchips', { style: { flexWrap: 'wrap', justifyContent: 'flex-start' } });
-    for (const k of rel.slice(0, 24)) { const b = h('button.ec-rchip', { type: 'button', 'data-act': 'annals-link', text: index.get(k).name, style: { maxWidth: '100%' } }); onTap(b, () => { state.page.push(k); draw(); }); chips.append(b); }
+    for (const k of rel.slice(0, 24)) { const b = h('button.ec-rchip', { type: 'button', 'data-act': 'annals-link', text: index.get(k).name, style: { maxWidth: '100%' } }); onTap(b, () => follow(k)); chips.append(b); }
     el.append(chips);
   }
 }
