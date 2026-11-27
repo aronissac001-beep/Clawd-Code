@@ -116,7 +116,7 @@ function personRow(ctx, c) {
   if (job === 'Idle: no role work' && c.role && c.role[0] && !c.custom && roleName(c.role[0]) !== 'None') job = `Idle: no ${roleName(c.role[0])} work`;
   const sk = topSkills(c);
   return h('div.ec-prow', { 'data-col': String(c.id) }, who, roleChips(ctx, c), open,
-    h('p.ec-row-help', { style: { flex: '1 0 100%', margin: '0 0 2px 44px' }, text: [job, sk].filter(Boolean).join(' · ') }));
+    h('p.ec-row-help', { style: { flex: '1 0 100%', margin: '0 0 2px', paddingLeft: '44px', boxSizing: 'border-box' }, text: [job, sk].filter(Boolean).join(' · ') }));
 }
 /** The colonist inside the People sheet (pushed, so Back returns to the roster). */
 export function pushColonist(ctx, c, tab = 'Skills') {

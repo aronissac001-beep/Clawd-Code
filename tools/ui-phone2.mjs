@@ -112,7 +112,7 @@ for (const vp of VPS) {
       screens.push(screen);
       if (shotsOn && (!quick || /game|build-rooms|colony-work-grid|letter|trade|demand/.test(screen))) await page.screenshot({ path: `${OUT}${vp.name}-${ts}-${screen}.png` });
     };
-    const tapSel = async (sel) => { const loc = page.locator(sel).first(); await loc.scrollIntoViewIfNeeded().catch(() => {}); const bb = await loc.boundingBox(); if (!bb) throw new Error('not found: ' + sel); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(160); };
+    const tapSel = async (sel) => { const loc = page.locator(sel).first(); await loc.scrollIntoViewIfNeeded().catch(() => {}); await loc.evaluate((e) => e.scrollIntoView({ block: 'nearest', inline: 'center' }), null, { timeout: 5000 }).catch(() => {}); const bb = await loc.boundingBox({ timeout: 5000 }).catch(() => null); if (!bb) throw new Error('not found: ' + sel); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(160); };
     const flows = {};
     try {
       await page.goto(base + '?debug=1');
@@ -200,9 +200,29 @@ for (const vp of VPS) {
           if (!flows.skills.next.length || !flows.skills.next.every((x) => /^Next: .+, .+/.test(x))) problems.push('Skills: no "Next: <perk>, <progress>" line');
         }
       }
-      // the Colony sheet: every tab, the grid and the schedule editor
-      await ev(() => window.__ecUI.shell.openColony('People'));
-      for (const t of ['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']) {
+      // the new shell (flags.js SHELL2, on since W1.10): People (List, Grid, Schedule, Military), Hold (Overview with
+      // Halls and Chronicle, Stock, Research, Offices with Justice), World (Annals, Letters, Factions, The dead)
+      const shell2 = await page.locator('[data-act=tab][data-tab=hold]').count() > 0;
+      if (shell2) {
+        await ev(() => window.__ecUI.shell.openColony('People'));
+        for (const t of ['List', 'Grid', 'Schedule']) {
+          await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('people-' + t.toLowerCase());
+          if (t === 'Schedule') { await tapSel('[data-act=sched-edit]'); await shot('colony-schedule-edit'); await tapSel('[data-act=sheet-back]'); }
+        }
+        await tapSel('.ec-sheet [data-tab=List]'); await tapSel('[data-act=people-squads]'); await shot('colony-military');
+        await ev(() => window.__ecUI.shell.openColony('Overview'));
+        for (const t of ['Overview', 'Stock', 'Research', 'Offices']) {
+          await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('hold-' + t.toLowerCase());
+          if (t === 'Overview') for (const z of ['halls', 'chronicle']) { await tapSel(`[data-act=hold-${z}]`); await shot('hold-' + z); await tapSel('[data-act=sheet-back]'); }
+          if (t === 'Offices') { await tapSel('[data-act=hold-seg-justice]'); await shot('z2-justice'); await tapSel('[data-act=hold-seg-offices]'); }
+          if (t === 'Research') { const before = await ev(() => window.__ecUI.shell.state.colony.research.cur); const tk = await page.locator('.ec-tech:not(.on):not(.locked)').first(); if (await tk.count()) { await tk.scrollIntoViewIfNeeded(); const bb = await tk.boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(150); } flows.research = [before, await ev(() => window.__ecUI.shell.state.colony.research.cur)]; }
+        }
+        await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.ctx.openWorld(); });
+        for (const t of ['Annals', 'Letters', 'Factions', 'The dead']) { await tapSel(`.ec-sheet [data-tab="${t}"]`); await shot('world-' + t.split(' ').pop().toLowerCase()); }
+      }
+      // the Colony sheet (the old shell): every tab, the grid and the schedule editor
+      if (!shell2) await ev(() => window.__ecUI.shell.openColony('People'));
+      if (!shell2) for (const t of ['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']) {
         await tapSel(`.ec-sheet [data-tab=${t}]`); await shot('colony-' + t.toLowerCase());
         // Stage Z2: the Hold tab opens the Offices, Justice, Annals and dead screens (each with a Back)
         if (t === 'Hold') for (const z of ['offices', 'justice', 'annals', 'dead']) { await tapSel(`[data-act=hold-${z}]`); await shot('z2-' + z); await ev(() => { const sh = window.__ecUI.shell; sh.openColony('Hold'); }); }
@@ -212,7 +232,9 @@ for (const vp of VPS) {
       }
       // letters, the nemesis card, the demand card, the trade sheet, help, settings
       await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.openMenu(); }); await shot('menu');
-      await tapSel('[data-act=menu-letters]'); await shot('letters');
+      // the new shell: the letters live in World > Letters (the Menu keeps storage and app actions only, G20)
+      if (shell2) { await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.ctx.openWorld(); }); await tapSel('.ec-sheet [data-tab=Letters]'); } else await tapSel('[data-act=menu-letters]');
+      await shot('letters');
       const nemRow = page.locator('.ec-sheet [data-act=letter-read]').filter({ hasText: 'Varrek' }).first();
       if (await nemRow.count()) { const bb = await nemRow.boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(150); flows.nemesisCard = await page.locator('.ec-nemcard').count(); await shot('letter-nemesis'); }
       await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.ctx.openDemand(); }); flows.demand = await page.locator('.ec-sheet .ec-need').count(); await shot('demand');

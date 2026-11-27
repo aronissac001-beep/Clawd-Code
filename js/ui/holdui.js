@@ -87,7 +87,7 @@ function goTab(ctx, k) {
 function line(text, act = null, fn = null, tone = null) {
   if (!fn) return h('div.ec-row.ec-hold-row' + (tone ? '.' + tone : ''), { 'data-row': act || null }, h('span.ec-row-n', { text }));
   const b = h('button.ec-row.ec-hold-row' + (tone ? '.' + tone : ''), { type: 'button', 'data-act': act },
-    h('span.ec-row-n', { text }), h('span', { html: icon('chev'), 'aria-hidden': 'true', style: { display: 'inline-flex', width: '16px', flex: '0 0 16px' } }));
+    h('span.ec-row-n', { text }), h('span', { html: icon('chev'), 'aria-hidden': 'true', style: { display: 'inline-flex', width: '24px', flex: '0 0 24px' } }));
   onTap(b, fn);
   return b;
 }
