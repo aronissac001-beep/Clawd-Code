@@ -91,6 +91,7 @@ const FILES = [
   './js/engine/art/pixel.js',
   './js/engine/art/sheet.js',
   './js/engine/art/title.js',
+  './js/engine/art/ui.js',
   './js/engine/art/vertical.js',
   './js/engine/audio.js',
   './js/engine/audio/ambience.js',
