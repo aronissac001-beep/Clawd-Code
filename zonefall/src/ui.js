@@ -201,9 +201,8 @@ export const UI = {
     const p = G.player;
     this.hudT = (this.hudT || 0) - dt; if (this.hudT <= 0) { this.hudT = 0.1; this.updateHud(); }
     if (Input.pressed.heal) quickHeal(p);
-    if (Input.pressed.bag) this.sheetOpen ? this.closeSheet() : this.openInventory();
     for (let i = 1; i <= 6; i++) if (Input.pressed['slot' + i]) this.selectSlot(i - 1);
-    if (Input.pressed.build) this.toggleBuild();
+    // (Tab / I / B / Q / M are handled once, by the keydown listener in init)
     if (G.buildMode) this.buildTick(dt);
     if (Input.wheel && !G.buildMode && !G.uiBlock) { const p2 = G.player; for (let k = 0; k < 6; k++) { const n = (p2.sel + (Input.wheel > 0 ? 1 : 5) * (k + 1)) % 6; if (p2.inv.belt.slots[n]) { this.selectSlot(n); break; } } }
     if (this.sheetOpen && this.sheetRefresh) { this.srT = (this.srT || 0) - dt; if (this.srT <= 0) { this.srT = 0.5; this.sheetRefresh(); } }
@@ -1480,7 +1479,7 @@ export const UI = {
       <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land and stops decay. Keep it stocked: every day it takes a share of what the base cost to build (upkeep). Other survivors on the island build too, and now and then one who has gathered enough explosives will try to raid you, so lock your doors and upgrade your walls.</p>
       <p><b>Unlock blueprints.</b> Smash barrels and put junk in a recycler for scrap. Stand by your own workbench and open Craft → <b>Tech tree</b> to spend it on better guns, armour and explosives (Workbench T1, T2, T3).</p>
       <p><b>Explore monuments.</b> Gas stations and supermarkets have recyclers; the Dish Array, Harbor, Train Yard, Water Treatment, Airfield, Garrison 9 and the Reactor Sector hold military loot behind keycard doors (some need a fuse or a lever). Haven Market is a safe trading post. Outlaw Forts can be raided with satchels or C4.</p>
-      <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, H heal, G throw, 1–6 belt, B build (Q rotates, X hammer), Tab inventory, M map.</p>
+      <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, H heal, 1–6 belt, Tab inventory, Q craft, M map, B build (Q turns the piece, X hammer), Esc pause.</p>
       <p class="dim">Tip: Add Zonefall to your Home Screen (Share → Add to Home Screen) and play in landscape.</p></div><button id="h-back">Back</button>`;
     $('#h-back').onclick = () => this.menu();
   },
