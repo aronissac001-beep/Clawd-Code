@@ -183,7 +183,7 @@ export const Game = {
     G.buildMode = null; document.body.classList.remove('building');
     const o = src && src.owner, an = n => (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
     const how = { rad: 'radiation', bleed: 'bleeding out', starve: 'starvation', thirst: 'thirst', explosion: 'an explosion', shrapnel: 'shrapnel', nuke: 'a nuclear strike', drown: 'drowning', fall: 'a fall', anomaly: 'an anomaly', cactus: 'a cactus', spikes: 'spikes', crush: 'being crushed', train: 'a train', vehicle: 'a vehicle', poison: 'poison' };
-    const by = o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def && o.def.name ? an(o.def.name) : (src && how[src.kind]) || 'the island';
+    const by = o === p ? (how[src.kind] ? 'your own ' + how[src.kind].replace(/^an? /, '') : 'yourself') : o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def && o.def.name ? an(o.def.name) : (src && how[src.kind]) || 'the island';
     Swim.reset(p);
     setTimeout(() => { if (G.player === p && p.dead && G.mode === 'play') G.ui.deathScreen(by); }, 1400); // (not if you already left for the menu)
     this.save();
