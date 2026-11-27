@@ -7,10 +7,11 @@
 //
 // The camera's far plane follows the fog (a few hundred metres), but a missile
 // and a mushroom cloud have to be seen from anywhere on the island. Everything
-// here is drawn "pulled in": a point P further than D0 from the camera is drawn
-// at cam + (P - cam) * D0 / |P - cam| and scaled by the same factor, which keeps
-// exactly the same place and size on screen (only the depth changes). These
-// meshes ignore fog and take the day's light instead.
+// here is drawn at its real place and size, ignores fog and takes the day's
+// light instead; its materials go through farDepth(), which clamps the depth of
+// anything past the far plane to just inside it (instead of clipping it). So a
+// hill that is drawn (nearer than the far plane) still hides the cloud's foot or
+// the trail behind it, and what's beyond the drawn world shows against the sky.
 // ============================================================================
 import { THREE, M } from './materials.js';
 import { G } from '../state.js';
@@ -21,6 +22,18 @@ const _a = V(), _b = V(), _c = V(), _t = V(), _s = V(), _v = V();
 function d0(cam) { return Math.max(60, Math.min(170, cam.far * 0.5)); }
 /** pull P toward the camera if it's past D: writes `out`, returns the scale */
 function pull(out, P, cam, D) { out.copy(P).sub(cam); const d = out.length(); if (d <= D) { out.copy(P); return 1; } const k = D / d; out.multiplyScalar(k).add(cam); return k; }
+/** draw past the far plane: a vertex beyond it gets the depth of a point just inside it (the sky draws first with no
+ *  depth, so it stays behind; anything really drawn in front still hides it). Also switches fog off. */
+function farDepth(m) {
+  m.fog = false;
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      { float pz = projectionMatrix[2][2], pw = projectionMatrix[3][2], fz = pw / (pz + 1.0) * 0.993;
+        float zc = -pz + pw / fz; if (gl_Position.z > zc * gl_Position.w) gl_Position.z = zc * gl_Position.w; }`);
+  };
+  m.customProgramCacheKey = () => 'fardepth';
+  return m;
+}
 /** the day's light on big smoke (dim at night, warm at dusk) */
 function skyLight() { const n = G.night || 0; return 0.28 + 0.72 * (1 - n); }
 
@@ -37,11 +50,11 @@ export class NukeFX {
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 2 * 3), 3));
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 2 * 4), 4));
     const idx = []; for (let i = 0; i < N - 1; i++) { const v = i * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); } geo.setIndex(idx);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    const mesh = new THREE.Mesh(geo, farDepth(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide })));
     mesh.frustumCulled = false; mesh.renderOrder = 8; this.scene.add(mesh);
-    const flare = new THREE.Mesh(this.lowSphere, new THREE.MeshBasicMaterial({ color: '#fff0c8', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const flare = new THREE.Mesh(this.lowSphere, farDepth(new THREE.MeshBasicMaterial({ color: '#fff0c8', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
     flare.frustumCulled = false; flare.renderOrder = 9; flare.visible = false; this.scene.add(flare);
-    const glow = new THREE.Mesh(this.lowSphere, new THREE.MeshBasicMaterial({ color: '#ff8a30', transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const glow = new THREE.Mesh(this.lowSphere, farDepth(new THREE.MeshBasicMaterial({ color: '#ff8a30', transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })));
     glow.frustumCulled = false; glow.renderOrder = 9; glow.visible = false; this.scene.add(glow);
     const T = { mesh, geo, flare, glow, pts: [], N, live: true, at: null, endT: 0 };
     this.trails.push(T); return T;
@@ -55,7 +68,7 @@ export class NukeFX {
     const B = { x, y, z, t: 0, group: new THREE.Group(), parts: {}, seed: Math.random() * 100 };
     const g = B.group; g.position.set(x, y, z); this.scene.add(g);
     const lam = (col, o = {}) => { const m = new THREE.MeshLambertMaterial({ color: col, fog: false }); if (o.emissive) m.emissive = new THREE.Color(o.emissive); return m; };
-    const add = (geo, mat, ro = 3) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.renderOrder = ro; g.add(m); return m; };
+    const add = (geo, mat, ro = 3) => { farDepth(mat); const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.renderOrder = ro; g.add(m); return m; };
     const P = B.parts;
     P.flash = add(this.sphere, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), 10);
     P.fireMat = lam('#3a2010', { emissive: '#ffffff' }); P.fire = add(this.sphere, P.fireMat, 4);
@@ -100,9 +113,9 @@ export class NukeFX {
     let w = 0;
     for (let i = 0; i < n; i++) {
       const p = pts[i], q = pts[Math.min(n - 1, i + 1)], o = pts[Math.max(0, i - 1)], age = now - p.t;
-      _a.set(p.x, p.y, p.z); const k = pull(_b, _a, C, D);
-      _t.set(q.x - o.x, q.y - o.y, q.z - o.z); _v.copy(_a).sub(C); _s.crossVectors(_t, _v); const sl = _s.length() || 1;
-      const width = (3 + Math.min(34, age * 1.3)) * k; _s.multiplyScalar(width / 2 / sl);
+      _b.set(p.x, p.y, p.z);
+      _t.set(q.x - o.x, q.y - o.y, q.z - o.z); _v.copy(_b).sub(C); _s.crossVectors(_t, _v); const sl = _s.length() || 1;
+      const width = 3 + Math.min(34, age * 1.3); _s.multiplyScalar(width / 2 / sl);
       pos[w * 6] = _b.x - _s.x; pos[w * 6 + 1] = _b.y - _s.y; pos[w * 6 + 2] = _b.z - _s.z; pos[w * 6 + 3] = _b.x + _s.x; pos[w * 6 + 4] = _b.y + _s.y; pos[w * 6 + 5] = _b.z + _s.z;
       const fade = Math.max(0, 1 - age / LIFE), head = i > n - 6 && T.live ? (n - i) / 6 : 1, a = 0.85 * fade * head, c = (0.9 - Math.min(0.25, age * 0.01)) * L;
       for (const s of [0, 1]) { const b = (w * 2 + s) * 4; col[b] = c; col[b + 1] = c * 0.98; col[b + 2] = c * 0.95; col[b + 3] = a; }
@@ -110,8 +123,8 @@ export class NukeFX {
     }
     T.geo.setDrawRange(0, Math.max(0, (w - 1) * 6)); T.geo.attributes.position.needsUpdate = true; T.geo.attributes.color.needsUpdate = true;
     if (T.at) {
-      _a.set(T.at[0], T.at[1], T.at[2]); const d = _a.distanceTo(C), k = pull(_b, _a, C, D);
-      const s = Math.max(1.4, d * 0.0045) * k, fl = 0.85 + Math.random() * 0.3;
+      _b.set(T.at[0], T.at[1], T.at[2]); const d = _b.distanceTo(C);
+      const s = Math.max(1.4, d * 0.0045), fl = 0.85 + Math.random() * 0.3;
       T.flare.visible = T.glow.visible = true; T.flare.position.copy(_b); T.glow.position.copy(_b); T.flare.scale.setScalar(s * fl); T.glow.scale.setScalar(s * 3.2 * fl);
     } else T.flare.visible = T.glow.visible = false;
     return false;
@@ -119,10 +132,8 @@ export class NukeFX {
   drawBlast(B, C, D, L) {
     const t = B.t, P = B.parts, g = B.group, END = 180; void D;
     if (t > END) return true;
-    // pulled in toward the camera about the camera itself (same place and size on screen), so that even its top stays
-    // inside the far plane wherever you watch it from
-    _a.set(B.x, B.y, B.z); const dist = _a.distanceTo(C), k = Math.min(1, (this.far || 300) * 0.85 / (dist + 260));
-    g.position.copy(_a).sub(C).multiplyScalar(k).add(C); g.scale.setScalar(k);
+    // at its real place and size (farDepth keeps the parts past the far plane drawn, behind anything nearer)
+    g.position.set(B.x, B.y, B.z); g.scale.setScalar(1); void C;
     const e = (x, tau) => 1 - Math.exp(-x / tau), fade = t > END - 50 ? Math.max(0, (END - t) / 50) : 1, sd = B.seed;
     // the flash
     const fk = Math.max(0, 1 - t / 0.45); P.flash.visible = fk > 0; P.flash.scale.setScalar(20 + t * 260); P.flash.material.opacity = fk;
@@ -155,5 +166,5 @@ export class NukeFX {
     return false;
   }
 }
-export { pull, d0 };
+export { pull, d0, farDepth };
 void M;

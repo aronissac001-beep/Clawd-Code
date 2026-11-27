@@ -47,7 +47,22 @@ const WORLD_V = 4; // bump when the island generator changes (old bases would la
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 
+/** a new island replaces the old one: free the GPU buffers of what the old one drew. A geometry still in the scene
+ *  (the sky, rain) is kept; a shared model geometry is safe to free too (it still has its arrays and uploads again
+ *  when it's next drawn), and the per-island merged ones (sites, terrain: GPU-only) are never reused. */
+function freeOld(gone) {
+  if (!gone.length) return;
+  const live = new Set(); G.scene.traverse(o => { if (o.geometry) live.add(o.geometry); if (o.isInstancedMesh) live.add(o); });
+  const done = new Set();
+  for (const root of gone) root.traverse(o => {
+    if (o.isInstancedMesh && !live.has(o) && !done.has(o)) { done.add(o); try { o.dispose(); } catch (e) { } }
+    const g = o.geometry; if (!g || live.has(g) || done.has(g)) return; done.add(g);
+    g.dispose();
+  });
+}
+
 export const Game = {
+  worldV: WORLD_V,
   init(canvas) {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
@@ -107,7 +122,10 @@ export const Game = {
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
     // scene: clear everything except lights / fx clouds
     const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), G.precip.rain.obj, G.precip.snow.obj, ...(G.keepObjs || [])]);
-    for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
+    const gone = []; for (const o of [...G.scene.children]) if (!keep.has(o)) { G.scene.remove(o); gone.push(o); }
+    // let go of the old island before the new one is built, so the two never sit in memory together
+    freeOld(gone); gone.length = 0; try { G.rend.r.renderLists.dispose(); } catch (e) { }
+    G.W = G.terrain = G.cull = G.phys = G.train = G.vehicles = G.mapCanvas = null; G.decks = [];
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
@@ -160,11 +178,14 @@ export const Game = {
     for (const v of [p.inv.belt, p.inv.main]) for (const s of v.items()) inv.addStack(s);
     for (const k of ['helmet', 'armor', 'bag']) if (p.inv.equip[k]) inv.addStack(p.inv.equip[k]);
     for (const s of p.inv.arts) if (s) inv.addStack(s);
+    G.deathBag = null;
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
-    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    const o = src && src.owner, an = n => (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
+    const how = { rad: 'radiation', bleed: 'bleeding out', starve: 'starvation', thirst: 'thirst', explosion: 'an explosion', shrapnel: 'shrapnel', nuke: 'a nuclear strike', drown: 'drowning', fall: 'a fall', anomaly: 'an anomaly', cactus: 'a cactus', spikes: 'spikes', crush: 'being crushed', train: 'a train', vehicle: 'a vehicle', poison: 'poison' };
+    const by = o === p ? (how[src.kind] ? 'your own ' + how[src.kind].replace(/^an? /, '') : 'yourself') : o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def && o.def.name ? an(o.def.name) : (src && how[src.kind]) || 'the island';
     Swim.reset(p);
-    setTimeout(() => G.ui.deathScreen(by), 1400);
+    setTimeout(() => { if (G.player === p && p.dead && G.mode === 'play') G.ui.deathScreen(by); }, 1400); // (not if you already left for the menu)
     this.save();
   },
   respawnOptions() {
@@ -488,9 +509,20 @@ export const Game = {
       if (p.rig) p.rig.root.visible = false;
       // ---- lights
       const src = []; const night = G.night;
+      // indoors at night the sky and the moon don't reach you: dim them, so a lit room reads as lit (and a dark one as dark)
+      const inside = night > 0.05 && !p.dead && !veh && Build.isInside(p.x, p.z, p.y) ? 1 : 0;
+      this.inK = (this.inK || 0) + (inside - (this.inK || 0)) * Math.min(1, dt * 2.5);
+      if (this.inK > 0.01) { const k = this.inK * night; R.hemi.intensity *= 1 - 0.55 * k; R.sun.intensity *= 1 - 0.8 * k; }
       if (night > 0.05) {
         for (const l of G.lights) if (!l.night || night > 0.3) src.push({ x: l.x, y: l.y, z: l.z, color: l.color, intensity: l.intensity * night * 1.4, range: l.range });
-        for (const d of Build.deploys) { const D = DEPLOY[d.type], L = D.light; if (!L) continue; if (isLit(d)) src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: D.lightCol || (d.type === 'floodlight' ? '#fff2d0' : '#ffa050'), intensity: (D.lightK || (d.type === 'floodlight' ? 3 : 2.2)) * (0.9 + Math.random() * 0.1) * Math.max(0.35, night), range: L * 1.2 }); } // powered lights only when powered (power.js isLit)
+        for (const d of Build.deploys) { const D = DEPLOY[d.type], L = D.light; if (!L || !isLit(d)) continue; // powered lights only when powered (power.js isLit)
+          const col = D.lightCol || (d.type === 'floodlight' ? '#fff2d0' : '#ffa050'), fl = 0.95 + Math.random() * 0.05, nk = Math.max(0.35, night);
+          if (d.type === 'floodlight') { // the light lands where the beam does: a strong pool out in front, and a little at the lamp
+            const c = Math.cos(d.ry || 0), sn = Math.sin(d.ry || 0);
+            src.push({ x: d.x + c * 4.2, y: d.y + 2.6, z: d.z + sn * 4.2, color: col, intensity: 9 * fl * nk, range: 17, decay: 1.1 });
+          } else if (D.elec) src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: col, intensity: (D.lightK || 2.2) * 2.0 * fl * nk, range: L * 1.05, decay: 1.25 }); // ceiling lights: a bright pool under them, falling off toward the walls
+          else src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: col, intensity: (D.lightK || 2.2) * fl * nk, range: L * 1.2 });
+        }
       } else for (const d of Build.deploys) { if (DEPLOY[d.type].oven && d.state.lit) src.push({ x: d.x, y: d.y + 0.8, z: d.z, color: '#ffa050', intensity: 1.2, range: 5 }); }
       for (const d of Build.deploys) if (DEPLOY[d.type].oven && d.state.lit && G.fx && (d.x - cx) ** 2 + (d.z - cz) ** 2 < 2500) G.fx.fire(d.x, d.y + (d.type === 'furnace' ? 1.4 : 0.25), d.z, d.type === 'furnace' ? 0.5 : 1);
       if (G.fx) for (const l of G.fx.lights) src.push(l);
@@ -498,7 +530,7 @@ export const Game = {
       const cam = R.camera.position;
       if (!p.dead) {
         if (p.lightOn) src.unshift({ x: cam.x + Math.cos(p.yaw) * 0.5 - Math.sin(p.yaw) * 0.3, y: cam.y - 0.1, z: cam.z + Math.sin(p.yaw) * 0.5 + Math.cos(p.yaw) * 0.3, color: '#ffb060', intensity: 3.2 * (0.9 + Math.random() * 0.1), range: 14 });
-        else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night, range: 9 });
+        else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night * (1 - 0.5 * this.inK), range: 9 }); // (dimmer indoors: a dark room stays dark-ish, a lit one is lit by its lights)
       }
       G.lightSources = src; R.assignLights(src);
       // gun flashlight from the eyes at night (a Weapon Flashlight attachment: brighter, longer, on from dusk)

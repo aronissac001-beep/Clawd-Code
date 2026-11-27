@@ -285,6 +285,7 @@ export const Net = {
       case 'aadd': if (this.role === 'guest') NW.addMirror(m); break;
       case 'arem': if (this.role === 'guest') NW.removeMirror(m.aid); break;
       case 'ast': if (this.role === 'guest' && Array.isArray(m.a)) NW.mirrorStates(m.a); break;
+      case 'ahold': if (this.role === 'guest') NW.mirrorHeld(m); break; // an NPC / survivor changed what it holds (or its gun's attachments)
       case 'nshot': if (this.role === 'guest') NW.mirrorShot(m); break;
       case 'copen': if (this.role === 'host') { const c = G.containers.find(q => q.id === m.cid); if (c && !c.gone) { Live.lootOf(c); if (!c.openedAt) c.openedAt = G.t; } NW.diffT = 0; } break;
       case 'gthrow': if (G.throwGhost) G.throwGhost(m); break; // someone else's grenade: see it fly, hear it bounce, NPCs dodge it (throwing.js)

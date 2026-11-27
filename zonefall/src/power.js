@@ -66,6 +66,46 @@ function mats() {
   GEO = { sock: new THREE.BoxGeometry(0.05, 0.05, 0.05), ind: new THREE.SphereGeometry(0.026, 8, 6) };
   return MAT;
 }
+// light pools: a soft additive glow on the floor under a lit ceiling light and where a floodlight's beam lands, plus the
+// floodlight's faint beam. They only show at night (the point lights in game.js do the real lighting; on a phone with
+// three or four pooled lights these make sure a lit room still reads as lit)
+let PMAT = null;
+function poolMats() {
+  if (PMAT) return PMAT;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.7)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const tex = new THREE.CanvasTexture(c);
+  const disc = col => new THREE.MeshBasicMaterial({ map: tex, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  PMAT = { warm: disc('#ffc080'), white: disc('#fff0d0'), beam: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }),
+    disc: new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2) };
+  // the beam: an open cone, apex at the origin pointing down -Y, bright at the lamp and fading out
+  const cone = new THREE.ConeGeometry(1, 1, 14, 3, true).translate(0, -0.5, 0), n = cone.attributes.position.count, col = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { const a = Math.max(0, 1 + cone.attributes.position.getY(i)); col[i * 4] = 1; col[i * 4 + 1] = 0.95; col[i * 4 + 2] = 0.82; col[i * 4 + 3] = a * a; }
+  cone.setAttribute('color', new THREE.BufferAttribute(col, 4)); PMAT.cone = cone;
+  return PMAT;
+}
+const _down = new THREE.Vector3(0, -1, 0), _dir = new THREE.Vector3();
+/** set up / show / hide a light's pool (and a floodlight's beam), as children of its model */
+function lightPool(d, lit) {
+  if (!lit) { if (d._pool) d._pool.visible = false; return; }
+  const P = poolMats();
+  if (!d._pool) {
+    const g = new THREE.Group(); g.name = 'pool';
+    if (d.type === 'floodlight') {
+      // the lens is at about (0.25, 2.15) in the model's frame, aimed along +X and down: where does the beam meet the floor?
+      const c = Math.cos(d.ry || 0), sn = Math.sin(d.ry || 0); let t = 4.2, fy = d.y;
+      for (let k = 0; k < 3; k++) { fy = Build.floorY(d.x + c * (0.25 + t), d.z + sn * (0.25 + t), d.y + 1); t = clamp((d.y + 2.15 - fy) / 0.55, 1.5, 9); }
+      const ly = fy - d.y + 0.04, ax = 0.25 + t;
+      const m = new THREE.Mesh(P.disc, P.white); m.position.set(ax, ly, 0); m.scale.set(3.4, 1, 2.6); m.renderOrder = 2; g.add(m);
+      const b = new THREE.Mesh(P.cone, P.beam); b.position.set(0.32, 2.12, 0); _dir.set(ax - 0.32, ly - 2.12, 0); const L = _dir.length(); _dir.normalize();
+      b.quaternion.setFromUnitVectors(_down, _dir); b.scale.set(L * 0.42, L, L * 0.42); b.renderOrder = 3; g.add(b);
+    } else {
+      const m = new THREE.Mesh(P.disc, P.warm); m.position.set(0, 0.04, 0); m.scale.setScalar(2.4); m.renderOrder = 2; g.add(m);
+    }
+    g.traverse(o => { o.castShadow = o.receiveShadow = false; }); d.mesh.add(g); d._pool = g;
+  }
+  d._pool.visible = true;
+}
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 /** a cable hanging between two points: a parabola that sags more the longer it is */
 function cableGeo(a, b) {
@@ -325,6 +365,8 @@ export const Power = {
   // ---------------------------------------------------------------- drawing (every peer)
   frame(dt) {
     const p = G.player; if (!p) return;
+    const nk = clamp(((G.night || 0) - 0.05) / 0.5, 0, 1); // the pools fade in at dusk
+    if (PMAT) { PMAT.warm.opacity = 0.75 * nk; PMAT.white.opacity = 0.42 * nk; PMAT.beam.opacity = 0.16 * nk; PMAT.warm.visible = PMAT.white.visible = PMAT.beam.visible = nk > 0.01; }
     if ((this.cabT -= dt) <= 0) { this.cabT = 0.4; this.graph(); this.syncCables(); }
     // the cable you are carrying
     if (this.pending) {
@@ -361,6 +403,7 @@ export const Power = {
       if (U.setCharge) { const k = Math.round((st.ch || 0) / S.cap * 20); if (d._chShown !== k) { U.setCharge(k / 20); d._chShown = k; } }
       if (U.setDial) { const n = st.mode !== 'day'; if (d._dialShown !== n) { U.setDial(n); d._dialShown = n; } }
       if (U.setLit && DEPLOY[d.type].litState) { const lit = isLit(d); if (d._litShown !== lit) { U.setLit(lit); d._litShown = lit; } }
+      if (S.kind === 'light') lightPool(d, isLit(d) && nk > 0.01);
       if (U.setMount && (d._mountT = (d._mountT || 0) - 0.25) <= 0) { d._mountT = 2; const h = Build.isInside(d.x, d.z, d.y); if (d._mountShown !== h) { U.setMount(h); d._mountShown = h; } }
     }
   },
