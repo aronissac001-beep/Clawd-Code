@@ -123,11 +123,48 @@ function z3Result(seed, days, r, blobKB, tickP95, tickWorst, z1, fluidMax, fluid
   // the Z2 rows over 300 days are reported (their day targets are the 200-day run's)
   const z2info = r.z2.checks.map((c) => ({ ...c, name: `Z2 ${c.name}`, info: true }));
   if (bad.length) z2info.push({ name: 'Z2 the bot ran clean', ok: false, info: true, detail: bad.join('; ') });
-  const all = checks.concat(z2info);
-  return { seed, days, bot: 'v4', stage: 'z3', ok: checks.every((c) => c.ok || c.info), hash: r.hash, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks: all, z2: r.z2.report, deepNotes: r.deepNotes, tickP95,
+  const all = checks.concat(w0Rows(r, days), z2info);
+  return { seed, days, bot: 'v4', stage: 'z3', ok: checks.every((c) => c.ok || c.info), hash: r.hash, haul: m.haul || null, tickP95Worst: tickWorst, ms: r.ms, commands: r.log.length, refused: r.refused.length, refusedTop: topRefused(r.refused), blobKB, checks: all, z2: r.z2.report, deepNotes: r.deepNotes, tickP95,
     z3: { fluidMax, stacksPeak: peak, beastsMet: met, beastKinds: kinds, beastsSlain: slain, beastDeaths, deep: deep.length, deepIncs: deep.map((x) => `${x.inc}@${x.day}`).slice(0, 12) },
     metrics: { colonists: m.colonists, deathCauses: m.deathCauses, xp: m.xp || null } };
 }
+// ---- Stage W0 (EMBERCROWN-WORLD.md 12.2, step W0.5): bot v4's rows for the Z2 systems in the Z3 run ---------------
+// The Z2 answers (artifacts, the winch, petitions, halls) are rows of their own in the Z3 run, read at the run's length:
+// the Z2 targets are 200-day targets (artifacts 2-4 by day 200, halls and petitions by day 150), so a run shorter than
+// the target day reads them pro rata (at least one artifact and one accepted petitioner, a tavern and one other hall
+// by the run's last day); the winch keeps its own day (50 uses by day 100). Each row holds on its share of the seeds.
+export const W0_ROWS = Object.freeze({ winchUses: 50, winchBy: 100 });
+function w0Rows(r, days) {
+  const z = r.z2.report, f = z.first || {};
+  const by = (k, d) => f[k] !== undefined && f[k] <= d;
+  const short = days < 200, hallDay = Math.min(150, days), art = short ? Math.max(1, Math.floor(2 * days / 200)) : 2, pet = days < 150 ? Math.max(1, Math.floor(2 * days / 150)) : 2;
+  const winch = (r.deepNotes || []).find((n) => /winch/.test(n)) || '';
+  return [
+    { name: `v4 artifacts: >= ${art} by day ${Math.min(200, days)} (W0.5, 4 of 5)`, ok: (z.artifacts | 0) >= art && (z.artifacts | 0) <= 4, share: true, detail: `${z.artifacts | 0} artifacts` },
+    { name: `v4 the winch: >= ${W0_ROWS.winchUses} uses by day ${W0_ROWS.winchBy} (W0.5, 4 of 5)`, ok: days < W0_ROWS.winchBy || by('winch50', W0_ROWS.winchBy), share: true, na: days < W0_ROWS.winchBy, detail: `${z.winchUses} uses${f.winch50 !== undefined ? `, 50 on day ${f.winch50}` : ''}${winch ? `; ${winch}` : ''}` },
+    { name: `v4 petitions: >= ${pet} accepted by day ${Math.min(150, days)} (W0.5, 4 of 5)`, ok: z.petitions && z.petitions.yes >= pet, share: true, detail: z.petitions ? `${z.petitions.yes} yes of ${z.petitions.asked}` : '?' },
+    { name: `v4 halls: a tavern and one other hall by day ${hallDay} (W0.5, 4 of 5)`, ok: by('hall2', hallDay), share: true, detail: `tavern ${f.tavern === undefined ? 'never' : 'day ' + f.tavern}, two halls ${f.hall2 === undefined ? 'never' : 'day ' + f.hall2}` },
+  ].map((c) => ({ ...c, ok: !!c.ok }));
+}
+/** The W0.5 rows over the seeds (share rows: met on `N of 5` seeds), the haul latency and the tick p95 against w0.json. */
+function w0Summary(results) {
+  const R = results.filter((r) => r.checks), names = [...new Set(R.flatMap((r) => r.checks.filter((c) => c.share && c.name.startsWith('v4 ')).map((c) => c.name)))];
+  const rows = names.map((name) => {
+    const cs = R.map((r) => r.checks.find((c) => c.name === name)).filter(Boolean);
+    const m = name.match(/(\d) of 5/), need = m ? Math.min(+m[1], cs.length) : cs.length, met = cs.filter((c) => c.ok).length, na = cs.every((c) => c.na);
+    return { name, met, of: cs.length, need, ok: na || met >= need, na };
+  });
+  const v = (f) => R.map(f).filter((x) => typeof x === 'number').sort((a, b) => a - b);
+  const hm = v((r) => (r.haul ? r.haul.medianH : null)), mid = (a) => (a.length ? a[(a.length - 1) >> 1] : null), mean = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) : null);
+  let base = null;
+  try { const w = JSON.parse(readFileSync(join(HERE, 'out', 'w0.json'), 'utf8')); base = w.summary && w.summary.haulMedianH ? { medianOfSeeds: w.summary.haulMedianH.medianOfSeeds, mean: w.summary.haulMedianH.mean, commit: w.commit } : null; } catch (_) { base = null; }
+  const haul = { medianOfSeeds: mid(hm), mean: mean(hm), perSeed: R.map((r) => [r.seed, r.haul ? r.haul.medianH : null]), w0: base,
+    lowerPct: base && mid(hm) !== null ? +(100 * (1 - mid(hm) / base.medianOfSeeds)).toFixed(1) : null };
+  const tick = { lastDayMax: Math.max(0, ...R.map((r) => r.tickP95 || 0)), worstDayMax: Math.max(0, ...R.map((r) => r.tickP95Worst || 0)) };
+  const alive = R.filter((r) => r.metrics && r.metrics.colonists && r.metrics.colonists.alive > 0).length;
+  return { rows, haul, tick, survival: { seedsAlive: alive, of: R.length, aliveMean: mean(R.map((r) => (r.metrics && r.metrics.colonists ? r.metrics.colonists.alive : 0))) } };
+}
+
 /** The Z3 balance report over the soak's seeds (printed; written into the --out file). */
 function z3Balance(results) {
   const R = results.filter((r) => r.z3), n = R.length || 1, mean = (f) => +(R.reduce((a, r) => a + f(r), 0) / n).toFixed(2);
@@ -239,13 +276,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     for (const r of results) {
       if (!r.checks) { console.log(`FAIL seed ${r.seed}: ${r.error}`); continue; }
       console.log(`${r.ok ? 'ok  ' : 'FAIL'} seed ${r.seed}: ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), hash ${r.hash}, blob ${r.blobKB} KB, tick p95 ${r.tickP95} ms`);
-      for (const c of r.checks) if (!c.info || !c.name.startsWith('Z2 ') || has('--verbose')) console.log(`      ${c.ok ? 'ok  ' : c.info ? 'info' : 'FAIL'} ${c.name}: ${c.detail}`);
+      for (const c of r.checks) if (!c.info || !c.name.startsWith('Z2 ') || has('--verbose')) console.log(`      ${c.ok ? 'ok  ' : c.na ? 'n/a ' : c.info ? 'info' : c.share ? 'miss' : 'FAIL'} ${c.name}: ${c.detail}`);
+      if (r.haul) console.log(`      haul latency: median ${r.haul.medianH} h (stored only ${r.haul.medianStoredH} h; ${r.haul.stored} stored, ${r.haul.stillWaiting} waiting); tick p95 ${r.tickP95} ms last day, ${r.tickP95Worst} ms worst day`);
       console.log(`      deep: ${(r.z3.deepIncs || []).join(', ')}`);
     }
     const bal = z3Balance(results);
     console.log('\nZ3 balance report: ' + JSON.stringify(bal));
-    const pass = results.every((r) => r.checks && r.ok);
-    if (out) save(out, { stage: 'z3', bot: 'v4', days, seeds, pass, balance: bal, results });
+    const w0 = w0Summary(results);
+    console.log(`\nW0.5 rows (bot v4, seeds ${seeds.join(',')}):`);
+    for (const x of w0.rows) console.log(`  ${x.na ? 'n/a ' : x.ok ? 'ok  ' : 'FAIL'} ${x.name}: ${x.met}/${x.of} (needs ${x.need})`);
+    console.log(`  haul latency: median of the seeds ${w0.haul.medianOfSeeds} h (mean ${w0.haul.mean} h; ${w0.haul.perSeed.map(([sd, h]) => `${sd}: ${h}`).join(', ')})${w0.haul.w0 ? `; w0.json (${w0.haul.w0.commit}) ${w0.haul.w0.medianOfSeeds} h, ${w0.haul.lowerPct}% lower` : ''}`);
+    console.log(`  tick p95: ${w0.tick.lastDayMax} ms on the last day, ${w0.tick.worstDayMax} ms on the worst day (max over the seeds${jobs > 1 ? `, ${jobs} at a time` : ''})`);
+    const pass = results.every((r) => r.checks && r.ok) && w0.rows.every((x) => x.ok);
+    if (out) save(out, { stage: 'z3', bot: 'v4', days, seeds, pass, balance: bal, w0, results });
     console.log(`colonybot z3 soak [${days} days, seeds ${seeds.join(',')}]: ${results.filter((r) => r.ok).length}/${results.length} seeds hold${pass ? ' - PASS' : ' - FAIL'}`);
     process.exit(pass ? 0 : 1);
   }

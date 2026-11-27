@@ -22,6 +22,7 @@ import { threatViews, threatChip, omenText, composition } from '../game/threat/w
 import { D, zS, W, PLANE } from '../game/core/grid.js';
 import { DATA as CAUSES } from '../data/causes.js';
 import { levelText } from '../game/tools/levels.js';
+import { levelName } from './levels.js';
 
 // ---- Stage Z3.5: threats on levels (EMBERCROWN-FORTRESS.md 4.x, 2.10) ---------------------------------
 //   threatZ(v)               the level (absolute z) a threat enters at (its edge voxel), null at D = 1
@@ -69,7 +70,7 @@ export function chipView(s) {
   const label = v.stage === 'active' ? `${v.name} on the map${v.onMap ? ': ' + v.onMap : ''}` : v.stage === 'retreat' ? `${v.name} fleeing at dawn` : `${v.name} in ${mins < 60 ? mins + ' minutes' : v.hours + ' hours'} from the ${v.edge ? v.edge.word : 'edge'}`;
   const z = threatZ(v), cause = causeName(s, v);
   const deep = z !== null && z !== zS;
-  const lvl = z !== null ? `Level ${levelText(z)}` : '';
+  const lvl = z !== null ? levelName(z) : '';
   return { text: deep ? `${short} ${levelText(z)}` : short, label: label + (lvl ? `, ${lvl}` : '') + (cause ? `. Cause: ${cause}` : ''), stage: v.stage, hours: v.hours, tone, view: v, z, cause };
 }
 
@@ -142,7 +143,7 @@ export function omenLetter(ctx, v, opts = {}) {
     const row = (k, val) => facts.append(h('div.ec-fact', null, h('span', { text: k }), h('b', { text: val })));
     row('Arrives in', `${v.hours} hours`);
     row('From', `the ${v.edge ? v.edge.word : 'edge'}`);
-    if (threatZ(v) !== null) row('Level', levelText(threatZ(v)));
+    if (threatZ(v) !== null) row('Level', levelName(threatZ(v)));
     if (causeName(s, v)) row('Cause', causeName(s, v));
     if (v.size) row('Size', v.size.text);
     if (v.prey !== null && v.prey !== undefined) { const c = s.col.find((x) => x.id === v.prey); if (c) row('Hunting for', c.name); }
@@ -238,13 +239,13 @@ export function threatPeek(ctx, sel) {
   const comp = v.comp || (v.size ? [{ name: v.types ? v.types.join(', ') : 'Hollow', n: v.size.text }] : null);
   const z = threatZ(v), cause = causeName(s, v);
   const sub = (v.stage === 'active' ? `On the map: ${v.onMap}` : v.stage === 'retreat' ? 'Fleeing at dawn' : `In ${v.hours} h from the ${v.edge ? v.edge.word : 'edge'}`)
-    + (z !== null ? ` · Level ${levelText(z)}` : '') + (cause ? ` · ${cause}` : '');
+    + (z !== null ? ` · ${levelName(z)}` : '') + (cause ? ` · ${cause}` : '');
   const head = h('div.ec-peek-head', null, h('span.ec-peek-ic.bad', { html: icon('horde') }),
     h('div.ec-peek-txt', null, h('div.ec-peek-name', null, h('b', { text: v.name })),
       h('div.ec-peek-sub', { text: comp ? `${sub} · ${comp.map((c) => `${c.n} ${c.name}`).join(', ')}` : sub })));
   return { head, acts: [
     ['Draft all', () => draftAll(ctx), 'draft-all'],
-    [z !== null && z !== zS ? `Go to ${levelText(z)}` : 'Jump to edge', () => jumpToEdge(ctx, v), 'jump-edge'],
+    [z !== null && z !== zS ? `Go to ${levelName(z)}` : 'Jump to edge', () => jumpToEdge(ctx, v), 'jump-edge'],
     ['Close', () => ctx.closePeek(), 'close-peek'],
   ] };
 }
@@ -261,7 +262,7 @@ const LEVER_R = 24;   // tiles: link candidates within this square radius, on an
 const bname = (b) => { const d = structDef(b.def); return (d && d.name) || b.def; };
 /** A lever's linked gates, doors, floodgates and bridges: [{ b, name, z, level }], sorted by id. */
 export function leverLinks(s, id) {
-  return linksOf(s, id).map((b) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelText(b.z | 0) : null }));
+  return linksOf(s, id).map((b) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelName(b.z | 0) : null }));
 }
 /** Unlinked gates a lever could take (near it in plan, any level), nearest first then id. */
 export function linkCandidates(s, id, max = 6) {
@@ -275,7 +276,7 @@ export function linkCandidates(s, id, max = 6) {
     out.push({ b, d: d + Math.abs((b.z | 0) - (lv.z | 0)) });
   }
   out.sort((p, q) => p.d - q.d || p.b.id - q.b.id);
-  return out.slice(0, max).map(({ b }) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelText(b.z | 0) : null, linked: b.link !== null && b.link !== undefined }));
+  return out.slice(0, max).map(({ b }) => ({ b, name: bname(b), z: b.z | 0, level: D > 1 ? levelName(b.z | 0) : null, linked: b.link !== null && b.link !== undefined }));
 }
 /** Extra peek actions for a finished lever: Pull, Links. [label, fn, act] rows (peek.js appends them). */
 export function leverActs(ctx, b) {
@@ -295,10 +296,10 @@ export function openLeverLinks(ctx, id) {
   ctx.openSheet('Lever links', (el) => {
     const lv = s.bld[id];
     if (!lv) { el.append(h('p', { text: 'The lever is gone.' })); return; }
-    el.append(h('p.ec-lever-t', { text: `Holds its gates ${MODE_WORD[mechState(s, id)] || 'closed'}${D > 1 ? ` · Level ${levelText(lv.z | 0)}` : ''}. A lever drives up to 4 gates, floodgates or bridges on any level.` }));
+    el.append(h('p.ec-lever-t', { text: `Holds its gates ${MODE_WORD[mechState(s, id)] || 'closed'}${D > 1 ? ` · ${levelName(lv.z | 0)}` : ''}. A lever drives up to 4 gates, floodgates or bridges on any level.` }));
     el.append(btn('Pull the lever', 'lever-pull', () => { ctx.send({ t: 'lever', bId: id }, null, true); refresh(); }));
     const rowOf = (x, acts) => h('div.ec-lever-row', { style: { display: 'flex', alignItems: 'center', gap: '8px', minHeight: '44px', flexWrap: 'wrap' } },
-      h('span', { style: { flex: '1 1 140px', fontSize: '15px' }, text: x.level !== null ? `${x.name} · Level ${x.level}` : x.name }), ...acts);
+      h('span', { style: { flex: '1 1 140px', fontSize: '15px' }, text: x.level !== null ? `${x.name} · ${x.level}` : x.name }), ...acts);
     const ls = leverLinks(s, id);
     el.append(h('h3', { text: ls.length ? 'Linked' : 'Nothing linked yet' }));
     for (const x of ls) el.append(rowOf(x, [btn('Go', 'lever-go', () => go(x.b)), btn('Unlink', 'lever-unlink', () => { ctx.send({ t: 'link', bId: x.b.id, to: null }, 'Unlinked.', true); refresh(); })]));

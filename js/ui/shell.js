@@ -52,6 +52,7 @@ import { roomAt } from '../game/tools/copy.js';
 import { footprint } from '../game/world/pass.js';
 import { SAVE } from '../data/balance.js';
 import { foodDays } from '../data/advice.js';
+import { def } from '../game/core/content.js';
 import { Renderer } from '../engine/render/index.js';
 import { installFluidRender } from '../engine/render/fluids.js';
 import { audio } from '../engine/audio.js';
@@ -96,6 +97,39 @@ const RUIN_TABS = [
 const PANEL_TITLE = { build: 'Build', orders: 'Orders', zones: 'Zones' };
 const CLOTH = ['#8a4a3a', '#3f5f8a', '#5f7a3a', '#7a5a2a', '#6a3f7a', '#2f6f6a', '#8a6f3a', '#5a5a66'];
 const SKIN = ['#f1d2b0', '#e2b98f', '#c99a6e', '#a8774f', '#7e5536', '#5a3b26'];
+
+/**
+ * Stock by item category, counted as Colony > Stock counts it (W0.2, EMBERCROWN-WORLD.md 11 item 3): every
+ * stack that is not forbidden, by its item's category (cat 'goods' for an unknown kind). Map cat -> count.
+ */
+export function stockCats(s) {
+  const out = new Map(), catOf = new Map();
+  for (const it of s.items) {
+    if (!it || it.f) continue;
+    let c = catOf.get(it.k);
+    if (c === undefined) { const d = def('item', it.k); c = (d && d.cat) || 'goods'; catOf.set(it.k, c); }
+    out.set(c, (out.get(c) || 0) + it.n);
+  }
+  return out;
+}
+/**
+ * The stock chip and its strip (pure): [icon, label, value, cat?] rows, the lead row first. Category rows carry
+ * their category id as the fourth field; their values equal the Colony > Stock totals of that category.
+ */
+export function stockRowsOf(s, stage = STAGE) {
+  const cats = stockCats(s), n = (c) => c.reduce((a, k) => a + (cats.get(k) || 0), 0);
+  const row = (ic, label, cs) => [ic, label, String(n(cs)), cs.join('+')];
+  // Stage 1a has no hunger: the chip leads with wood (what a sandbox build waits on), not food days
+  if (stage === '1a') return [row('wood', 'Wood', ['wood']), row('stone', 'Stone', ['stone']), row('stone', 'Blocks', ['blocks']), row('pick', 'Ore', ['ore', 'fuel'])];
+  const days = Math.floor(foodDays(s));
+  const rows = [['food', 'Food', `${Math.min(99, days)}d`], row('wood', 'Wood', ['wood']), row('stone', 'Stone', ['stone']), row('stone', 'Blocks', ['blocks']), row('sword', 'Ingots', ['ingots']), row('food', 'Meals', ['meals'])];
+  if (s.colony.world) {
+    rows.push(row('gold', 'Coins', ['coins']));
+    // "Clear, 10 C" (11 item 4): the sky and the temperature read as one phrase
+    try { rows.push([SEASONS[seasonOf(s.tick)], weatherText(s).replace(/, (\d+) h left/, '') + ',', `${Math.round(outdoorTemp(s.tick, s))} C`]); } catch (_) { /* no weather yet */ }
+  }
+  return rows;
+}
 
 export function mountShell(root, api) {
   const s = api.state;
@@ -255,7 +289,7 @@ export function mountShell(root, api) {
     // "D17 Highsun 06:00", the chip and the food chip overlapped at 390)
     const glyph = ui.narrow || (!threat.hidden && !ui.landscape && innerWidth < 440);
     const season = glyph ? `<span class="ec-season" aria-label="${SEASON_NAMES[se]}">${icon(SEASONS[se])}</span>` : `<span class="ec-season-name">${SEASON_NAMES[se]}</span>`;
-    clock.innerHTML = `<span>D${d}</span>${season}<span>${clockText(s.tick)}</span>`;
+    clock.innerHTML = `<span>Day ${d}</span>${season}<span>${clockText(s.tick)}</span>`;
   }
   let lastThreat = '';
   /** The threat chip (10.1): absent until an omen; icon + hours, "here" once on the map. */
@@ -278,17 +312,7 @@ export function mountShell(root, api) {
   }
   function stockRows() {
     if (api.demo && api.demo.stock) return api.demo.stock;
-    const tot = (k) => s.rt.stock[k] || 0;
-    const meals = tot('meal');
-    const days = Math.floor(foodDays(s));
-    // Stage 1a has no hunger: the chip leads with wood (what a sandbox build waits on), not food days
-    if (STAGE === '1a') return [['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['pick', 'Ore', String(tot('coal') + tot('ore'))]];
-    const rows = [['food', 'Food', `${Math.min(99, days)}d`], ['wood', 'Wood', String(tot('wood'))], ['stone', 'Stone', String(tot('stone'))], ['stone', 'Blocks', String(tot('block'))], ['sword', 'Ingots', String(tot('ingot'))], ['food', 'Meals', String(meals)]];
-    if (s.colony.world) {
-      rows.push(['gold', 'Coins', String(tot('coins'))]);
-      try { rows.push([SEASONS[seasonOf(s.tick)], weatherText(s).replace(/, (\d+) h left/, ''), `${Math.round(outdoorTemp(s.tick, s))} C`]); } catch (_) { /* no weather yet */ }
-    }
-    return rows;
+    return stockRowsOf(s);
   }
   let lastChip = '', lastStrip = '';
   function renderStock() {
@@ -373,7 +397,7 @@ export function mountShell(root, api) {
     const t = a.target || {};
     const az = alertZ(a);
     if (az !== null) setZ(az, 'alert');
-    if (!t.open) toast.show(a.text + (az !== null ? ` · ${levelWord(az)}` : '') + '.');
+    if (!t.open) toast.show(a.text + (az !== null && !a.text.includes(levelWord(az)) ? ` · ${levelWord(az)}` : '') + '.');
     if (t.colonist !== undefined) { const c = s.col.find((x) => x.id === t.colonist); if (c) { centerOn(c.x, c.y); select({ kind: 'colonist', id: c.id }); } }
     else if (t.building !== undefined && s.bld[t.building]) { const b = s.bld[t.building]; centerOn((b.x + 1) * TILE, (b.y + 1) * TILE); select({ kind: 'building', id: b.id, x: b.x, y: b.y }); }
     else if (t.threat) { const v = chipView(s); if (v) { jumpToEdge(ctx, v.view); select({ kind: 'raid', id: v.view.id }); } }
@@ -411,12 +435,12 @@ export function mountShell(root, api) {
     const vz = viewZ();
     for (const a of vis) {
       const az = alertZ(a);
-      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'data-alert': a.id || a.icon, 'aria-label': a.text + (az !== null ? `, ${levelWord(az)}` : ''), html: icon(a.icon) });
+      const b = h('button.ec-ibtn.ec-alert' + (a.tone ? '.' + a.tone : ''), { type: 'button', 'data-act': 'alert', 'data-alert': a.id || a.icon, 'aria-label': a.text + (az !== null && !a.text.includes(levelWord(az)) ? `, ${levelWord(az)}` : ''), html: icon(a.icon) });
       if (az !== null && az !== vz) b.append(h('span.ec-lvbadge', { text: levelText(az), 'aria-hidden': 'true' }));
       // long-press: explain and "snooze 1 day" (10.6); the explanation names the level (4.3)
       onTap(b, () => alertGo(a), { longpress: () => {
         const rc = b.getBoundingClientRect(), cv = canvas.getBoundingClientRect();
-        toast.show(`${a.text}${az !== null ? ' · ' + levelWord(az) : ''}. ${a.why || ''}`.trim());
+        toast.show(`${a.text}${az !== null && !a.text.includes(levelWord(az)) ? ' · ' + levelWord(az) : ''}. ${a.why || ''}`.trim());
         if (a.id) showCtx({ x: rc.left - cv.left, y: rc.top - cv.top + rc.height + 40 }, [['Snooze 1 day', () => { tracker.snooze(a.id); renderAlerts(); }, 'alert-snooze'], ['Show me', () => alertGo(a), 'alert-go']]);
       } });
       alerts.append(b);

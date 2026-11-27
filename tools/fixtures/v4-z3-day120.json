@@ -227,5 +227,157 @@
    "reloadAtHourSameDay2Hash": true
   }
  },
- "ms": 768828
+ "ms": 768828,
+ "rebaselined": {
+  "commit": "bff98d5",
+  "dirty": true,
+  "date": "2026-11-27",
+  "note": "W0.5 haul: landing only when it can take the stack, top-ups of 6 within 5 tiles (re-baseline allowed by 12.1)",
+  "hour": {
+   "tick": 1732200,
+   "hash": "7132869080cfb4d2",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 6403,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5429,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 3011,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Fenwick Ravel",
+     "mood": 3900,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Rowena Pellam",
+     "mood": 6429,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Saelor Willowmere",
+     "mood": 6500,
+     "dead": false
+    },
+    {
+     "id": 10,
+     "name": "Cade Coldwater",
+     "mood": 3731,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Lirra Ashbough",
+     "mood": 6750,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Saffi Thorne",
+     "mood": 6400,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Maren Thorne",
+     "mood": 6250,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Bramm Emberdelve",
+     "mood": 8825,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Szara Smokeborn",
+     "mood": 5350,
+     "dead": false
+    },
+    {
+     "id": 18,
+     "name": "Wenna Coldwater",
+     "mood": 4500,
+     "dead": false
+    },
+    {
+     "id": 21,
+     "name": "Szara Ashfang",
+     "mood": 5107,
+     "dead": false
+    },
+    {
+     "id": 26,
+     "name": "Bramm Anvilborn",
+     "mood": 3981,
+     "dead": false
+    },
+    {
+     "id": 27,
+     "name": "Oriel Ashbough",
+     "mood": 6024,
+     "dead": false
+    },
+    {
+     "id": 28,
+     "name": "Veyra Willowmere",
+     "mood": 5214,
+     "dead": false
+    },
+    {
+     "id": 29,
+     "name": "Edda Sallow",
+     "mood": 4325,
+     "dead": false
+    },
+    {
+     "id": 30,
+     "name": "Cade Fallow",
+     "mood": 6578,
+     "dead": false
+    },
+    {
+     "id": 31,
+     "name": "Bramm Coalvein",
+     "mood": 3919,
+     "dead": false
+    },
+    {
+     "id": 46,
+     "name": "Cade Dunmore",
+     "mood": 5600,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 1746000,
+   "hash": "a867c782f3cde350"
+  },
+  "day2": {
+   "tick": 1760400,
+   "hash": "550612a7462cd9a5"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": [],
+   "reloadAtHourSameDay2Hash": true
+  }
+ }
 }

@@ -92,6 +92,8 @@ const CHECKS = [
   // seeds 1-5 and the fixtures continued 2 days hash as the latest baseline-wK.json. The legacy run starts once the
   // Z3 soak is read (its tick p95 must not share the CPU) and is read at the end
   { name: 'Save fixtures (three v4, Z3)', starts: 'w0', node: ['--test', 'tools/tests/fixtures-v4.test.mjs'] },
+  // W0.2: the stock chip equals Hold / Stock and every line names levels as the HUD does, on the three v4 fixtures
+  { name: 'Stock chip and level words (W0.2)', starts: 'w0', node: ['--test', 'tools/tests/stock-chip.test.mjs', 'tools/tests/level-words.test.mjs'] },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },

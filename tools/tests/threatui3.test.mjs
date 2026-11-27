@@ -31,7 +31,7 @@ test('Z3.5 the chip names the level and the cause of a deep threat', () => {
   assert.equal(c.z, z);
   assert.equal(c.cause, 'Woken seep');
   assert.match(c.text, /-13$/);
-  assert.match(c.label, /Level -13/);
+  assert.match(c.label, /-13 Reach/);
   assert.match(c.label, /Cause: Woken seep/);
   assert.equal(threatZ(c.view), z);
   assert.equal(causeName(s, c.view), 'Woken seep');
@@ -44,7 +44,7 @@ test('Z3.5 a deep threat is the breach alert with an [x, y, z] target at its lev
   assert.ok(a);
   assert.deepEqual(a.target.tile, [40, 50, z]);
   assert.equal(z - zS, -13);
-  assert.match(a.text, /Level -13/);
+  assert.match(a.text, /-13 Reach/);
   assert.equal(rule('raid').test(s), null);
 });
 
@@ -67,8 +67,8 @@ test('Z3.5 flood and ember alerts name the level of the moving fluid; sources do
   w.fluid = { act: [src, a, b].sort((p, q) => p - q), idle: [0, 0, 0], q: [], cur: 0 };
   const f = rule('flood').test(s), e = rule('ember').test(s);
   assert.deepEqual(f.target.tile, [20, 20, zS - 3]);
-  assert.match(f.text, /Level -3/);
+  assert.match(f.text, /at -3 Outer/);
   assert.deepEqual(e.target.tile, [30, 30, zS - 9]);
-  assert.match(e.text, /Level -9/);
+  assert.match(e.text, /at -9 Mere/);
   void PLANE; void W;
 });

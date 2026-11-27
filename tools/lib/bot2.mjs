@@ -889,6 +889,7 @@ function evaluate2(s, M, P, days) {
   r.unhauled = X.unhauled;
   r.unhauled.waitingOverDay = {}; for (const w of M.waiting.values()) if (s.tick - w.t0 > TICKS_PER_DAY && w.ref && (s.L.fog[idx(w.ref.x, w.ref.y, w.ref.z | 0) >> 3] & (1 << (idx(w.ref.x, w.ref.y, w.ref.z | 0) & 7))) && s.col.some((c) => !c.hp.dead && !c.hp.down && haulable(s, c, w.ref) && findDest(s, c, w.ref))) { const k = `${w.ref.k}${w.ref.f ? '(f)' : ''}`; r.unhauled.waitingOverDay[k] = (r.unhauled.waitingOverDay[k] || 0) + 1; }
   Object.assign(r, idleHaul(s, M));
+  Object.defineProperty(r, 'latRec', { value: M.latRec, enumerable: false });   // [t0, stored, kind, colId, job start] (W0.5 analysis; not written to reports)
   r.research = X.researched.map((x) => x.tech);
   r.artifacts = X.artifacts; r.breaks = X.broke;
   r.stacks = liveCount(s);

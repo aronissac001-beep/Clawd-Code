@@ -91,13 +91,13 @@
  },
  "ms": 13430,
  "rebaselined": {
-  "commit": "fafaaa9",
+  "commit": "bff98d5",
   "dirty": true,
-  "date": "2026-11-21",
-  "note": "",
+  "date": "2026-11-27",
+  "note": "W0.5 haul: landing only when it can take the stack, top-ups of 6 within 5 tiles (re-baseline allowed by 12.1)",
   "hour": {
    "tick": 121214,
-   "hash": "ba3aae5266892668",
+   "hash": "7adbcd818b02529b",
    "moods": [
     {
      "id": 1,
@@ -127,7 +127,7 @@
   },
   "day": {
    "tick": 135014,
-   "hash": "5cf459a93a9ebcbb"
+   "hash": "38989b844dffd14e"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

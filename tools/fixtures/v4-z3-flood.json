@@ -166,5 +166,109 @@
    "reloadAtHourSameDay2Hash": true
   }
  },
- "ms": 218462
+ "ms": 218462,
+ "rebaselined": {
+  "commit": "bff98d5",
+  "dirty": true,
+  "date": "2026-11-27",
+  "note": "W0.5 haul: landing only when it can take the stack, top-ups of 6 within 5 tiles (re-baseline allowed by 12.1)",
+  "hour": {
+   "tick": 565877,
+   "hash": "9c0d6457a49d7dbd",
+   "moods": [
+    {
+     "id": 1,
+     "name": "Isolde Dunmore",
+     "mood": 4469,
+     "dead": false
+    },
+    {
+     "id": 2,
+     "name": "Cade Thorne",
+     "mood": 5820,
+     "dead": false
+    },
+    {
+     "id": 3,
+     "name": "Juno Thorne",
+     "mood": 5393,
+     "dead": false
+    },
+    {
+     "id": 6,
+     "name": "Fenwick Ravel",
+     "mood": 5600,
+     "dead": false
+    },
+    {
+     "id": 7,
+     "name": "Rowena Pellam",
+     "mood": 5060,
+     "dead": false
+    },
+    {
+     "id": 9,
+     "name": "Saelor Willowmere",
+     "mood": 5663,
+     "dead": false
+    },
+    {
+     "id": 10,
+     "name": "Cade Coldwater",
+     "mood": 5200,
+     "dead": false
+    },
+    {
+     "id": 11,
+     "name": "Lirra Ashbough",
+     "mood": 6401,
+     "dead": false
+    },
+    {
+     "id": 12,
+     "name": "Saffi Thorne",
+     "mood": 5825,
+     "dead": false
+    },
+    {
+     "id": 14,
+     "name": "Maren Thorne",
+     "mood": 5480,
+     "dead": false
+    },
+    {
+     "id": 15,
+     "name": "Bramm Emberdelve",
+     "mood": 5800,
+     "dead": false
+    },
+    {
+     "id": 16,
+     "name": "Szara Smokeborn",
+     "mood": 5820,
+     "dead": false
+    },
+    {
+     "id": 18,
+     "name": "Wenna Coldwater",
+     "mood": 6100,
+     "dead": false
+    }
+   ]
+  },
+  "day": {
+   "tick": 579677,
+   "hash": "68141f2558c7a0e3"
+  },
+  "day2": {
+   "tick": 594077,
+   "hash": "2c098ce7aecad849"
+  },
+  "checks": {
+   "reloadAtHourSameDayHash": true,
+   "stateValidAtDay": true,
+   "errs": [],
+   "reloadAtHourSameDay2Hash": true
+  }
+ }
 }

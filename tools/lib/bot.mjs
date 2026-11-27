@@ -631,7 +631,7 @@ export function makeMeter(s) {
         if (!cur || cur.job !== j) {
           let t0 = s.tick;
           for (const id of srcs) { const w = M.waiting.get(id); if (w && w.t0 < t0) t0 = w.t0; }
-          M.jobs.set(c.id, { job: j, t0, srcs });
+          M.jobs.set(c.id, { job: j, t0, srcs, at: s.tick });
         }
       } else if (M.jobs.has(c.id) && !(j && j.type === 'haul')) M.jobs.delete(c.id);
     }
@@ -665,7 +665,7 @@ export function makeMeter(s) {
       else if (e.name === 'hauled') {
         M.hauled++;
         const jr = e.data ? M.jobs.get(e.data.colId) : null;
-        if (jr) { M.lat.push(s.tick - jr.t0); const st = getItem(s, e.data.itemId); M.latRec.push([jr.t0, s.tick, st ? st.k : '?', e.data.colId]); for (const id of jr.srcs) M.waiting.delete(id); M.jobs.delete(e.data.colId); }
+        if (jr) { M.lat.push(s.tick - jr.t0); const st = getItem(s, e.data.itemId); M.latRec.push([jr.t0, s.tick, st ? st.k : '?', e.data.colId, jr.at]); for (const id of jr.srcs) M.waiting.delete(id); M.jobs.delete(e.data.colId); }
       }
     }
     if (s.tick % SCAN === 0) {

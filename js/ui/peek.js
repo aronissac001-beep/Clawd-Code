@@ -9,7 +9,7 @@
 // contextItems(ctx, sel, target) -> [[label, fn, act]] for the long-press menu (with a colonist
 // selected and a target under the finger: "Prioritise: Mine here").
 // Stage Z1 (EMBERCROWN-FORTRESS.md 4.2, 4.3): with levels the colonist line names the level ("Mining granite ·
-// Level -5") and a stair or ramp tile offers Go up / Go down (the view follows).
+// -5 Middle", the HUD's level words) and a stair or ramp tile offers Go up / Go down (the view follows).
 import { h, icon } from './kit.js';
 import { W, PLANE, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
 import { def, all, structDef, hasFlag } from '../game/core/content.js';
@@ -27,7 +27,8 @@ import { threatPeek, draftAll } from './threatui.js';
 import { roomInfo } from '../game/world/rooms.js';
 import { gateMode, mechState, linksOf } from '../game/world/mechanisms.js';
 import { WORK_IDS as WIDS } from '../game/core/schema.js';
-import { levelText, stairDirs } from '../game/tools/levels.js';
+import { stairDirs } from '../game/tools/levels.js';
+import { levelName } from './levels.js';
 
 /** "Bedroom, Fine" for the room at tile i (B's roomInfo), or null. */
 export function roomWord(s, i) {
@@ -98,6 +99,13 @@ function nearestCol(s, x, y) {
   return best;
 }
 
+/** The colonist's job line; an idle colonist names the role that has no work ("Idle: no Builder work", 11 item 4). */
+export function peekJob(c) {
+  const t = jobText(c);
+  if (t !== 'Idle: no role work' || !c.role || !c.role[0] || c.custom) return t;
+  const r = roleName(c.role[0]);
+  return r === 'None' ? t : `Idle: no ${r} work`;
+}
 export function peekContent(ctx, sel) {
   const s = ctx.s;
   if (sel.kind === 'raid' || sel.kind === 'drafted') return threatPeek(ctx, sel);
@@ -109,7 +117,7 @@ export function peekContent(ctx, sel) {
     const head = h('div.ec-peek-head', null, ctx.portrait(c),
       h('div.ec-peek-txt', null,
         h('div.ec-peek-name', null, h('b', { text: c.name }), chip),
-        h('div.ec-peek-sub', { text: ctx.deep ? `${jobText(c)} · Level ${levelText(c.z | 0)}` : jobText(c) }),
+        h('div.ec-peek-sub', { text: ctx.deep ? `${peekJob(c)} · ${levelName(c.z | 0)}` : peekJob(c) }),
         h('div.ec-moodbar', { role: 'meter', 'aria-label': 'Mood', 'aria-valuenow': String(mood), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: mood + '%' } }))));
     if (c.drafted) {
       // drafted (9.5, 10.2): tap the ground to move, a hostile to attack; Hold strikes what comes

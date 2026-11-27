@@ -7,15 +7,18 @@
 // themselves), 'always' hauls them like anything else.
 //
 // The job: claim the units and the destination tile, walk to the stack, pick up (capacity: 35 mass
-// x Might factor), top up with the same kind, material and quality within 3 tiles, carry, store.
+// x Might factor), top up with the same kind, material and quality (W0.5: up to TOPUP.stacks more stacks within
+// TOPUP.r tiles; was one within 3), carry, store. A stack already in storage is offered to haulers while it is on the
+// hourly audit's wait list (W0.5), so the giver's scan does not test every stored stack against every store.
 
 import { winchRoute, winchEnd } from '../colony/verbs/winch.js';
 import { idx, tx, ty, tz } from '../core/grid.js';
 import { emit } from '../core/events.js';
 import { NEXT, T, makeJob, registerToil, keyItem, keyTile, WORK, isUnreachable } from './jobs.js';
-import { getItem, categoryOf, stackLimit, freeCount, stackAt, carried, drop } from './items.js';
+import { getItem, categoryOf, stackLimit, freeCount, stackAt, carried, drop, countOn, capAt } from './items.js';
 import { colTile } from './reserve.js';
-import { needsHaul, findDest } from './stockpiles.js';
+import { needsHaul, findDest, curPri, filterAccepts, zoneAccepts, ownRule, PRI } from './stockpiles.js';
+import { zoneById, bldById } from '../core/state.js';
 import { capUnits } from './construct.js';
 import { reachableFrom, distTo } from './windex.js';
 import { workRec } from './filth.js';
@@ -33,7 +36,43 @@ export function haulable(s, col, it) {
   if (freeCount(s, it.id, col.id) <= 0) return false;
   const i = idx(it.x, it.y, it.z | 0);
   if (isUnreachable(s, col, keyItem(it.id)) || !reachableFrom(s, col, i)) return false;
-  return needsHaul(s, it);
+  // (W0.5) a stack already in storage moves on to a better store on the hourly audit's word (it is on the wait list):
+  // the haul giver's scan of up to WORK.scanMax stacks per think tested every stored stack against every store (the
+  // granary's footprint walk for each stack of food in a stockpile), and those thinks were the tick p95 spikes
+  if (worldStage2() && curPri(s, it) >= 0 && !onWaitList(s, it)) return false;
+  return needsHaulQuick(s, it);
+}
+/** Is stack `it` on E's saved haul wait list (s.colony.work.wait, ids ascending; the same kind: ids are reused)? */
+function onWaitList(s, it) {
+  const w = s.colony.work && s.colony.work.wait;
+  if (!w || !w.length) return false;
+  let lo = 0, hi = w.length - 1;
+  while (lo <= hi) { const m = (lo + hi) >> 1, v = w[m][0]; if (v === it.id) return w[m][2] === it.k; if (v < it.id) lo = m + 1; else hi = m - 1; }
+  return false;
+}
+
+/**
+ * needsHaul(s, it), exactly, without walking the storage buildings' footprints when no storage building could beat
+ * where the stack lies (W0.5: the haul giver's scan of up to WORK.scanMax stacks per think spent most of its time in
+ * that walk for stacks already stored; the think ticks were the bot's tick p95 spikes). needsHaul is bestPri > curPri:
+ * an open zone group above curPri that accepts the stack decides it here; else only a storage building whose own rule
+ * ranks above curPri and takes the stack can, and then the full test runs.
+ */
+export function needsHaulQuick(s, it) {
+  const cur = curPri(s, it);
+  for (const g of s.rt.zoneField) {
+    if (!g.open.length || g.pri <= cur) continue;
+    if (filterAccepts(g.filter, it) || g.open.some((id) => zoneAccepts(zoneById(s, id), it))) return true;
+  }
+  const ids = s.rt.idx.stores;
+  if (!ids || !ids.length || cur >= PRI.PREFERRED) return false;
+  for (const id of ids) {
+    const b = bldById(s, id);
+    if (!b || b.st !== 'done') continue;
+    const r = ownRule(s, b);
+    if (r.pri > cur && r.ok(it)) return needsHaul(s, it);
+  }
+  return false;
 }
 
 /** Haul candidate for the givers' collect(): { key, d, id } or null. */
@@ -42,6 +81,9 @@ export function haulCandidate(s, col, id) {
   if (!haulable(s, col, it)) return null;
   return { key: keyItem(id), id, d: distTo(s, col, idx(it.x, it.y, it.z | 0)) };
 }
+
+/** Top-ups of one haul (W0.5): radius in tiles on the stack's level, and the most extra stacks. */
+export const TOPUP = Object.freeze({ r: 5, stacks: 6 });
 
 /** The haul job for stack `it`, or null when no destination can take it. */
 export function haulJob(s, col, it) {
@@ -52,10 +94,18 @@ export function haulJob(s, col, it) {
   // landed is hauled on as usual (it never rides back).
   const from = idx(it.x, it.y, it.z | 0);
   const wb = (s.colony.winch || s.bld.some((b) => b && b.def === 'winch')) ? winchRoute(s, from, dest.i) : null;
-  if (wb && !((s.colony.winch && s.colony.winch.landed[wb.id]) || []).includes(it.id)) {
+  const landed = wb ? (s.colony.winch && s.colony.winch.landed[wb.id]) || [] : null;
+  if (wb && !landed.includes(it.id)) {
     const end = winchEnd(s, wb, it.z | 0);
     if (end === from) return null;
-    if (end >= 0) dest = { i: end, merge: -1 };
+    if (end >= 0) {
+      // (W0.5) only onto a landing that can take the stack; else the hauler takes the stairs to the store itself.
+      // Dropped on a taken landing the stack spilled beside it, needed a haul again and was carried back to the
+      // landing, for ever (bot v4 seed 2: 10,000 trips in 20 days, a hauler's whole time)
+      const o = stackAt(s, end);
+      const merge = o && !landed.includes(o.id) && o.k === it.k && o.m === it.m && o.q === it.q && !o.f && !o.name && !it.name && o.n < stackLimit(o.k) ? o.id : -1;
+      if (merge >= 0 || countOn(s, end) < capAt(s, end)) dest = { i: end, merge };
+    }
   }
   const room = dest.merge >= 0 ? stackLimit(it.k) - getItem(s, dest.merge).n : stackLimit(it.k);
   const want = Math.min(room, capUnits(col, it.k));
@@ -65,22 +115,26 @@ export function haulJob(s, col, it) {
   const claims = [[keyItem(it.id), n], [keyTile(dest.i), 0]];
   let got = n;
   if (got < want) {
-    // top up: same kind, material, quality within WORK.topUpR, also needing a haul
-    const R = WORK.topUpR;
+    // top up (W0.5): same kind, material and quality, also needing a haul, nearest ring first within TOPUP.r tiles
+    // on the stack's level, up to TOPUP.stacks more stacks (a field's yields, a felling's logs, a bench's output go
+    // in one trip instead of one trip each: the haul queue, and so the wait before a hauler comes, gets shorter)
+    const R = Math.max(WORK.topUpR, TOPUP.r), z = it.z | 0;
+    let extra = 0;
     outer: for (let r = 1; r <= R; r++) {
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = it.x + dx, y = it.y + dy;
         if (x < 0 || y < 0 || x >= s.w || y >= s.h) continue;
-        const o = stackAt(s, idx(x, y, it.z | 0));
+        const o = stackAt(s, idx(x, y, z));
         if (!o || o.id === it.id || o.k !== it.k || o.m !== it.m || o.q !== it.q || o.f || o.name || it.name) continue;
-        if (idx(o.x, o.y, o.z | 0) === dest.i || !needsHaul(s, o)) continue;
+        const oi = idx(o.x, o.y, o.z | 0);
+        if (oi === dest.i || !needsHaulQuick(s, o) || (r > WORK.topUpR && (isUnreachable(s, col, keyItem(o.id)) || !reachableFrom(s, col, oi)))) continue;
         const n2 = Math.min(want - got, freeCount(s, o.id, col.id));
         if (n2 <= 0) continue;
-        toils.push(T.goto(idx(o.x, o.y, o.z | 0)), T.pickup(o.id, n2));
+        toils.push(T.goto(oi), T.pickup(o.id, n2));
         claims.push([keyItem(o.id), n2]);
         got += n2;
-        break outer;   // one top-up stack
+        if (got >= want || ++extra >= TOPUP.stacks) break outer;
       }
     }
   }
@@ -104,7 +158,7 @@ registerToil('store', (s, col, job, toil) => {
 // s.colony.work.wait = [[id, since, kind]] (ids ascending; since = the first audit that saw it waiting).
 // The Haul giver offers the ones waiting STALE_H hours or more first, oldest first.
 export const STALE_H = 8, URGENT_H = 16;
-const waitable = (s, it) => !!it && !it.f && !(isStone(it) && stoneMode(s) !== 'always') && needsHaul(s, it);
+const waitable = (s, it) => !!it && !it.f && !(isStone(it) && stoneMode(s) !== 'always') && needsHaulQuick(s, it);
 export function haulAudit(s) {
   if (!worldStage2() || s.tick % TICKS_PER_HOUR !== 0) return;
   const old = (s.colony.work && s.colony.work.wait) || [];

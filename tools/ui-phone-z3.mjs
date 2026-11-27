@@ -117,7 +117,7 @@ async function run(vp) {
   await page.evaluate(() => { window.__ecUI.shell.select({ kind: 'raid', id: 901 }); });
   await page.waitForTimeout(300);
   const peek = await page.evaluate(() => { const p = document.querySelector('.ec-peek'); return p ? p.textContent : ''; });
-  flow('Z5', 'the raid card names level and cause', /Level -13/.test(peek) && /Woken seep/.test(peek), peek.replace(/\s+/g, ' ').slice(0, 140));
+  flow('Z5', 'the raid card names level and cause', /-13 Reach/.test(peek) && /Woken seep/.test(peek), peek.replace(/\s+/g, ' ').slice(0, 140));
   await screen('raid-peek');
   await reset();
 
@@ -193,7 +193,7 @@ async function run(vp) {
   const go = await tapSel(page, '[data-act=lever-go]');
   await page.waitForTimeout(300);
   const zl = await rel();
-  flow('Z4', 'lever-link sheet: link a gate two levels down, Go switches to it', linked && ls.join() === '-2' && go && zl === -2, `${lv.shim ? '(lever/link command shim) ' : ''}candidates ${lv.cands.join(',')}; linked ${ls.join(',')}; Go > ${zl}`);
+  flow('Z4', 'lever-link sheet: link a gate two levels down, Go switches to it', linked && /^-2 /.test(ls.join()) && go && zl === -2, `${lv.shim ? '(lever/link command shim) ' : ''}candidates ${lv.cands.join(',')}; linked ${ls.join(',')}; Go > ${zl}`);
   await ctx.close();
   return { vp: vp.name, flows, screens, problems: [...errs, ...problems] };
 }

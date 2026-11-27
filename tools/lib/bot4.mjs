@@ -51,6 +51,7 @@ export const POP_CAP4 = 20;          // v2 keeps 16; v4 makes room for petitione
 // the v2 policy's line by the Hearth loses a colonist a week to raids and wounds over 200 days and two of five holds fell
 export const DIFFICULTY4 = 'warden';
 export const HALL_DAY = 20;          // the hall level is dug from day 20 (the first rooms and the shaft first)
+export const WINCH_GIVEUP = 8;      // W0.5: days a winch column's neck may wait to be dug before the next column is tried
 export const TARGETS_Z2 = Object.freeze({
   days: 200, artifacts: [2, 4], moodAt100: 45, thaneBy: 120, lordBy: 250, knownBy: 150, winchBy100: 50, soldiersBy120: 10,
   hallsBy150: 2, petitionsBy150: 2, wardenBy: 150, unrestedMax: 10, confinedMax: 5, saveKB: 110, tickP95: 1.0,
@@ -208,15 +209,20 @@ export function makeZ2(s, deep, base = null, opts = {}) {
         return true;
       };
       const cand = [[sh.x0 + 3, sh.y0], [sh.x0 - 2, sh.y0], [sh.x0 + 4, sh.y0], [sh.x0 - 3, sh.y0], [sh.x0 + 5, sh.y0], [sh.x0 - 4, sh.y0]];
-      const at = cand.find(([x, y]) => fits(x, y));
+      // (W0.5: a column given up, below, is not tried again)
+      const at = cand.find(([x, y]) => !(w.tried || []).includes(`${x},${y}`) && fits(x, y));
       if (!at) { w.st = 'none'; note('winch: no rock column beside the shaft'); return []; }
-      w.st = 'mine'; w.x = at[0]; w.y = at[1];
+      w.st = 'mine'; w.x = at[0]; w.y = at[1]; w.since = s.tick;
       note(`winch column at ${w.x},${w.y} from -1 to -5`);
       // a 1-tile neck from the shaft's stair on -1 to the column (the miner reaches it from the stairs)
       const nx = w.x > sh.x1 ? [sh.x1 + 1, w.x] : [w.x, sh.x0 - 1];
       return [{ t: 'designate', kind: 'mine', rect: rect(nx[0], w.y, nx[1], w.y, zS - 1), add: true }];
     }
     const x = w.x, y = w.y, col = (z) => T[idx(x, y, z)];
+    // (W0.5) a column whose neck is still not dug after WINCH_GIVEUP days is given up for the next one beside
+    // the shaft (bot v4 seed 4: the neck on -1 waited from day 13 to day 120 and the winch never stood)
+    const giveUp = (why) => { (w.tried || (w.tried = [])).push(`${x},${y}`); note(`winch: column at ${x},${y} given up (${why})`); w.st = 'wait'; return []; };
+    if (w.st === 'mine' && w.since !== undefined && s.tick - w.since > WINCH_GIVEUP * TICKS_PER_DAY) return giveUp(`its neck not dug in ${WINCH_GIVEUP} days`);
     if (w.st === 'mine') {
       if (TER_MINEABLE[col(zS - 1)]) return [];
       w.st = 'ch1';
@@ -243,7 +249,7 @@ export function makeZ2(s, deep, base = null, opts = {}) {
       const freeAt = (xx, yy) => { if (!inB(xx, yy)) return false; const i = idx(xx, yy, zS); return s.rt.occ[i] < 0 && !s.L.zone[i] && !TER_MINEABLE[T[i]] && !TER_UP[T[i]] && !TER_DOWN[T[i]]; };
       const LX = [0, -1, 0, 1], LY = [1, 0, -1, 0];
       const rot = [3, 1, 0, 2].find((r) => freeAt(x + LX[r], y + LY[r]));
-      if (!freeAt(x, y) || rot === undefined) { w.st = 'none'; note('winch: its tile on the surface was built over'); return []; }
+      if (!freeAt(x, y) || rot === undefined) return giveUp('its tile on the surface was built over');
       return [{ t: 'place', def: 'winch', x, y, z: zS, rot }];
     }
     return [];
@@ -304,8 +310,13 @@ export function makeZ2(s, deep, base = null, opts = {}) {
   function squads() {
     const cmds = [];
     // from 10 colonists every grown colonist is a soldier too (they work at Peace and stand to at Muster)
-    if (live(s).length >= 10) for (const c of live(s)) if (!c.soldier && lifeStage(c) === 'adult' && !c.hp.down) cmds.push({ t: 'soldier', colId: c.id, on: true });
-    const sol = live(s).filter((c) => c.soldier && lifeStage(c) === 'adult');
+    // (W0.5) except a colonist in a seizure of craft: stood to at Muster mid-work they turn grey-raging and the artifact
+    // is lost (bot v4 seed 1, day 38); they go back to the squads once the seizure is over
+    const em = s.colony.ember, seized = em && em.colId !== undefined ? em.colId : -1;
+    if (live(s).length >= 10) for (const c of live(s)) if (!c.soldier && c.id !== seized && lifeStage(c) === 'adult' && !c.hp.down) cmds.push({ t: 'soldier', colId: c.id, on: true });
+    const sc = seized >= 0 ? live(s).find((c) => c.id === seized) : null;
+    if (sc && sc.soldier) { cmds.push({ t: 'soldier', colId: sc.id, on: false }); if (sc.drafted) cmds.push({ t: 'draft', colIds: [sc.id], on: false }); }
+    const sol = live(s).filter((c) => c.soldier && c.id !== seized && lifeStage(c) === 'adult');
     const add1 = sol.filter((c) => c.squad === null || c.squad === undefined).map((c) => c.id);
     if (add1.length) {
       const in1 = sol.filter((c) => c.squad === 1).length;
@@ -348,15 +359,18 @@ export function makeZ2(s, deep, base = null, opts = {}) {
   function demandHand() {
     const em = s.colony.ember;
     if (!em || em.met >= 0 || em.kind === 'whispered' || !base) return [];
-    if (Z.demand !== em.start) { Z.demand = em.start; Z.demandAt = 0; Z.demandDug = new Set(); Z.demandTiles = []; }
+    if (Z.demand !== em.start) { Z.demand = em.start; Z.demandAt = 0; Z.demandDug = new Map(); Z.demandTiles = []; }
     if (s.tick < Z.demandAt) return [];
     Z.demandAt = s.tick + 12 * TICKS_PER_HOUR;
     const cmds = [], bits = [];
     const dig = (mat, stone = false) => {
-      if (!mat || Z.demandDug.has(mat)) return;
-      Z.demandDug.add(mat);
+      // (W0.5) dug again once the last tiles for it are out and the demand is still short: one vein's four tiles gave
+      // 4 iron ore of the 10 a seizure asked (bot v4 seed 1, day 17), and the demand failed
+      const prev = Z.demandDug.get(mat);
+      if (!mat || (prev && (!prev.length || prev.some((i) => TER_MINEABLE[T[i]])))) return;
       const sid = stone ? stoneId(mat) : 0;
       const v = base.api.oreDig(stone ? (i) => T[i] === TER.ROCK && s.L.mat[i] === sid && !s.L.ore[i] : depositId(mat));
+      Z.demandDug.set(mat, v && v.length ? v.slice() : []);
       if (v && v.length) { for (const i of v) { Z.demandTiles.push(i); cmds.push({ t: 'designate', kind: 'mine', rect: oreRect(s, i), add: true }); } bits.push(`dig ${mat} (${v.length})`); }
     };
     const stocked = (i) => (i.k ? (i.mat ? totalsMat(s, i.k, i.mat) : totals(s, i.k)) : 1) >= i.n;

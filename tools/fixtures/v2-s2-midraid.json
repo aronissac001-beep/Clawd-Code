@@ -148,10 +148,10 @@
  },
  "ms": 33664,
  "rebaselined": {
-  "commit": "fafaaa9",
+  "commit": "bff98d5",
   "dirty": true,
-  "date": "2026-11-21",
-  "note": "",
+  "date": "2026-11-27",
+  "note": "W0.5 haul: landing only when it can take the stack, top-ups of 6 within 5 tiles (re-baseline allowed by 12.1)",
   "hour": {
    "tick": 417133,
    "hash": "2a1a9a74e429d8ee",
@@ -238,7 +238,7 @@
   },
   "day": {
    "tick": 430933,
-   "hash": "5890127b5ebb884d"
+   "hash": "a9168326425067d4"
   },
   "checks": {
    "reloadAtHourSameDayHash": true,

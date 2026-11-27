@@ -130,7 +130,7 @@ export function jobText(c) {
   if (c.breakState) return 'Having a break';
   // an idle colonist found nothing their roles allow (think fell through to wandering): say so, the
   // usual answer to "why is she standing there?" is a role (Colony > Work)
-  if (!c.job || c.job.type === 'idle') return 'Idle: no role work';
+  if (!c.job || c.job.type === 'idle') { const r = c.role && c.role[0] && !c.custom ? def('role', c.role[0]) : null; return r ? `Idle: no ${r.name} work` : 'Idle: no role work'; }
   return JOB_TEXT[c.job.type] || c.job.type.charAt(0).toUpperCase() + c.job.type.slice(1);
 }
 /** "Mason, Apprentice": the profession title from the best skill, with its rank. */

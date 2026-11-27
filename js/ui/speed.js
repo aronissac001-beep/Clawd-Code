@@ -1,11 +1,13 @@
 // The speed button (owner I; doc 10.7). Tap: pause or resume. Hold 250 ms: a fan of four 48 pt
 // buttons (1x, 2x, 3x, 5x) arcs above it; slide onto one and release, or tap one. The button shows
-// the speed as 1-3 chevrons (5x: three chevrons and a dot) and an amber ring when paused. 5x is
+// its state in words ("II" paused, "1x" ... "5x") and an amber ring when paused. 5x is
 // greyed with its reason while blocked (D3). Speed is not sim state: the shell owns it.
-import { h, icon } from './kit.js';
+import { h } from './kit.js';
 import { SIZES } from './layout.js';
 
 export const SPEED_STEPS = Object.freeze([1, 2, 3, 5]);
+/** The speed button's face: "II" when paused (speed 0), else "1x", "2x", "3x" or "5x". */
+export const speedFace = (v) => (v > 0 ? `${v}x` : 'II');
 const R = 118;                         // fan radius (pt): 48 pt buttons, 26 degrees apart, chord 53 pt
 const ANGLES = [90, 64, 38, 12];       // degrees above the horizontal, from straight up towards the bar
 
@@ -18,7 +20,7 @@ export class SpeedButton {
     this.opt = opt;
     this.last = 1;                     // the speed a tap resumes to
     this.btn = h('button.ec-speed', { type: 'button', 'data-act': 'speed', 'aria-label': 'Speed' });
-    this.face = h('span.ec-speed-face');
+    this.face = h('span.ec-speed-face', { style: { fontSize: '18px', fontWeight: '700', letterSpacing: '0.02em', fontVariantNumeric: 'tabular-nums' } });
     this.btn.append(this.face);
     host.append(this.btn);
     this.scrim = h('div.ec-fan-scrim', { hidden: true });
@@ -112,8 +114,8 @@ export class SpeedButton {
   }
   render() {
     const v = this.speed, shown = v || this.last;
-    const n = shown >= 3 ? 3 : shown;
-    this.face.innerHTML = Array.from({ length: n }, () => icon('chev', 'chev')).join('') + (shown === 5 ? '<i class="dot"></i>' : '');
+    // the face shows the state in words (W0.2, EMBERCROWN-WORLD.md 8.1, 11 item 5): "II" paused, else "1x" ... "5x"
+    this.face.textContent = speedFace(v);
     this.btn.classList.toggle('paused', v === 0);
     this.btn.setAttribute('aria-label', v === 0 ? `Paused (tap to resume at ${shown}x, hold for speeds)` : `Speed ${v}x (tap to pause, hold for speeds)`);
     this.btn.dataset.speed = String(v);
