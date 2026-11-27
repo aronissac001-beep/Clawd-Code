@@ -367,7 +367,7 @@ const SIGNS = {
 function sign(K, key, x, y, z, w, h, cw = 128, ch = 128, o = {}) {
   const t = canvasTex(key, cw, ch, SIGNS[key]); if (!t) return;
   const mat = new THREE.MeshLambertMaterial({ map: t, transparent: !!o.alpha, alphaTest: o.alpha ? 0.3 : 0, depthWrite: !o.alpha });
-  lmesh(K, new THREE.PlaneGeometry(w, h), mat, x, y, z, 0);
+  lmesh(K, new THREE.PlaneGeometry(w, h), mat, x, y, z, K.flip ? PI : 0); // (a mirrored site turns local yaws round: keep it facing out)
 }
 /** the bunker's front: pilasters, a plinth and a cornice break the long wall into bays; formwork joints, vent grilles,
  *  conduits on brackets with a valve, wall lamps, signs and a stencil, hazard bands, sandbags and a camo net over the
