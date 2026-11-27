@@ -165,6 +165,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - **Switch** (tap it), **Splitter** (one in, three out), **Day/Night Timer** (passes power only at night, or only by day) and **Motion Sensor** (passes power while someone is within 9 m; it can ignore you and your friends).
   - **Using power:**
     - The **Ceiling Light** (5 W) hangs from the floor above, or stands on a pole outdoors.
+    - At night a lit light pools on the floor under it (a floodlight lights the ground where its beam lands), and indoors the night sky dims, so a lit room looks lit.
     - The **Floodlight** (10 W) now needs power. Floodlights from older saves keep their own battery.
     - The **Electric Furnace** (25 W) smelts ore faster than a furnace and burns no wood.
     - The **Door Controller** (2 W) opens the door or gate next to it and holds it open; when the power goes, the door shuts. Wire it after a switch or a motion sensor.
@@ -263,7 +264,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
   - They duck into cover to reload or when badly hurt.
   - When they lose you, they search your last position and sweep the area before returning to post. Idle guards glance around and stroll.
 - **AI survivors:** bots that play like other players. They gather, craft, build their own bases, loot, hunt, fight, hold grudges and chat. Some are friendly and can join your team; some shoot on sight. They pause to look around between jobs and face you when they talk.
-  - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler and smelt ore in their furnace.
+  - **They progress over the days.** They make better tools, guns, armour and ammo as they find blueprints and build workbenches. They loot crates, roadside barrels and, once better armed, the tougher monuments. They take spare components and valuables to a recycler (they load it, switch it on and wait by it for the output, like you do) and smelt ore in their furnace.
   - **Their bases grow:** a small house, then a second storey up the stairs, then stone, then an annex with a big box, then sheet metal. They rebuild lost pieces, keep their cupboard stocked for upkeep and store loot in their boxes.
   - **Raids are rare, and you get a warning.** A hostile survivor only comes for your base once it has stockpiled enough satchels to blow the cheapest way in to your cupboard. You hear a rumour while it stocks up, and it announces the raid at dusk. There's at most one survivor raid every four days, and none before day 5. Even when it's ready, a raider only goes on some nights.
   - **Their stuff is lootable:** get inside a survivor's base and you can open its boxes and cupboard. They won't like it.
@@ -277,7 +278,7 @@ Zonefall 4 is a full first-person remake with a bright, cel-shaded comic-book lo
 - **Events:**
   - Airdrops, supply signals, and a patrol gunship you can shoot down.
   - **Locked-crate drop:** now and then from day 3, a twin-rotor transport helicopter flies a locked crate to one of the guarded monuments and lowers it on a line (a red smoke marks it, and it shows on the map). Hacking it takes two minutes, while the site's garrison comes for you and the transport flies in a squad of heavy scientists to take it back.
-  - **Armoured patrol:** now and then from day 4, an APC patrols a stretch of the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
+  - **Armoured patrol:** now and then from day 4, an APC patrols a stretch of the ring road and shoots anyone it sees with its machine gun and cannon. Bullets barely scratch it; rockets and C4 stop it. Walls built across its road don't stop it for long: it slows, stops against them and rams them until they give (armoured ones make it turn back). Its wreck burns, with an elite and two military crates beside it. Out of patience after a while, it leaves.
   - Co-op: the host runs every event and friends see the same helicopters, crates, squads, patrol and wreck. Anyone can hack a locked crate.
 - **Loot everywhere:** loot tables now include tools, the bow, boomstick, armour, bags, satchels and every blueprint. Containers restock faster, and there are more stashes.
 - **Roadside loot** comes in small clusters every so often along the roads, like in Rust: three things to loot, always including a crate, sometimes beside a wrecked car, with empty stretches in between.
@@ -365,7 +366,7 @@ src/world/monuments_tall.js   multi-storey monuments (height-aware floors, stair
 src/world/monuments_sea.js    the oil rig (offshore; placed in gen.js past the cargo ship's ring)
 src/world/monuments_bunker.js the Nuclear Bunker's layout (the hill, the rooms, the silo, the compound)
 src/bunker.js          the Nuclear Bunker at runtime: the launch puzzle, the silo, the controller, the strike, fallout, co-op
-src/gfx/fx_nuke.js     the strike's visuals: missile trail and flare, blast, mushroom cloud (drawn pulled in, seen from anywhere)
+src/gfx/fx_nuke.js     the strike's visuals: missile trail and flare, blast, mushroom cloud (real size and place, drawn past the far plane, so hills hide them)
 src/profile.js         profile + character creator
 src/vehicles.js        buggies, motorcycles, minicopters, boats, horses: physics, controls, fuel, damage, respawns, co-op sharing (horse + motorcycle models: src/gfx/models_mounts.js)
 src/train.js           railway: track, halts, the train (moving decks you can ride), cargo
