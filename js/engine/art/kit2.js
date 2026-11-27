@@ -29,6 +29,8 @@ export const TOP2 = {
   addon: 12, winch: 16, cellbed: 6, slab: 14,
   // Z4 (Z4_PARTS): the hand pump and the floodgate sluice
   pump: 14, sluice: 6,
+  // W0.3: the raising bridge (lowered deck; raised it stands 14 px)
+  liftbridge: 14,
 };
 
 // ---- Shared pieces ----------------------------------------------------------------------------------
@@ -511,6 +513,50 @@ export const PARTS2 = {
     for (const y of [4, 8, 12]) { p.hl(3, y, 10, ir[2]); p.px(4, y, ir[3]); p.px(11, y, ir[3]); }
     p.rect(1, -5, 14, 3, RAMP.darkwood[1]); p.hl(1, -5, 14, RAMP.darkwood[3]); p.vl(7, -4, 6, ir[2]); p.vl(8, -4, 6, ir[0]);
     p.hl(3, 15, 10, P.shallow);
+  },
+  // ---- W0.3: the raising bridge (R3 2.8) ----------------------------------------------------------------
+  // A 1 x 3 deck between two stone hinge blocks, its long axis the way folk cross (rot 0/2 north-south, 1/3
+  // east-west). o.open is the RAISED state (the lever holds it locked): the deck stands up as a banded timber
+  // wall on its hinges with taut chains, and the channel shows dark and wet beneath it. Lowered (o.open 0) it
+  // is a plank deck on iron rails with a strip of water either side and the slack chains coiled at the ends.
+  liftbridge(p, o) {
+    const W = o.W || 16, Hh = o.H || 48, w = RAMP.wood, dw = RAMP.darkwood, ir = RAMP.iron, g = RAMP.granite;
+    const ns = Hh >= W, L = ns ? Hh : W;
+    // (u along the crossing, v across it, 0-15) -> footprint px
+    const R = (u, v, lu, lv, c) => (ns ? p.rect(v, u, lv, lu, c) : p.rect(u, v, lu, lv, c));
+    const D = (u, v, lu, lv, c, lvl) => (ns ? p.dither(v, u, lv, lu, c, lvl) : p.dither(u, v, lu, lv, c, lvl));
+    const hinge = (u) => { if (ns) block(p, 0, u, 16, 4, g); else block(p, u, 0, 4, 16, g); };
+    if (!o.open) {
+      R(0, 0, L, 16, P.deep); R(0, 1, L, 1, P.shallow); R(0, 14, L, 1, P.water);
+      R(4, 2, L - 8, 12, w[2]);
+      for (let u = 6; u < L - 5; u += 3) R(u, 2, 1, 12, w[0]);
+      for (let u = 5; u < L - 5; u += 6) R(u, 7, 1, 1, w[3]);
+      R(4, 2, L - 8, 1, ir[2]); R(4, 13, L - 8, 1, ir[0]);
+      for (let u = 6; u < L - 5; u += 8) { R(u, 2, 1, 1, ir[3]); R(u, 13, 1, 1, ir[3]); }
+      hinge(0); hinge(L - 4);
+      for (const u of [1, L - 3]) { R(u, 3, 2, 1, ir[1]); R(u, 12, 2, 1, ir[1]); R(u + 1, 4, 1, 1, ir[2]); R(u + 1, 11, 1, 1, ir[2]); }
+      return;
+    }
+    // raised: the open channel under it, the deck on end as a wall
+    R(0, 0, L, 16, P.night); D(0, 0, L, 16, P.deep, 8); R(0, 6, L, 1, P.shallow);
+    hinge(0); hinge(L - 4);
+    if (ns) {
+      // seen from the south: the top edge runs north-south, the south end face is the planked front
+      p.rect(4, -10, 8, Hh - 2, w[1]); p.vl(4, -10, Hh - 2, w[3]); p.vl(11, -10, Hh - 2, w[0]);
+      for (let y = -7; y < Hh - 14; y += 3) p.hl(5, y, 6, w[0]);
+      for (let y = -4; y < Hh - 14; y += 12) { p.hl(4, y, 8, ir[2]); p.px(5, y, ir[3]); p.px(10, y, ir[3]); }
+      p.rect(4, Hh - 12, 8, 12, dw[1]); p.hl(4, Hh - 12, 8, dw[3]); p.vl(7, Hh - 11, 11, dw[0]); p.vl(9, Hh - 11, 11, dw[0]);
+      for (const y of [Hh - 9, Hh - 4]) p.hl(4, y, 8, ir[2]);
+      p.line(1, 1, 4, -6, ir[1]); p.line(14, 1, 11, -6, ir[1]);
+      p.line(1, Hh - 3, 4, Hh - 11, ir[1]); p.line(14, Hh - 3, 11, Hh - 11, ir[1]);
+    } else {
+      // seen from the south: a long planked face with a lit top edge, iron bands and bolts
+      p.rect(2, -6, W - 4, 2, w[3]); p.rect(2, -4, W - 4, 13, w[1]);
+      for (let x = 4; x < W - 3; x += 3) p.vl(x, -4, 13, w[0]);
+      for (const y of [-1, 5]) { p.hl(2, y, W - 4, ir[2]); for (let x = 5; x < W - 3; x += 8) p.px(x, y, ir[3]); }
+      p.hl(2, 9, W - 4, dw[0]); p.vl(2, -6, 15, w[2]); p.vl(W - 3, -6, 15, w[0]);
+      p.line(1, 2, 4, -6, ir[1]); p.line(W - 2, 2, W - 5, -6, ir[1]);
+    }
   },
 };
 

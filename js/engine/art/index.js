@@ -26,6 +26,7 @@
 import { TILE, TER, W, H } from '../../game/core/grid.js';
 import { CONTENT } from '../../data/index.js';
 import { buildWork } from '../../game/work/construct.js';
+import { bridgeRaised } from '../../game/world/fluids.js';
 import * as SP from '../sprites.js';
 import { fireCold } from '../render/kit.js';
 import { PAL, RAMP, rampOf } from './palette.js';
@@ -202,7 +203,7 @@ export function entryFor(defId, key, getState) {
         if (b.st === 'frame') drawProgress(g, x + T / 2, y + 6, progressOf(b));
         return;
       }
-      o.mat = b.mat; o.rot = b.rot | 0; o.open = DOORISH.has(b.def) && doorOpen(st, b); o.v = variantOf(b);
+      o.mat = b.mat; o.rot = b.rot | 0; o.open = DOORISH.has(b.def) ? doorOpen(st, b) : b.def === 'liftbridge' && !!st && bridgeRaised(st, b); o.v = variantOf(b);
       o.mask = WALLISH.has(b.def) ? wallMask(st, b) : 0;
       // a fire that is out (no fuel, or the ruin of a fallen hold) shows ash and no flame
       o.cold = !!flameAt && b.st === 'done' && fireCold(st, b);

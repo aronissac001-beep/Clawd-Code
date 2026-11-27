@@ -140,6 +140,13 @@ export function peekContent(ctx, sel) {
     const rid = roomAt(s, idx(b.x, b.y, b.z | 0));
     let sub = buildingStatus(s, b);
     if (b.st === 'done' && hasFlag(d, 'door') && (hasFlag(d, 'lockable') || b.link !== null)) { try { sub = `${GATE_WORD[gateMode(s, b)] || 'Closed'}${b.link !== null && b.link !== undefined ? ' · linked to a lever' : ''}`; } catch (_) { /* before Stage 2 */ } }
+    // W0.3: the raising bridge (raised while its lever holds it locked) and the floodgate (shut unless held open)
+    if (b.st === 'done' && (hasFlag(d, 'liftbridge') || hasFlag(d, 'floodgate'))) {
+      try {
+        const m = gateMode(s, b), lk = b.link !== null && b.link !== undefined ? ' · on a lever' : ' · no lever';
+        sub = (hasFlag(d, 'liftbridge') ? (m === 2 ? 'Raised · channel sealed' : 'Lowered · water passes') : (m === 1 ? 'Open · water flows' : 'Shut · holds water')) + lk;
+      } catch (_) { /* before Stage 2 */ }
+    }
     if (b.st === 'done' && (hasFlag(d, 'lever') || hasFlag(d, 'plate'))) { try { const n = linksOf(s, b.id).length; const m = mechState(s, b.id); sub = `${n} linked${hasFlag(d, 'lever') ? ` · holds them ${(GATE_WORD[m] || 'closed').toLowerCase()}` : ''}`; } catch (_) { /* before Stage 2 */ } }
     if (burning(s, idx(b.x, b.y, b.z | 0))) sub = 'On fire! · ' + sub;
     const rw = b.st === 'done' && !hasFlag(d, 'wall') && !hasFlag(d, 'door') ? roomWord(s, idx(b.x, b.y, b.z | 0)) : null;

@@ -148,7 +148,7 @@ const STAGEZ2 = [
   ['winch', 'winch', 'wood', 1, 1], ['cellbed', 'cellbed', 'stone', 1, 2], ['memorial_slab', 'slab', 'stone', 1, 1],
 ];
 // Stage Z4 (kit2.js, Z4_PARTS): water engineering, the hand pump and the floodgate.
-STAGEZ2.push(['pump', 'pump', 'stone', 1, 1], ['floodgate', 'sluice', 'stone', 1, 1]);
+STAGEZ2.push(['pump', 'pump', 'stone', 1, 1], ['floodgate', 'sluice', 'stone', 1, 1], ['liftbridge', 'liftbridge', 'wood', 1, 3]);
 for (const [id, base, tint, w, h] of STAGEZ2) add(`struct.${id}`, { kind: 'struct', base, props: [], tint, size: [w, h], stage: '2', label: id });
 /** Stage 2 floors (the floor layer): road, bridge, tiled and carpet floors (ground.js paints them). */
 for (const [id, base, tint, label] of [['road', 'cobbles', 'stone', 'Road'], ['bridge', 'deck', 'wood', 'Bridge'], ['f_brick', 'bricks', 'stone', 'Tiled floor'], ['f_carpet', 'carpet', 'wood', 'Carpet']]) {
@@ -247,7 +247,7 @@ export const STAGE2_PARTS = Object.freeze(['shell', 'kiln', 'stove', 'mill', 'va
 /** The kit parts Stage Z2 added (kit2.js): the add-ons, the winch, the cell bed and the memorial slab. */
 export const Z2_PARTS = Object.freeze(['addon', 'winch', 'cellbed', 'slab']);
 /** The kit parts Stage Z4 added (kit2.js): the hand pump and the floodgate sluice. */
-export const Z4_PARTS = Object.freeze(['pump', 'sluice']);
+export const Z4_PARTS = Object.freeze(['pump', 'sluice', 'liftbridge']);
 /** Every kit part name a key uses (base and props); kit.js / ground.js / people.js / marks.js implement them all. */
 export const KIT_PARTS = Object.freeze([...new Set(Object.values(ART).flatMap((m) => [m.base, ...m.props]))].sort());
 

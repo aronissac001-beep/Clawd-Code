@@ -74,6 +74,7 @@ function defaultPass(s, b) {
   if (b.st !== 'done') return OPEN;      // blueprints and frames never block (E may change this)
   const d = structDef(b.def);
   if (d) {
+    if (hasFlag(d, 'liftbridge')) return doorMode(s, b) === 2 ? LOCKED : OPEN;   // W0.3: lowered a floor, raised a wall
     if (hasFlag(d, 'door')) { const m = doorMode(s, b); return m === 1 ? HELD_OPEN : m === 2 ? LOCKED : DOOR; }
     if (hasFlag(d, 'wall')) return WALL;
     if (hasFlag(d, 'support')) return POST;
