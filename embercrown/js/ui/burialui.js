@@ -13,9 +13,9 @@ import { h, onTap, clear } from './kit.js';
 import { structDef, hasFlag } from '../game/core/content.js';
 import * as DEATH from '../game/people/death.js';
 
-const ROW = { minHeight: '44px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', padding: '4px 0', borderBottom: '1px solid rgba(201, 151, 62, 0.18)' };
+const ROW = { minHeight: '44px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--fs-2)', padding: '4px 0', borderBottom: '1px solid var(--line-faint)' };
 const SUB = { fontSize: '14px', opacity: '0.82' };
-const BTN = { minHeight: '44px', minWidth: '72px', width: 'auto', flex: '0 0 auto', fontSize: '15px', padding: '0 14px' };
+const BTN = { minHeight: '44px', minWidth: '72px', width: 'auto', flex: '0 0 auto', fontSize: 'var(--fs-2)', padding: '0 14px' };
 
 const list = (names) => (names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', '));
 

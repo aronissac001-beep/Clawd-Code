@@ -15,8 +15,8 @@ import { COMMANDS } from '../game/core/commands.js';
 import * as O from '../game/colony/offices.js';
 
 const ROW = { minHeight: '44px' };
-const CARD = { border: '1px solid rgba(201, 151, 62, 0.28)', borderRadius: '10px', padding: '10px 12px', margin: '10px 0', background: 'rgba(0, 0, 0, 0.16)' };
-const MET = { color: '#9cc27a', fontWeight: '650' }, UNMET = { color: '#e08a6a', fontWeight: '650' };
+const CARD = { border: '1px solid var(--line-soft)', borderRadius: 'var(--r-lg)', padding: '10px 12px', margin: '10px 0', background: 'var(--surface-2)', boxShadow: 'var(--bevel)' };
+const MET = { color: 'var(--good)', fontWeight: '650' }, UNMET = { color: 'var(--bad-text)', fontWeight: '650' };
 /** What the Steward's add list offers (those the data has). */
 export const TARGET_KINDS = Object.freeze(['meal', 'finemeal', 'block', 'brick', 'cloth', 'bandage', 'ale']);
 const STEP = 10;
@@ -104,7 +104,7 @@ function targetsView(s, ctx, draw, live) {
   for (const p of plan) {
     const bench = p.benchDef ? (def('structure', p.benchDef) || { name: p.benchDef }).name : null;
     const sub = `Keep ${p.n}; ${O.stockLabel(s, p.stock)} in stock. ${p.why ? (p.why === 'no Steward' ? 'Waiting for a Steward.' : 'No bench in the hold can make it.') : `A bill at the ${bench.toLowerCase()}.`}`;
-    el.append(h('div.ec-target', { 'data-target': p.key, style: { padding: '4px 0', borderBottom: '1px solid rgba(201, 151, 62, 0.1)' } },
+    el.append(h('div.ec-target', { 'data-target': p.key, style: { padding: '4px 0', borderBottom: '1px solid var(--line-faint)' } },
       h('span.ec-ruler-t', { text: p.name }), h('span.ec-bio-d', { text: sub, style: { display: 'block', margin: '0 0 4px' } })));
     if (ctx) el.append(h('div.ec-rchips', { style: { justifyContent: 'flex-start' } },
       btn(`-${STEP}`, 'target-less', () => { send(ctx, { t: 'stockTarget', k: p.k, ...(p.m ? { m: p.m } : {}), n: Math.max(0, p.n - STEP) }, `Keep ${Math.max(0, p.n - STEP)} ${p.name.toLowerCase()}.`); draw(); }),
