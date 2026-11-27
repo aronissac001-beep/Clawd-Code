@@ -18,7 +18,6 @@
 // and the raider flow field (cheapest path to the Tool Cupboard).
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
-import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { G } from './state.js';
 import { CELL, FOUND_H, WALL_H, STOREY, MAX_ST, TIER, TIERS, PIECES, DOORS, HIGHWALLS, DEPLOY, TC_RANGE, OVENS, ITEMS, UPKEEP, DECAY } from './data.js';
 import { Inv, scaleCost } from './inventory.js';
@@ -1171,9 +1170,9 @@ function bakeObjects(objs) {
     const was = root.visible; root.visible = true; root.updateMatrixWorld(true);
     root.traverse(o => {
       if (!o.isMesh) return;
-      let g = o.geometry.clone().applyMatrix4(o.matrixWorld); if (g.index) { const n = g.toNonIndexed(); g.dispose(); g = n; }
-      const m = o.material; for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k) || (k === 'color' && !m.vertexColors)) g.deleteAttribute(k);
-      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      const g = o.geometry.clone().applyMatrix4(o.matrixWorld); // stays indexed (shared corners stored once)
+      const m = o.material, uv = M.usesUv(m); for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k) || (k === 'color' && !m.vertexColors) || (k === 'uv' && !uv)) g.deleteAttribute(k);
+      if (uv && !g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       if (!g.attributes.normal) g.computeVertexNormals();
       if (!byMat.has(m)) byMat.set(m, []); byMat.get(m).push(g);
     });
@@ -1181,11 +1180,11 @@ function bakeObjects(objs) {
   }
   const out = new THREE.Group(); out.name = 'baked-pieces';
   for (const [m, list] of byMat) {
-    let merged = null; try { merged = mergeGeometries(list, false); } catch (e) { merged = null; }
+    let merged = null; try { merged = M.mergeIndexed(list); } catch (e) { merged = null; }
     for (const g of list) g.dispose();
     if (!merged) { disposeBaked(out); return null; }
     const mesh = new THREE.Mesh(merged, m); mesh.castShadow = true; mesh.receiveShadow = true; out.add(mesh);
   }
-  return out;
+  return M.gpuOnly(out); // rebaked from the pieces whenever the region changes: the GPU copy is all it needs
 }
 function disposeBaked(g) { g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }

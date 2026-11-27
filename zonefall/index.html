@@ -496,6 +496,14 @@ body.touch.driving #prompt{display:none!important}
 .tt-bar button{white-space:nowrap;padding:7px 12px;min-height:40px}
 .tt-foot{margin:0}
 @media (max-height:430px){ .sheet.tech{width:calc(100vw - 12px - var(--sal) - var(--sar))} .sheet.tech .sh-body{padding:5px 7px}.tt{gap:4px}.tt-top button{padding:3px 9px}.tt-root{display:none}.tt-n{min-height:38px;padding:2px 5px;border-bottom-width:3px}.tt-n img{width:26px;height:26px}.tt-n b{font-size:11px;line-height:1.05}.tt-n small{font-size:10px}.tt-link{height:6px}.tt-link.top{height:4px}.tt-br{margin:0 0 2px}.tt-foot{display:none}.tt-bar{padding:3px 7px;gap:6px}.tt-bar img{width:30px;height:30px}.tt-bt small{font-size:10.5px}.tt-bar button{min-height:36px;padding:5px 10px} }
+/* touch targets: small buttons keep their look but also take taps a few px around them (iPhone fingers) */
+#sheet button,#menu button,#death button,#buildbar button,.sb{position:relative}
+#sheet button::after,#menu button::after,#death button::after,#buildbar button::after,.sb::after{content:'';position:absolute;inset:-7px 0}
+#tut .sk{position:relative;padding:2px 4px}#tut .sk::after{content:'';position:absolute;inset:-10px -8px}
+.settings label{min-height:34px}.settings input[type=checkbox]{width:24px;height:24px;flex:none;accent-color:#ffb21e;margin:0}
+.settings input[type=range]{accent-color:#ffb21e;height:30px}.settings select{min-height:34px;border:3px solid var(--ink);border-radius:6px;background:#fff6e2;color:var(--ink);font-weight:700;padding:2px 6px}
+.coop .st:empty{visibility:hidden}
+@media (orientation:landscape) and (max-height:560px) and (max-width:720px){.home .mbtns button{font-size:13.5px;padding:6px 4px;white-space:normal;line-height:1.15;min-height:44px}.home .logo p{font-size:9.5px;letter-spacing:1px}}
 </style>
 </head>
 <body>

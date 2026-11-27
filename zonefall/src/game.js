@@ -47,7 +47,22 @@ const WORLD_V = 4; // bump when the island generator changes (old bases would la
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 
+/** a new island replaces the old one: free the GPU buffers of what the old one drew. A geometry still in the scene
+ *  (the sky, rain) is kept; a shared model geometry is safe to free too (it still has its arrays and uploads again
+ *  when it's next drawn), and the per-island merged ones (sites, terrain: GPU-only) are never reused. */
+function freeOld(gone) {
+  if (!gone.length) return;
+  const live = new Set(); G.scene.traverse(o => { if (o.geometry) live.add(o.geometry); if (o.isInstancedMesh) live.add(o); });
+  const done = new Set();
+  for (const root of gone) root.traverse(o => {
+    if (o.isInstancedMesh && !live.has(o) && !done.has(o)) { done.add(o); try { o.dispose(); } catch (e) { } }
+    const g = o.geometry; if (!g || live.has(g) || done.has(g)) return; done.add(g);
+    g.dispose();
+  });
+}
+
 export const Game = {
+  worldV: WORLD_V,
   init(canvas) {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
@@ -107,7 +122,10 @@ export const Game = {
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
     // scene: clear everything except lights / fx clouds
     const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), G.precip.rain.obj, G.precip.snow.obj, ...(G.keepObjs || [])]);
-    for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
+    const gone = []; for (const o of [...G.scene.children]) if (!keep.has(o)) { G.scene.remove(o); gone.push(o); }
+    // let go of the old island before the new one is built, so the two never sit in memory together
+    freeOld(gone); gone.length = 0; try { G.rend.r.renderLists.dispose(); } catch (e) { }
+    G.W = G.terrain = G.cull = G.phys = G.train = G.vehicles = G.mapCanvas = null; G.decks = [];
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
@@ -160,11 +178,14 @@ export const Game = {
     for (const v of [p.inv.belt, p.inv.main]) for (const s of v.items()) inv.addStack(s);
     for (const k of ['helmet', 'armor', 'bag']) if (p.inv.equip[k]) inv.addStack(p.inv.equip[k]);
     for (const s of p.inv.arts) if (s) inv.addStack(s);
+    G.deathBag = null;
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
-    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    const o = src && src.owner, an = n => (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
+    const how = { rad: 'radiation', bleed: 'bleeding out', starve: 'starvation', thirst: 'thirst', explosion: 'an explosion', shrapnel: 'shrapnel', nuke: 'a nuclear strike', drown: 'drowning', fall: 'a fall', anomaly: 'an anomaly', cactus: 'a cactus', spikes: 'spikes', crush: 'being crushed', train: 'a train', vehicle: 'a vehicle', poison: 'poison' };
+    const by = o === p ? (how[src.kind] ? 'your own ' + how[src.kind].replace(/^an? /, '') : 'yourself') : o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def && o.def.name ? an(o.def.name) : (src && how[src.kind]) || 'the island';
     Swim.reset(p);
-    setTimeout(() => G.ui.deathScreen(by), 1400);
+    setTimeout(() => { if (G.player === p && p.dead && G.mode === 'play') G.ui.deathScreen(by); }, 1400); // (not if you already left for the menu)
     this.save();
   },
   respawnOptions() {

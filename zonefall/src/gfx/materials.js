@@ -39,7 +39,7 @@ export const PAL = {
 
 // ---------------------------------------------------------------- textures
 const texCache = {};
-function canvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d')]; }
+function canvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d', { willReadFrequently: true })]; } // painted on the CPU: inkify reads it back
 function rng(seed) { let a = seed >>> 0 || 1; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function speckle(g, n, R, count, a0, a1, light) {
   for (let i = 0; i < count; i++) {
@@ -310,46 +310,92 @@ function gpuOnly(root) {
   root.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh || o.userData.keepCpu) return; const g = o.geometry; if (!g || g.userData.gpuOnly) return;
     g.computeBoundingSphere(); g.computeBoundingBox(); g.userData.gpuOnly = true;
+    // normals as 16-bit (4 lanes keeps every vertex 4-byte aligned for Metal): 8 bytes instead of 12, no visible change
+    const N = g.attributes.normal;
+    if (N && N.itemSize === 3 && N.array instanceof Float32Array && !N.isInterleavedBufferAttribute) {
+      const a = N.array, n = N.count, q = new Int16Array(n * 4);
+      for (let i = 0; i < n; i++) { q[i * 4] = Math.round(a[i * 3] * 32767); q[i * 4 + 1] = Math.round(a[i * 3 + 1] * 32767); q[i * 4 + 2] = Math.round(a[i * 3 + 2] * 32767); }
+      g.setAttribute('normal', new THREE.BufferAttribute(q, 4, true));
+    }
     for (const k in g.attributes) g.attributes[k].onUpload(dropArray); if (g.index) g.index.onUpload(dropArray);
   });
   return root;
 }
+const UV_MAPS = ['map', 'alphaMap', 'aoMap', 'bumpMap', 'emissiveMap', 'lightMap', 'normalMap', 'specularMap', 'displacementMap'];
+function usesUv(m) { return !m || Array.isArray(m) || !(m.isMeshLambertMaterial || m.isMeshBasicMaterial) || UV_MAPS.some(k => m[k]); }
+/** merge geometries into one indexed geometry (non-indexed parts get a plain 0..n-1 index); the index goes straight
+ *  into a typed array (16-bit when it fits) */
+function mergeIndexed(list) {
+  let nv = 0, ni = 0; for (const g of list) { const c = g.attributes.position.count; nv += c; ni += g.index ? g.index.count : c; }
+  const idx = nv <= 65535 ? new Uint16Array(ni) : new Uint32Array(ni);
+  let vo = 0, io = 0;
+  for (const g of list) {
+    const c = g.attributes.position.count;
+    if (g.index) { const a = g.index.array, n = g.index.count; for (let j = 0; j < n; j++) idx[io + j] = a[j] + vo; io += n; g.setIndex(null); }
+    else { for (let j = 0; j < c; j++) idx[io + j] = j + vo; io += c; }
+    vo += c;
+  }
+  const merged = mergeGeometries(list, false); if (!merged) return null;
+  merged.setIndex(new THREE.BufferAttribute(idx, 1)); return merged;
+}
 function bake(root) {
   root.updateMatrixWorld(true);
+  // pass 1: group the meshes by the material they end up with, and count
   const byMat = new Map();
   root.traverse(o => {
     if (!o.isMesh || o.userData.keep) return;
-    let g = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    if (g.index) { const ng = g.toNonIndexed(); g.dispose(); g = ng; }
-    let m = o.material;
-    if (foldable(m)) {
-      const n = g.attributes.position.count, out = new Float32Array(n * 3), c = m.color;
-      const vc = m.vertexColors && g.attributes.color ? g.attributes.color : null;
-      for (let i = 0; i < n; i++) {
-        out[i * 3] = c.r * (vc ? vc.getX(i) : 1); out[i * 3 + 1] = c.g * (vc ? vc.getY(i) : 1); out[i * 3 + 2] = c.b * (vc ? vc.getZ(i) : 1);
-      }
-      g.setAttribute('color', new THREE.BufferAttribute(out, 3));
-      m = foldMat(m);
-    }
-    if (!byMat.has(m)) byMat.set(m, []); byMat.get(m).push(g);
+    const g = o.geometry, P = g.attributes.position; if (!P || !P.count) return;
+    let m = o.material, fold = null;
+    if (foldable(m)) { fold = m.color; m = foldMat(m); }
+    let L = byMat.get(m); if (!L) { L = { parts: [], nv: 0, ni: 0 }; byMat.set(m, L); }
+    // no normals: flat-shade each triangle, so the triangles can't share corners
+    const flat = !g.attributes.normal, n = flat && g.index ? g.index.count : P.count;
+    L.parts.push({ o, g, fold, src: o.material, flat, n }); L.nv += n; L.ni += g.index ? g.index.count : P.count;
   });
-  const out = new THREE.Group();
-  for (const [m, list] of byMat) {
-    // normalise attribute sets so mergeGeometries does not fail
-    const keys = ['position', 'normal', 'uv'];
-    for (const g of list) {
-      for (const k of Object.keys(g.attributes)) if (!keys.includes(k) && !(k === 'color' && m.vertexColors)) g.deleteAttribute(k);
-      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-      if (!g.attributes.normal) g.computeVertexNormals();
-      if (m.vertexColors && !g.attributes.color) { const c = new Float32Array(g.attributes.position.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+  // pass 2: write every part, moved into place, straight into one indexed geometry per material
+  // (shared corners stay shared: a box is 24 corners, not 36; no texture means no uv buffer)
+  const out = new THREE.Group(), v = new THREE.Vector3(), nm = new THREE.Matrix3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (const [m, L] of byMat) {
+    const nv = L.nv, wantUv = usesUv(m), wantCol = !!m.vertexColors;
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = wantUv ? new Float32Array(nv * 2) : null, col = wantCol ? new Float32Array(nv * 3) : null;
+    const idx = nv <= 65535 ? new Uint16Array(L.ni) : new Uint32Array(L.ni);
+    let vo = 0, io = 0;
+    for (const q of L.parts) {
+      const g = q.g, P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, C = g.attributes.color, I = g.index;
+      const mw = q.o.matrixWorld; nm.getNormalMatrix(mw);
+      const vc = (q.fold ? q.src.vertexColors : wantCol) && C ? C : null, fc = q.fold;
+      const expand = q.flat && I; // vertex k of this part reads source vertex I[k]
+      for (let k = 0; k < q.n; k++) {
+        const s = expand ? I.getX(k) : k, o3 = (vo + k) * 3;
+        v.fromBufferAttribute(P, s).applyMatrix4(mw); pos[o3] = v.x; pos[o3 + 1] = v.y; pos[o3 + 2] = v.z;
+        if (N) { v.fromBufferAttribute(N, s).applyMatrix3(nm).normalize(); nor[o3] = v.x; nor[o3 + 1] = v.y; nor[o3 + 2] = v.z; }
+        if (uv && U) { uv[(vo + k) * 2] = U.getX(s); uv[(vo + k) * 2 + 1] = U.getY(s); }
+        if (col) {
+          const r = vc ? vc.getX(s) : 1, gg = vc ? vc.getY(s) : 1, bb = vc ? vc.getZ(s) : 1;
+          if (fc) { col[o3] = fc.r * r; col[o3 + 1] = fc.g * gg; col[o3 + 2] = fc.b * bb; } else { col[o3] = r; col[o3 + 1] = gg; col[o3 + 2] = bb; }
+        }
+      }
+      if (q.flat) { // face normals, as three's computeVertexNormals gives a plain triangle list
+        for (let k = 0; k + 2 < q.n; k += 3) {
+          const o3 = (vo + k) * 3;
+          a.fromArray(pos, o3); b.fromArray(pos, o3 + 3); c.fromArray(pos, o3 + 6);
+          c.sub(b); a.sub(b); c.cross(a).normalize();
+          for (let t = 0; t < 3; t++) { nor[o3 + t * 3] = c.x; nor[o3 + t * 3 + 1] = c.y; nor[o3 + t * 3 + 2] = c.z; }
+        }
+      }
+      if (I && !q.flat) { const ia = I.array, n = I.count; for (let k = 0; k < n; k++) idx[io + k] = ia[k] + vo; io += n; }
+      else { for (let k = 0; k < q.n; k++) idx[io + k] = vo + k; io += q.n; }
+      vo += q.n;
     }
-    let merged = null; try { merged = mergeGeometries(list, false); } catch (e) { merged = null; }
-    for (const g of list) g.dispose();
-    if (!merged) continue;
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.BufferAttribute(pos, 3)); merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    if (uv) merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    if (col) merged.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    merged.setIndex(new THREE.BufferAttribute(idx, 1));
     const mesh = new THREE.Mesh(merged, m); mesh.castShadow = true; mesh.receiveShadow = true; out.add(mesh);
   }
   return out;
 }
 
-export const M = { PAL, mat, basic, surf, box, cyl, sphere, cone, ico, add, bake, gpuOnly, texture, CUT, mergeGeometries, SURF };
+export const M = { PAL, mat, basic, surf, box, cyl, sphere, cone, ico, add, bake, gpuOnly, mergeIndexed, usesUv, texture, CUT, mergeGeometries, SURF };
 export default M;
