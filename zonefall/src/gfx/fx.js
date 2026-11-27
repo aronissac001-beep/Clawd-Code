@@ -189,13 +189,18 @@ export class FX {
   fall(obj, dirAng) { this.scene.add(obj); this.debrisList.push({ obj, t: 0, ang: dirAng }); }
   // ---------------------------------------------------------------- tick
   update(dt, cam) {
+    const B = G.build;
     for (const c of this.clouds) {
       const P = c.P; let n = 0;
       for (let i = P.length - 1; i >= 0; i--) {
         const p = P[i]; p.t += dt; if (p.t >= p.life) { P[i] = P[P.length - 1]; P.pop(); continue; }
         p.vy -= p.grav * dt; if (p.drag) { const k = Math.exp(-p.drag * dt); p.vx *= k; p.vy *= k; p.vz *= k; }
-        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-        if (p.grav && G.W) { const gy = G.W.height(p.x, p.z) + 0.03; if (p.y < gy) { p.y = gy; p.vy *= -0.2; p.vx *= 0.5; p.vz *= 0.5; } }
+        const y0 = p.y; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        if (p.grav && G.W && p.vy <= 0) { // land on the ground, or on a floor, deck or roof under it (height-aware: from where it was)
+          const gy = (B && B.floorY ? B.floorY(p.x, p.z, y0 - 0.85) : G.W.height(p.x, p.z)) + 0.03;
+          if (p.y < gy && y0 >= gy - 0.35) { p.y = gy; p.vy *= -0.2; p.vx *= 0.5; p.vz *= 0.5; }
+          else if (p.y < gy - 0.35 && G.W.height(p.x, p.z) + 0.03 > p.y) p.y = G.W.height(p.x, p.z) + 0.03; // never under the ground
+        }
       }
       for (const p of P) {
         const k = p.t / p.life; const s = p.size1 === null ? p.size : p.size + (p.size1 - p.size) * k; const a = p.a + (p.a1 - p.a) * k;
