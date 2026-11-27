@@ -31,7 +31,7 @@ import { Live } from './world/live.js';
 import { WORLD } from './world/gen.js';
 import { MAP_GRID } from './gfx/terrain.js';
 import { rand, clamp, dist } from './util.js';
-import { pull, d0 } from './gfx/fx_nuke.js';
+import { farDepth } from './gfx/fx_nuke.js';
 
 /** the strike: kills inside `core`, falls off to `r`; buildings wrecked inside structR; vehicles inside vehR */
 export const NUKE = { r: 115, dmg: 520, core: 45, struct: 9000, structR: 85, vehR: 60, nuke: true, kind: 'nuke' };
@@ -165,6 +165,8 @@ export const Bunker = {
     for (let k = 0; k < 4; k++) { const f = M.add(body, M.box(0.06, 1.5, 0.9), dark, 0, 1.0, 0); f.rotation.y = k * Math.PI / 2; f.position.x = Math.cos(k * Math.PI / 2) * 0.85; f.position.z = -Math.sin(k * Math.PI / 2) * 0.85; f.rotation.y = k * Math.PI / 2 + Math.PI / 2; }
     M.add(body, M.box(0.02, 0.9, 0.5), M.mat('#2a2c30'), 0.73, 5.6, 0); // a stencil panel
     g.remove(body); g.add(M.bake(body)); // one mesh per texture
+    // its own materials (the baked ones are shared): no fog, and drawn past the far plane like the trail (fx_nuke.js)
+    g.traverse(o => { if (o.isMesh) { o.material = farDepth(o.material.clone()); o.frustumCulled = false; } });
     return g;
   },
   controllerModel() {
@@ -403,9 +405,8 @@ export const Bunker = {
     const ms = O.missile; ms.visible = !!F || (ready && near < 320);
     if (F && this.alertId !== F.id) { this.alertId = F.id; Sfx.launchAlert(); } // everyone on the island hears the warning
     if (F) {
-      const q = this.pose(F, F.t); const cam = G.rend.camera.position; const D = d0(G.rend.camera);
-      _v.set(q.x, q.y, q.z); const k = pull(_w, _v, cam, D);
-      ms.position.copy(_w); ms.scale.setScalar(k);
+      const q = this.pose(F, F.t);
+      ms.position.set(q.x, q.y, q.z); ms.scale.setScalar(1); // real place and size (its materials draw past the far plane)
       _d.set(q.dx, q.dy, q.dz).normalize(); ms.quaternion.setFromUnitVectors(_up, _d);
       // the trail and the flare (from lift-off), smoke out of the silo before it
       if (G.fx) {
