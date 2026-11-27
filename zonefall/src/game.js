@@ -47,7 +47,22 @@ const WORLD_V = 4; // bump when the island generator changes (old bases would la
 export const DAY_LEN = 720; // seconds per full day (dawn 0.25, dusk 0.77)
 const NIGHT_START = 0.78, NIGHT_END = 0.22;
 
+/** a new island replaced the old one: free the GPU buffers of what the old one drew. A geometry the new scene still
+ *  uses is kept; a shared model geometry that isn't in the scene right now is safe to free too (it still has its
+ *  arrays and uploads again when it's next drawn), and the per-island merged ones (sites, terrain) are never reused. */
+function freeOld(gone) {
+  if (!gone.length) return;
+  const live = new Set(); G.scene.traverse(o => { if (o.geometry) live.add(o.geometry); if (o.isInstancedMesh) live.add(o); });
+  const done = new Set();
+  for (const root of gone) root.traverse(o => {
+    if (o.isInstancedMesh && !live.has(o) && !done.has(o)) { done.add(o); try { o.dispose(); } catch (e) { } }
+    const g = o.geometry; if (!g || live.has(g) || done.has(g)) return; done.add(g);
+    g.dispose();
+  });
+}
+
 export const Game = {
+  worldV: WORLD_V,
   init(canvas) {
     G.meta = Save.loadMeta(); G.settings = Save.loadSettings();
     G.rend = new Renderer(canvas, G.settings.gfx); G.scene = G.rend.scene;
@@ -107,7 +122,7 @@ export const Game = {
     for (const k of ['actors', 'projectiles', 'throwns', 'drops', 'containers', 'nodes', 'doors', 'rooms', 'rads', 'lights', 'uses', 'anomalies', 'safes', 'labels', 'spawns', 'monuments', 'events']) G[k] = [];
     // scene: clear everything except lights / fx clouds
     const keep = new Set([G.rend.hemi, G.rend.sun, G.rend.sun.target, G.rend.spot, G.rend.spot.target, ...G.rend.pool, ...G.fx.clouds.map(c => c.pts), G.precip.rain.obj, G.precip.snow.obj, ...(G.keepObjs || [])]);
-    for (const o of [...G.scene.children]) if (!keep.has(o)) G.scene.remove(o);
+    const gone = []; for (const o of [...G.scene.children]) if (!keep.has(o)) { G.scene.remove(o); gone.push(o); }
     G.W = generateWorld(seed);
     G.cull = new CullGrid(G.scene);
     G.phys = new Physics(WORLD, 4); G.decks = [];
@@ -133,6 +148,7 @@ export const Game = {
     G.mapCanvas = buildMapCanvas(G.W, 640);
     G.raid = null; G.t = 0; G.mode = 'play'; G.buildMode = null;
     G.airdrop = null; G.worldUsed = false;
+    freeOld(gone);
   },
   afterSpawn(snap) {
     const p = G.player; G.rend.setFP(p.x, p.y + 1.62, p.z, p.yaw ?? p.ang, 0, 0, 0);

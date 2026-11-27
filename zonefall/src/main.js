@@ -9,6 +9,7 @@ import { Cargo } from './cargo.js';
 import { G } from './state.js';
 import { ITEMS } from './data.js';
 import { Game } from './game.js';
+import { Save } from './save.js';
 import { UI, setUiModels } from './ui.js';
 import { Tut } from './tutorial.js';
 import { setActorModels } from './actors.js';
@@ -54,7 +55,7 @@ async function boot() {
   if (skyMod && skyMod.Sky) { try { const before = new Set(G.scene.children); G.rend.sky = new skyMod.Sky(G.scene); G.keepObjs = G.scene.children.filter(o => !before.has(o)); } catch (e) { console.warn('sky failed', e); G.rend.sky = null; } }
   if (vmMod && vmMod.ViewModel) { try { G.vm = new vmMod.ViewModel(chars ? { makeHeld: chars.makeHeld, HELD_INFO: chars.HELD_INFO } : null); G.rend.overlay = { active: () => !!(G.vm && !G.vm.hidden && G.mode === 'play'), render: (r, aspect) => { if (G.vm && !G.vm.hidden && G.mode === 'play') G.vm.render(r, aspect, G.rend.camera); }, get camera() { return G.vm ? G.vm.camera : null; } }; } catch (e) { console.warn('viewmodel failed', e); G.vm = null; } }
   // a world for the title-screen flyover
-  let seed = (Math.random() * 1e9) | 0; try { const sv = JSON.parse(localStorage.getItem('zonefall_run_v3')); if (sv && sv.run) seed = sv.run.seed; } catch (e) { }
+  let seed = (Math.random() * 1e9) | 0; const sv = Save.load(); if (sv && sv.run && sv.run.worldV === Game.worldV) seed = sv.run.seed; // the saved island, so Continue doesn't build it again
   try { Game.setupWorld(seed); } catch (e) { console.error(e); }
   G.mode = 'menu';
   UI.init();

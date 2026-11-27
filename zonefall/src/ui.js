@@ -1394,7 +1394,7 @@ export const UI = {
     const go = fn => () => { Sfx.unlock(); m.classList.add('hidden'); fn(); };
     const needProfile = fn => () => { if (!(Profile.data || Profile.load()).created) openCreator(this, { first: true, onDone: () => { this.menu(); fn(); } }); else fn(); };
     if (has) $('#m-cont').onclick = needProfile(go(() => this.loading(() => G.game.continueRun())));
-    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start on a new island? Your current island and base will be lost.')) return; go(() => this.loading(() => G.game.newRun()))(); });
+    $('#m-new').onclick = needProfile(() => { if (has && !confirm('Start on a new island? Your current island and base will be lost.')) return; go(() => this.loading(() => G.game.newRun(has ? ((Math.random() * 1e9) | 0) || 1 : 0)))(); }); // the title island is the saved one: a new game gets a new island
     $('#m-coop').onclick = needProfile(() => this.openCoop());
     $('#m-prof').onclick = () => openCreator(this, { onDone: () => this.menu() });
     $('#m-help').onclick = () => this.helpScreen();
