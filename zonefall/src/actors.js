@@ -4,7 +4,7 @@
 // ============================================================================
 import { THREE, M } from './gfx/materials.js';
 import { G } from './state.js';
-import { ENEMIES, ITEMS } from './data.js';
+import { ENEMIES, ITEMS, rollNpcAtt } from './data.js';
 import { Build } from './build.js';
 import { canOpen, openDoor } from './doors.js';
 import { SOLID } from './physics.js';
@@ -54,7 +54,8 @@ export function spawnActor(type, x, z, opts = {}) {
   };
   if (def.armor) a.armor = rand(def.armor[0], def.armor[1]);
   if (def.helm) a.helm = Math.random() < def.helm ? 1 : 0;
-  if (def.guns) { const gid = pick(def.guns); a.gun = { id: gid, ammo: 999 }; a.held = gid; }
+  // a gun and its attachments, rolled now so they show from the start (co-op mirrors get theirs from the host)
+  if (def.guns) { const gid = pick(def.guns); a.gun = { id: gid, ammo: 999, att: opts.noAtt ? null : rollNpcAtt(type, gid) }; a.held = gid; }
   else if (def.heldMelee) a.held = def.heldMelee;
   else if (def.rocket) { a.gun = { id: 'rocket_launcher', ammo: 999 }; a.held = 'rocket_launcher'; }
   if (opts.boss || def.boss) { a.boss = true; }
@@ -64,7 +65,7 @@ export function spawnActor(type, x, z, opts = {}) {
   a.lookSpec = def.kind === 'animal' ? null : (opts.look || def.look || 'survivor'); // for co-op mirrors
   const look = Models && Models.LOOKS && Models.LOOKS[def.look];
   if (look && look.scale) a.rig.root.scale.setScalar(look.scale);
-  if (a.held) try { a.rig.setHeld(a.held); } catch (e) { }
+  if (a.held) try { a.rig.setHeld(a.held, a.gun && a.gun.id === a.held ? a.gun.att : null); } catch (e) { }
   a.rig.root.position.set(x, a.y, z);
   G.scene.add(a.rig.root);
   G.actors.push(a);

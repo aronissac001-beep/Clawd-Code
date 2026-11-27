@@ -24,7 +24,7 @@ import { Inv } from './inventory.js';
 import { spawnActor, removeActor } from './actors.js';
 import { spawnProjectile } from './combat.js';
 import { removeDoor } from './doors.js';
-import { WEAPONS, CONTAINERS, ENEMIES } from './data.js';
+import { WEAPONS, CONTAINERS, ENEMIES, ATTACH, ATT_SLOTS, attAllowed } from './data.js';
 import { Sfx } from './audio.js';
 import { clamp, lerp } from './util.js';
 import { Cargo } from './cargo.js';
@@ -60,6 +60,7 @@ export const NW = {
   known: null,            // last world state agreed with the host (both roles)
   diffT: 0, actT: 0, trainT: 0,
   sent: new Map(),        // host: guestId -> Set(actor ids) that guest is mirroring
+  hk: new Map(),          // host: guestId -> Map(actor id -> what that guest last heard it holds)
   mirrors: new Map(),     // guest: host actor id -> mirrored actor
   pendingOpen: new Map(), // guest: container id -> callback once its contents arrive
   gid: 0,                 // guest-made drop ids
@@ -67,7 +68,7 @@ export const NW = {
   deployKey,
   get host() { return G.net && G.net.role === 'host'; },
   get guest() { return G.net && G.net.role === 'guest'; },
-  reset() { this.known = null; this.vknown = new Map(); this.sent.clear(); for (const a of this.mirrors.values()) removeActor(a); this.mirrors.clear(); this.pendingOpen.clear(); this.dropCrate = null; },
+  reset() { this.known = null; this.vknown = new Map(); this.sent.clear(); this.hk.clear(); for (const a of this.mirrors.values()) removeActor(a); this.mirrors.clear(); this.pendingOpen.clear(); this.dropCrate = null; },
   // ---------------------------------------------------------------- world state
   collect() {
     const s = { p: new Map(), d: new Map(), c: new Map(), r: new Map(), o: new Map(), u: new Map(), n: new Set(), v: new Set() };
@@ -256,23 +257,30 @@ export const NW = {
     for (const [gid, c] of N.conns) {
       if (!c.open) continue; const pl = N.players.get(gid); if (!pl || !pl.actor) continue;
       const me = pl.actor; let sent = this.sent.get(gid); if (!sent) { sent = new Set(); this.sent.set(gid, sent); }
-      const st = [], seen = new Set();
+      const st = [], seen = new Set(); let hk = this.hk.get(gid); if (!hk) { hk = new Map(); this.hk.set(gid, hk); }
       for (const a of G.actors) {
         if (a === G.player || a.remote !== undefined || a.removed) continue;
         const d2 = (a.x - me.x) ** 2 + (a.z - me.z) ** 2;
-        if (!sent.has(a.id)) { if (d2 > ACT_R * ACT_R) continue; G.net.sendConn(c, this.addMsg(a)); sent.add(a.id); }
+        if (!sent.has(a.id)) { if (d2 > ACT_R * ACT_R) continue; const m = this.addMsg(a); G.net.sendConn(c, m); sent.add(a.id); hk.set(a.id, heldKey(m)); }
         else if (d2 > ACT_DROP * ACT_DROP) continue;
         seen.add(a.id);
+        if (a.kind !== 'animal' && !a.heli && !a.apc) { const h = this.heldOf(a), k = heldKey(h); if (hk.get(a.id) !== k) { hk.set(a.id, k); G.net.sendConn(c, { t: 'ahold', aid: a.id, held: h.held, att: h.att }); } }
         const f = (a.st.aim ? 1 : 0) | (a.dead ? 2 : 0) | (a.st.swing >= 0 ? 4 : 0) | (a.st.attack >= 0 ? 8 : 0) | (a.st.reload >= 0 ? 16 : 0);
         st.push([a.id, r2(a.x), r2(a.y), r2(a.z), r2(a.ang), f, Math.round(a.hp)]);
       }
-      for (const id of [...sent]) if (!seen.has(id)) { sent.delete(id); G.net.sendConn(c, { t: 'arem', aid: id }); }
+      for (const id of [...sent]) if (!seen.has(id)) { sent.delete(id); hk.delete(id); G.net.sendConn(c, { t: 'arem', aid: id }); }
       if (st.length) G.net.sendConn(c, { t: 'ast', a: st });
     }
   },
+  /** what an actor holds, and the attachments on it if it's a gun: { held, att } */
+  heldOf(a) {
+    const held = a.gun ? a.gun.id : a.held || null; if (!held || !WEAPONS[held]) return { held, att: null };
+    const att = a.gunStack && a.gunStack.id === held ? a.gunStack.att : a.gun && a.gun.id === held ? a.gun.att : null;
+    return { held, att: att && typeof att === 'object' ? att : null };
+  },
   addMsg(a) {
     const look = typeof a.lookSpec === 'string' || (a.lookSpec && typeof a.lookSpec === 'object') ? a.lookSpec : null;
-    return { t: 'aadd', aid: a.id, type: a.type, x: r2(a.x), y: r2(a.y), z: r2(a.z), ang: r2(a.ang), team: a.team, look, held: a.gun ? a.gun.id : a.held || null, name: a.bot ? a.bot.name : a.name || null, hp: Math.round(a.hp), maxhp: a.maxhp, heli: !!a.heli, boss: !!a.boss };
+    return { t: 'aadd', aid: a.id, type: a.type, x: r2(a.x), y: r2(a.y), z: r2(a.z), ang: r2(a.ang), team: a.team, look, ...this.heldOf(a), name: a.bot ? a.bot.name : a.name || null, hp: Math.round(a.hp), maxhp: a.maxhp, heli: !!a.heli, boss: !!a.boss };
   },
   /** host: an NPC fired — replay it on guests who can see that NPC */
   npcShot(a, wid, x, y, z, pellets) {
@@ -285,13 +293,22 @@ export const NW = {
     let a;
     if (m.heli && G.makeHeliMirror) a = G.makeHeliMirror(m.x, m.z, m.y);
     else if (m.type === 'apc' && G.makeEventMirror) a = G.makeEventMirror(m); // the armoured patrol (events.js)
-    else { if (!ENEMIES[m.type] && m.type !== 'player') return; a = spawnActor(m.type, m.x, m.z, { team: m.team, look: m.look || undefined }); }
+    else { if (!ENEMIES[m.type] && m.type !== 'player') return; a = spawnActor(m.type, m.x, m.z, { team: m.team, look: m.look || undefined, noAtt: true }); }
     if (!a) return;
     a.mirror = m.aid; a.y = m.y; a.ang = m.ang; a.hp = m.hp; a.maxhp = m.maxhp || a.maxhp; a.boss = m.boss; a.buf = [];
     if (m.name) { a.name = m.name; a.def = Object.assign({}, a.def, { name: m.name }); }
-    if (m.held) { try { a.rig.setHeld(m.held); } catch (e) { } a.held = m.held; if (WEAPONS[m.held]) a.gunStack = { id: m.held }; }
+    this.setHeld(a, m.held, m.att);
     this.mirrors.set(m.aid, a);
   },
+  /** guest: what a mirrored actor holds, with the gun's attachments as the host has them (checked against what fits) */
+  setHeld(a, held, att) {
+    if (!held || typeof held !== 'string') return;
+    let ok = null;
+    if (WEAPONS[held] && att && typeof att === 'object') { const fit = attAllowed(held); for (const s of ATT_SLOTS) { const v = att[s]; if (typeof v === 'string' && ATTACH[v] && ATTACH[v].slot === s && fit.includes(v)) (ok || (ok = {}))[s] = v; } }
+    try { a.rig.setHeld(held, ok); } catch (e) { }
+    a.held = held; a.gunStack = WEAPONS[held] ? { id: held, att: ok } : null;
+  },
+  mirrorHeld(m) { const a = this.mirrors.get(m.aid); if (a && !a.heli && !a.apc) this.setHeld(a, m.held, m.att); },
   removeMirror(aid) { const a = this.mirrors.get(aid); if (a) { removeActor(a); this.mirrors.delete(aid); } },
   mirrorStates(list) {
     const t = performance.now() / 1000;
@@ -338,4 +355,6 @@ export const NW = {
   },
   newDropId() { return 'g' + (G.net ? G.net.me : 0) + '-' + (++this.gid); },
 };
+/** a short key for what an actor holds (to notice a change) */
+function heldKey(h) { return (h.held || '') + '|' + (h.att ? ATT_SLOTS.map(s => h.att[s] || '').join(',') : ''); }
 void clamp;

@@ -334,8 +334,9 @@ export const Bots = {
       if (!id) { let bm = 0; for (const s of inv.all()) { const m = MELEE[s.id]; if (m && m.dmg > bm) { bm = m.dmg; id = s.id; } } }
     }
     if (G.night > 0.5 && !WEAPONS[id] && inv.count('torch') && job !== 'wood' && job !== 'ore') id = 'torch';
-    if (a.held !== id) { a.held = id; try { a.rig.setHeld(id); } catch (e) { } }
     a.gunStack = id && WEAPONS[id] ? inv.all().find(s => s.id === id) : null;
+    const att = a.gunStack && a.gunStack.att || null, ak = id + '|' + (att ? Object.values(att).join(',') : '');
+    if (a.held !== id || a.heldAk !== ak) { a.held = id; a.heldAk = ak; try { a.rig.setHeld(id, att); } catch (e) { } } // with the attachments on that gun
   },
   // ---------------------------------------------------------------- brain (full sim)
   think(b, a, dt) {
