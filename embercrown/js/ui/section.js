@@ -7,12 +7,22 @@
 // Draws with js/engine/render/section.js. Never mutates sim state; the line and axis are view state only.
 
 import { h, onTap } from './kit.js';
-import { W, H, TILE, zS } from '../game/core/grid.js';
-import { levelText } from '../game/tools/levels.js';
-import { bandOfRel } from '../data/levels.js';
+import { W, H, TILE } from '../game/core/grid.js';
+import { levelName } from './levels.js';
 import { sectionImage, drawSection } from '../engine/render/section.js';
 
 const STEP = 4;
+/**
+ * Where the cut runs, as a compass word (W0.2, 11 item 6): a west-east cut (axis 'x') at row y is read facing
+ * north and placed north or south; a north-south cut (axis 'y') at column x is read facing east, placed west or
+ * east. { title: the heading ("Facing north"), where: the hint's lead ("Through the centre"), turn: the Turn label }.
+ */
+export function cutWords(axis, line) {
+  const ew = axis === 'x', n = ew ? H : W, f = line / Math.max(1, n - 1);
+  const [a, b] = ew ? ['north', 'south'] : ['west', 'east'];
+  const where = f < 0.2 ? `Near the ${a} edge` : f < 0.4 ? `${a[0].toUpperCase() + a.slice(1)} of centre` : f <= 0.6 ? 'Through the centre' : f <= 0.8 ? `${b[0].toUpperCase() + b.slice(1)} of centre` : `Near the ${b} edge`;
+  return { title: `Facing ${ew ? 'north' : 'east'}`, where, turn: `Turn the cut to face ${ew ? 'east' : 'north'}` };
+}
 const textScale = () => { try { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ts')) || 1; } catch (_) { return 1; } };
 
 export function mountSection(root, ctx, hooks) {
@@ -33,9 +43,10 @@ export function mountSection(root, ctx, hooks) {
   const camTile = () => { const c = ctx.cam; return c ? { x: Math.floor(c.x / TILE), y: Math.floor(c.y / TILE) } : { x: W >> 1, y: H >> 1 }; };
   function labels() {
     const ew = st.axis === 'x';
-    title.textContent = ew ? `Row ${st.line}, west to east` : `Column ${st.line}, north to south`;
-    axisB.textContent = ew ? 'N-S' : 'W-E';
-    axisB.setAttribute('aria-label', ew ? 'Turn the cut north to south' : 'Turn the cut west to east');
+    const w = cutWords(st.axis, st.line);
+    title.textContent = w.title;
+    axisB.textContent = 'Turn';
+    axisB.setAttribute('aria-label', w.turn);
     prevB.setAttribute('aria-label', ew ? 'Move the cut north' : 'Move the cut west');
     nextB.setAttribute('aria-label', ew ? 'Move the cut south' : 'Move the cut east');
   }
@@ -52,8 +63,8 @@ export function mountSection(root, ctx, hooks) {
     }
     st.lay = drawSection(cv, st.img, { viewZ: hooks.z(), mark: ew ? ct.x : ct.y, cols, pick: st.pick, ts: textScale() });
     const z = st.pick !== null ? st.pick : hooks.z();
-    hint.textContent = st.pick !== null ? `Lift to go to Level ${levelText(z)} · ${bandOfRel(z - zS).short}` : 'Touch a level to go there';
-    cv.setAttribute('aria-label', `Side cut through the hold, levels ${levelText(zHi)} to ${levelText(zLo)}`);
+    hint.textContent = st.pick !== null ? `Lift to go to ${levelName(z)}` : `${cutWords(st.axis, st.line).where}. Touch a level to go there`;
+    cv.setAttribute('aria-label', `Side cut through the hold, from ${levelName(zHi)} down to ${levelName(zLo)}`);
   }
   const rowAt = (e) => {
     const L = st.lay, img = st.img;

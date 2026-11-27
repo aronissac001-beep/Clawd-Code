@@ -16,7 +16,7 @@ const tileTarget = (i) => { const p = i % PLANE; return D > 1 ? [p % W, (p / W) 
 import { threatChip, threatViews } from '../game/threat/warnings.js';
 import { zS } from '../game/core/grid.js';
 import { fluidRec, FLOW } from '../game/world/fluids.js';
-import { levelText } from '../game/tools/levels.js';
+import { levelName } from './levels.js';
 
 // Z3.5: a threat that enters below the surface (a breach up a seep, a cavern pack, the Lamplost) is the
 // 'breach' alert with its level; the 'raid' alert keeps the surface threats. Flood and ember: the moving
@@ -92,7 +92,7 @@ export const ALERT_RULES = Object.freeze([
     test(s) {
       const v = deepView(s);
       if (!v || !v.edge) return null;
-      const z = v.edge.z !== undefined ? v.edge.z : 0, lvl = `Level ${levelText(z)}`;
+      const z = v.edge.z !== undefined ? v.edge.z : 0, lvl = levelName(z);
       const text = v.stage === 'active' ? `${v.name} on ${lvl}` : `${v.name}: ${lvl} in ${v.hours} h`;
       return { text, tone: v.stage === 'omen' ? 'warn' : 'bad', why: `It comes up from below, at ${lvl}, and climbs toward the hold. Wall or floodgate the way, draft your colonists and meet it at the stairs. Tap to go there.`, target: { tile: [v.edge.x, v.edge.y, z] } };
     },
@@ -103,7 +103,7 @@ export const ALERT_RULES = Object.freeze([
       const f = D > 1 ? movingFluid(s, false) : null;
       if (!f) return null;
       const t = tileTarget(f.i);
-      return { text: `Flooding on Level ${levelText(t[2])}`, why: 'Water is running into the hold. Close a floodgate or door in its way (a lever can work one from another level), or wall the channel off. Water never rises: build above it.', target: { tile: t } };
+      return { text: `Flooding at ${levelName(t[2])}`, why: 'Water is running into the hold. Close a floodgate or door in its way (a lever can work one from another level), or wall the channel off. Water never rises: build above it.', target: { tile: t } };
     },
   },
   {
@@ -112,7 +112,7 @@ export const ALERT_RULES = Object.freeze([
       const f = D > 1 ? movingFluid(s, true) : null;
       if (!f) return null;
       const t = tileTarget(f.i);
-      return { text: `Ember flowing on Level ${levelText(t[2])}`, why: 'Molten ember is spreading. It burns what it touches; water meeting it makes cinderstone. Close a floodgate in its way or let water onto it.', target: { tile: t } };
+      return { text: `Ember flowing at ${levelName(t[2])}`, why: 'Molten ember is spreading. It burns what it touches; water meeting it makes cinderstone. Close a floodgate in its way or let water onto it.', target: { tile: t } };
     },
   },
   {

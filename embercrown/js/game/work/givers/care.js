@@ -72,7 +72,9 @@ export const CARE_GIVER = Object.freeze({
   fromTarget(s, col, tg) { if (!tg || tg.kind !== 'col') return null; return target(s, col, colById(s, tg.id)); },
 });
 
-const follow = (p, col) => { p.x = col.x; p.y = col.y; };
+// (W0 gate: the patient follows across levels too; an xy-only follow left a patient carried down the stairs on the
+// old level, and layDown then put them inside the rock under the bed, where nobody could reach them to feed them)
+const follow = (p, col) => { p.x = col.x; p.y = col.y; p.z = col.z | 0; };
 const stillOurs = (s, col, id) => myClaim(s, keyCol(id), col.id) >= 0;
 
 registerToil('lift', (s, col, job, toil) => {
@@ -101,7 +103,7 @@ registerToil('carryCol', (s, col, job, toil) => {
 registerToil('layDown', (s, col, job, toil) => {
   const p = colById(s, toil.c), b = bldById(s, toil.b);
   if (!p || p.hp.dead || !b || b.st !== 'done' || myClaim(s, keyBld(b.id), col.id) < 0) return END.TARGET_GONE;
-  p.x = ctrW(b.x); p.y = ctrW(b.y);
+  p.x = ctrW(b.x); p.y = ctrW(b.y); p.z = b.z | 0;
   release(s, col, keyBld(b.id));
   if (!p.job && startBedrest(s, p, b)) addThought(s, p, 'rescued');
   return NEXT;

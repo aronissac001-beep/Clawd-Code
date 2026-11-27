@@ -34,7 +34,7 @@ export const BUILD_TABS = Object.freeze([
 /** Card icons by def id or flag (icons.js and kit.js glyphs). */
 const DEF_ICON = { wall: 'wall', door: 'door', f_planks: 'floor', f_flag: 'floor', f_brick: 'floor', f_carpet: 'floor', road: 'floor', bridge: 'floor', prop: 'prop', pillar: 'pillar', bed: 'bed', table: 'table', chair: 'chair',
   carpenter: 'saw', mason: 'hammer', sconce: 'flame', campfire: 'flame', brazier: 'brazier', lantern: 'flame', beacon: 'beacon', tower: 'tower', stonetower: 'tower', platform: 'tower',
-  gate: 'gate', fencegate: 'gate', fence: 'gate', palisade: 'wall', rwall: 'wall', embrasure: 'wall', stonedoor: 'door', shelf: 'crate', granary: 'crate', barrelrack: 'crate', strongbox: 'lock',
+  gate: 'gate', fencegate: 'gate', liftbridge: 'gate', floodgate: 'gate', fence: 'gate', palisade: 'wall', rwall: 'wall', embrasure: 'wall', stonedoor: 'door', shelf: 'crate', granary: 'crate', barrelrack: 'crate', strongbox: 'lock',
   weaponrack: 'sword', icehouse: 'crate', farm: 'farm', planter: 'farm', mushbed: 'farm', scarecrow: 'farm', coop: 'farm', barn: 'house', trough: 'farm', beehive: 'farm', huntstand: 'eye', fisher: 'farm',
   grave: 'skull', crypt: 'skull', sarcophagus: 'skull', well: 'gear', lever: 'gear', plate: 'gear', waystone: 'relic', shrine: 'shrine', temple: 'shrine', tradepost: 'merchant', tavern: 'house', dicetable: 'dice',
   stage: 'banner', banner: 'banner', statue: 'relic', bigstatue: 'relic', tapestry: 'banner', infirmary: 'heart', surgery: 'heart', memorial: 'relic', observatory: 'eye', arena: 'sword',

@@ -36,8 +36,24 @@ export const LEVEL_TEXT = Object.freeze({
   surface: 'Go to surface', deepest: 'Go to deepest dig', noDig: 'Nothing dug below the surface yet',
   nearest: 'Nearest stairs', noStairs: 'No stairs on this level', section: 'Section view',
 });
-/** "Level -4 · Outer" (the change toast and the alert explanations). */
-export function levelWord(z) { return `Level ${levelText(z)} · ${bandOfRel(z - zS).short}`; }
+/**
+ * A level as the HUD names it (W0.2, EMBERCROWN-WORLD.md 11 item 4): "Surface" for the surface, else the chip
+ * number and the band plate word, "-3 Outer", "+2 Heights". Every letter, alert, peek line and toast uses it
+ * (never "Level -3").
+ */
+export function levelName(z) { return z === zS ? 'Surface' : `${levelText(z)} ${bandOfRel(z - zS).short}`; }
+/**
+ * The section view is offered once two levels are explored (W0.2, 11 item 6): the surface counts, and any
+ * other level a colonist stands on or where a voxel has been opened. sum: levelSummary(s).
+ */
+export function sectionReady(sum) {
+  if (!sum) return false;
+  let n = 0;
+  for (let z = 0; z < sum.d; z++) if (z === zS || sum.dug[z] || sum.col[z]) { if (++n >= 2) return true; }
+  return false;
+}
+/** The change toast and the alert explanations: the same words as levelName. */
+export function levelWord(z) { return levelName(z); }
 
 export function mountLevels(root, ctx, hooks) {
   const s = ctx.s;
@@ -172,8 +188,8 @@ export function mountLevels(root, ctx, hooks) {
         hooks.showCtx({ x: rc.left + rc.width / 2, y: rc.top }, [
           [LEVEL_TEXT.surface, () => go(zS, 'menu'), 'level-surface'],
           [LEVEL_TEXT.deepest, () => { refresh(); if (st.range.deepest === null) say(LEVEL_TEXT.noDig, 2000); else go(st.range.deepest, 'menu'); }, 'level-deepest'],
-          [LEVEL_TEXT.section, () => openSection(), 'level-section'],
-        ]);
+          sectionReady(st.sum) ? [LEVEL_TEXT.section, () => openSection(), 'level-section'] : null,
+        ].filter(Boolean));
       }, HOLD_MS);
     });
     chip.addEventListener('pointermove', (e) => {
@@ -226,6 +242,7 @@ export function mountLevels(root, ctx, hooks) {
   });
   function renderRuler() {
     const sm = st.sum, r = st.range, cur = z(), alerts = new Set(hooks.alertLevels());
+    secB.hidden = !sectionReady(sm);
     clear(rulerHead);
     rulerHead.append(h('div', { text: `Surface ${levelText(zS)}` }), h('div', { text: r.deepest === null ? 'Deepest: none' : `Deepest ${levelText(r.deepest)}` }));
     const sc = rulerList.scrollTop;
@@ -262,7 +279,7 @@ export function mountLevels(root, ctx, hooks) {
     clear(ghost);
     ghost.hidden = !lv.length;
     for (const zz of lv) {
-      const b = h('button.ec-lv-tick' + (zz === cur ? '.on' : ''), { type: 'button', 'data-act': 'ghost-tick', 'data-z': String(zz), 'aria-label': `Designations on level ${levelText(zz)}` }, h('i'), h('span', { text: levelText(zz) }));
+      const b = h('button.ec-lv-tick' + (zz === cur ? '.on' : ''), { type: 'button', 'data-act': 'ghost-tick', 'data-z': String(zz), 'aria-label': `Designations on ${levelName(zz)}` }, h('i'), h('span', { text: levelText(zz) }));
       onTap(b, () => go(zz, 'ghost'));
       ghost.append(b);
     }

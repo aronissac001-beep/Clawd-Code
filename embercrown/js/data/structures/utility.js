@@ -49,6 +49,12 @@ export const DATA = {
       flags: ['lever'], art: 'lock', stage: '2', text: 'Opens, closes and locks up to 4 linked gates and doors from afar. A locked gate is a wall to hostiles until broken.' },
     { id: 'plate', name: 'Pressure plate', cat: 'utility', kind: 'construct', size: [1, 1], cost: { 'ingot:iron': 4, block: 4 }, work: 40, hp: 100, band: 'village', tech: 'mechanisms',
       flags: ['plate'], art: 'lock', stage: '2', text: 'When a hostile steps on it, its linked deadfalls, ember pits and gates fire.' },
+    // ---- W0.3: the raising bridge (R3 2.8; world/fluids.js, world/mechanisms.js). Not 'floor'-flagged: a finished
+    // floor def becomes the floor layer and its building is removed, and the bridge must stay a building to rise.
+    // A lever holding it locked raises it (a wall to water and foes); closed or held open it lies lowered. ----
+    { id: 'liftbridge', name: 'Raising bridge', cat: 'utility', kind: 'construct', size: [1, 3], cost: { wood: 30, block: 12, 'ingot:iron': 6 }, work: 150, hp: 500,
+      band: 'village', tech: 'mechanisms', flags: ['lockable', 'liftbridge'], art: 'lock', stage: '2',
+      text: 'Three tiles of deck across a channel. Lowered, folk walk over it and water runs under; a lever raises it into a wall that seals the channel against water and foes.' },
     // ---- Stage Z4: water engineering (world/pumps.js) ----
     { id: 'pump', name: 'Hand pump', cat: 'utility', kind: 'construct', size: [1, 1], cost: { block: 10, wood: 10, 'ingot:iron': 6 }, work: 120, hp: 200, band: 'village', tech: 'waterworks',
       flags: ['pump', 'lockable'], art: 'struct.pump', stage: '2',
