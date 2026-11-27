@@ -13,7 +13,7 @@
 import { h, icon, onTap } from './kit.js';
 import { TILE } from '../game/core/grid.js';
 import { TICKS_PER_MIN } from '../game/core/time.js';
-import { nemesisCard, nemesisOf } from './letters.js';
+import { nemesisCard, nemesisOf, faceThreat } from './letters.js';
 import { fullName } from '../game/threat/nemesis.js';
 import { incidentDef } from '../game/threat/incidents.js';
 import { linksOf, mechState, isLever, isGate } from '../game/world/mechanisms.js';
@@ -168,7 +168,8 @@ export function omenLetter(ctx, v, opts = {}) {
     else if (ctx.draftAll) btn('Draft all', 'letter-draft', () => { ctx.closeSheet(); ctx.draftAll(); });
     btn('Got it', 'letter-ok', () => ctx.closeSheet());
     el.append(acts);
-  }, { onClose: opts.onClose, letter: true });
+  }, { onClose: opts.onClose, letter: true, detent: 'medium' });
+  faceThreat(ctx, v);   // 11 item 27 (W1.9)
 }
 
 /** Centre the camera on the threat's edge marker (or its nearest hostile once on the map). */

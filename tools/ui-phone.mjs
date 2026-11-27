@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|front|all] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|front|coach|all] [--a11y] [--json]
 // Playwright with touch emulation (hasTouch, deviceScaleFactor 2), at every gate viewport:
 //   portrait 375 x 635, 390 x 664, 430 x 740 (Safari), 390 x 763 (Home Screen app);
 //   landscape 844 x 335, 932 x 380 (Safari).
@@ -28,7 +28,7 @@
 // --flows=title runs the Stage 0 title check only; --flows=1a skips 7-10. Exit 0 pass, 1 fail, 2 browser unavailable.
 // --fortress (Stage Z1 E7): the level UI on a 20-level stub fortress at the six viewports plus landscape-left and
 // landscape-right, with the 4.4 tap budgets (see runFortress below).
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { serve } from './lib/static-server.mjs';
@@ -1667,6 +1667,391 @@ if (flowsArg === 'ia') {
     if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
   }
   console.log(`ui-phone --flows=ia [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/iab-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+
+
+// ---- W1.9 --a11y (EMBERCROWN-WORLD.md 8.10, 11 items 14 and 27, 12.3 W1.9; js/ui/a11y.js) ---------------------------
+// In the new shell (?shell=2 until A's flags.js SHELL2 is on), at the six viewports plus landscape-left and -right:
+//   A1 "every sheet role=dialog with a focus trap": Hold, World, People, Menu, Settings, Letters, a colonist and the
+//      omen letter each show as role="dialog" aria-modal="true" with a name; focus is inside on open; Tab (the
+//      controls + 2 times) and Shift+Tab (3 times) never leave it; Escape closes it (focus inside, and from outside
+//      the sheet), and no focus is left inside a closed sheet
+//   A2 "toasts live": the toast stack and the alert stack are aria-live="polite"; a toast lands inside the stack;
+//      the hidden live region (a11y.js announce) reads the omen letter out
+//   A3 "every text token >= 4.5:1 (computed)": a11y.js tokenContrast (every text token on every panel token,
+//      from the live :root) and sweepContrast (every visible text node on its composited panel, on every screen)
+//   A4 11 item 27: the omen letter opens at the medium detent (portrait; the side sheet in landscape) with the
+//      camera turned toward the threat's edge: the edge marker is on the map left uncovered by the sheet; the
+//      same for the omen re-read from World > Letters
+// and the 14.4 probe on every screen.
+async function runA11y(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [], dialogs = [], lowc = [];
+  const ev = (fn, a) => page.evaluate(fn, a);
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  const sweep = async (name) => {
+    const r = await ev(async () => { const m = await import('./js/ui/a11y.js'); return m.sweepContrast(document.body); });
+    for (const f of r.fails) lowc.push(`[${name}] "${f.text}" .${f.cls} ${f.fg} on ${f.bg} ${f.ratio}:1`);
+    return r;
+  };
+  const screen = async (name) => {
+    await page.waitForTimeout(200);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    const c = await sweep(name);
+    screens.push({ name, ok: !list.length && !c.fails.length, n: list.length + c.fails.length, checked: c.checked });
+    await page.screenshot({ path: join(OUT, `a11y-${vp.name}-${name}.png`) });
+  };
+  const toMap = async () => { await ev(() => { const sh = window.__ecUI.shell; if (sh.ctx.ui.tool) sh.ctx.endTool(); sh.ctx.closeSheet(); sh.ctx.closePanel(); sh.ctx.closePeek(); }); await page.waitForTimeout(120); };
+  /** The open sheet as a dialog: role, aria-modal, name, focus inside; then the Tab trap and Escape. */
+  const dialogCheck = async (name, escFrom = 'inside') => {
+    const d0 = await ev(() => {
+      const e = [...document.querySelectorAll('.ec-sheet, .ec-section')].find((x) => !x.hidden && x.getClientRects().length);
+      if (!e) return null;
+      const n = e.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])').length;
+      return { role: e.getAttribute('role'), modal: e.getAttribute('aria-modal'), label: e.getAttribute('aria-label') || '', focusIn: e.contains(document.activeElement), n };
+    });
+    if (!d0) { dialogs.push({ name, ok: false, why: 'no sheet' }); return; }
+    let out = 0;
+    const inside = () => ev(() => { const e = document.querySelector('.ec-sheet:not([hidden])') || document.querySelector('.ec-section:not([hidden])'); return !!e && e.contains(document.activeElement); });
+    for (let k = 0; k < Math.min(d0.n + 2, 40); k++) { await page.keyboard.press('Tab'); if (!(await inside())) out++; }
+    for (let k = 0; k < 3; k++) { await page.keyboard.press('Shift+Tab'); if (!(await inside())) out++; }
+    if (escFrom === 'outside') await ev(() => { document.activeElement && document.activeElement.blur && document.activeElement.blur(); });
+    // Escape walks back the breadcrumb, then closes: press until the sheet is gone (at most 4)
+    let closed = false;
+    for (let k = 0; k < 4 && !closed; k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(80); closed = await ev(() => !window.__ecUI.shell.ctx.sheets.isOpen()); }
+    const stray = await ev(() => { const e = document.querySelector('.ec-sheet'); return !!e && e.hidden && e.contains(document.activeElement); });
+    const ok = d0.role === 'dialog' && d0.modal === 'true' && !!d0.label && d0.focusIn && out === 0 && closed && !stray;
+    dialogs.push({ name, ok, why: `role ${d0.role}, aria-modal ${d0.modal}, "${d0.label}", focus ${d0.focusIn ? 'in' : 'OUT'}, ${d0.n} controls, ${out} Tab escapes, Escape (${escFrom}) ${closed ? 'closed' : 'DID NOT CLOSE'}${stray ? ', focus left in the closed sheet' : ''}` });
+  };
+  /** Is the threat's edge marker on the uncovered map (inside the canvas, outside the open sheet)? */
+  const edgeSeen = () => ev(async () => {
+    const sh = window.__ecUI.shell, s = sh.state, w = await import('./js/game/threat/warnings.js'), L = await import('./js/ui/letters.js');
+    const v = w.threatViews(s).find((x) => x.stage === 'omen' || x.stage === 'sighted');
+    const p = L.threatPoint(v);
+    if (!p) return { ok: false, why: 'no edge' };
+    const q = sh.worldToScreen(p.x, p.y), cv = document.getElementById('view').getBoundingClientRect();
+    const se = document.querySelector('.ec-sheet'), sr = se && !se.hidden ? se.getBoundingClientRect() : null;
+    const top = (document.querySelector('.ec-top') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom;
+    const inCanvas = q.x >= cv.left && q.x <= cv.right && q.y >= Math.max(cv.top, top) && q.y <= cv.bottom;
+    const underSheet = !!sr && q.x >= sr.left && q.x <= sr.right && q.y >= sr.top && q.y <= sr.bottom;
+    return { ok: inCanvas && !underSheet, why: `edge ${v.edge ? v.edge.word : '?'} at ${Math.round(q.x)},${Math.round(q.y)}; sheet ${sr ? Math.round(sr.left) + ',' + Math.round(sr.top) : 'none'}; detent ${sh.ctx.sheets.detent()}`, detent: sh.ctx.sheets.detent() };
+  });
+  await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
+  await page.waitForTimeout(700);
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
+  await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; if (sh.prompts) sh.prompts.hide(); });
+  await page.waitForTimeout(300);
+  // A3, the token matrix from the live :root
+  const tok = await ev(async () => { const m = await import('./js/ui/a11y.js'); return m.tokenContrast(document); });
+  const tokBad = tok.filter((x) => !x.ok);
+  await screen('map');
+  // A1 and A3 on the sheets
+  const HOLD = '[data-act=tab][data-tab=hold]', WORLD = '[data-act=tab][data-tab=world]', PEOPLE = '[data-act=tab][data-tab=people]';
+  const viaTap = [['hold', [HOLD]], ['world', [WORLD]], ['people', [PEOPLE]], ['menu', ['[data-act=menu]']], ['settings', ['[data-act=menu]', '[data-act=menu-settings]']], ['letters', [WORLD, '[data-act=sheet-tab][data-tab="Letters"]']]];
+  for (const [name, path] of viaTap) {
+    await toMap();
+    let miss = null;
+    for (const p of path) { if (!(await tap(page, p))) { miss = p; break; } await page.waitForTimeout(160); }
+    if (miss) { dialogs.push({ name, ok: false, why: 'no ' + miss }); continue; }
+    await screen(name);
+    await dialogCheck(name, name === 'world' ? 'outside' : 'inside');
+  }
+  await toMap();
+  await ev(() => { const sh = window.__ecUI.shell, c = sh.state.col.find((x) => !x.hp.dead); if (c) sh.ctx.openColonist(c.id); });
+  await page.waitForTimeout(200);
+  await screen('colonist');
+  await dialogCheck('colonist');
+  // A2: the toast and alert stacks, a toast inside its stack
+  const live = await ev(() => {
+    const sh = window.__ecUI.shell, t = document.querySelector('.ec-toasts'), a = document.querySelector('.ec-alerts'), r = document.querySelector('.ec-sr-live');
+    sh.ctx.toast('A test of the toast stack.');
+    const inStack = !!t && [...t.querySelectorAll('.ec-toast')].some((x) => /test of the toast/.test(x.textContent));
+    return { toasts: t && t.getAttribute('aria-live'), alerts: a ? a.getAttribute('aria-live') : 'none', region: r ? r.getAttribute('aria-live') + '/' + r.getAttribute('role') : null, inStack };
+  });
+  // A4: the omen (day 2, 18:00, Steady Flame), the camera first on the colonists
+  await toMap();
+  const before = await ev(() => {
+    const sh = window.__ecUI.shell, s = sh.state;
+    const omen = 25200;
+    if (s.tick < omen + 2) window.__ec.step(omen + 2 - s.tick);
+    sh.uiSecond();
+    return { sheet: sh.ui.sheet };
+  });
+  await page.waitForTimeout(900);
+  const e1 = await edgeSeen();
+  const said = await ev(async () => (await import('./js/ui/a11y.js')).announced());
+  await screen('omen');
+  await dialogCheck('omen');
+  await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); const cam = sh.camera, c = sh.state.col[0]; if (c) cam.centerOn(c.x, c.y, false); });
+  // the omen again from World > Letters (a pushed sub-screen keeps the sheet; it turns medium and faces the edge)
+  await toMap();
+  await ev(() => { const sh = window.__ecUI.shell, c = sh.state.col[0]; if (c) sh.camera.centerOn(c.x, c.y, false); });
+  let e2 = { ok: false, why: 'no omen row in Letters' };
+  // a scripted first omen sends no 'letter' event (the storyteller's omens do: H sendLetter 'omen'); add the record
+  // the storyteller would have sent, so the re-read path (letters.js openLetter) is exercised either way
+  await ev(async () => {
+    const sh = window.__ecUI.shell, w = await import('./js/game/threat/warnings.js'), list = sh.letters.list();
+    const v = w.threatViews(sh.state).find((x) => x.stage === 'omen' || x.stage === 'sighted');
+    if (v && !list.some((x) => x.kind === 'omen')) list.unshift({ id: -1, kind: 'omen', title: v.name, text: '', tick: sh.state.tick, read: true, data: { kind: 'omen', inc: v.inc } });
+  });
+  if ((await tap(page, WORLD)) && (await tap(page, '[data-act=sheet-tab][data-tab="Letters"]'), true)) {
+    await ev(() => { const sh = window.__ecUI.shell; if (sh.ctx.sheets.setDetent) sh.ctx.sheets.setDetent('large'); });
+    const where = await ev(() => { const sh = window.__ecUI.shell; return `sheet ${sh.ui.sheet} / ${sh.ctx.sheets.tab()}, ${sh.letters ? sh.letters.list().map((x) => x.kind + ':' + x.title).join('|') : 'no letters api'}`; });
+    e2.why = 'no omen row in Letters (' + where + ')';
+    const row = await ev(() => { const b = [...document.querySelectorAll('.ec-sheet [data-act=letter-read]')].find((x) => /omen|horde|hollow|raid/i.test(x.textContent)) || document.querySelector('.ec-sheet [data-act=letter-read]'); if (!b) return null; b.dataset.a11yPick = '1'; return b.textContent; });
+    if (row && (await tap(page, '[data-a11y-pick="1"]'))) { await page.waitForTimeout(900); e2 = await edgeSeen(); e2.why = `"${row.trim().slice(0, 30)}": ${e2.why}`; await screen('omen-reread'); }
+  }
+  await toMap();
+  const land = vp.width > vp.height;
+  flow('A1', 'every sheet role=dialog with a focus trap', dialogs.length >= 8 && dialogs.every((d) => d.ok), dialogs.map((d) => `${d.name}: ${d.why}`).join('; '));
+  flow('A2', 'toasts live', live.toasts === 'polite' && live.alerts === 'polite' && live.inStack && /polite/.test(live.region || '') && /Omen/.test(said), `toasts ${live.toasts}, alerts ${live.alerts}, toast in stack ${live.inStack}, live region ${live.region} said "${said.slice(0, 50)}"`);
+  flow('A3', 'every text token >= 4.5:1 (computed)', !tokBad.length && !lowc.length,
+    `tokens ${tok.length - tokBad.length}/${tok.length} (min ${Math.min(...tok.map((x) => x.ratio))}:1)${tokBad.length ? '; low: ' + tokBad.map((x) => `${x.fg} on ${x.bg} ${x.ratio}`).join(', ') : ''}; text nodes ${screens.reduce((a, x) => a + (x.checked || 0), 0)} checked on ${screens.length} screens${lowc.length ? '; low: ' + [...new Set(lowc)].slice(0, 8).join('; ') : ''}`);
+  const det = (d) => (land ? d === 'side' : d === 'medium');
+  flow('A4', 'omen letters at the medium detent facing the edge', /^Omen/.test(before.sheet || '') && e1.ok && det(e1.detent) && e2.ok && det(e2.detent), `letter "${before.sheet}": ${e1.why}; from Letters ${e2.why}`);
+  return done();
+}
+if (process.argv.includes('--a11y') || flowsArg === 'a11y') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of SHEET_VPS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runA11y(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-a11y-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --a11y [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/a11y-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+// ---- W1.7 --flows=coach (EMBERCROWN-WORLD.md 8.8, G23, 12.3 W1.7; js/ui/guide.js, intros.js) ------------------------
+// The new shell's onboarding (?shell=2 until A's flags.js SHELL2 is on), at the six viewports plus landscape-left and -right:
+//   C1 "coach card <= 20 % of portrait height": the 6-step card measured at every step it shows (portrait viewports;
+//      landscape reports its share for the record)
+//   C2 "completable with Show me only": each of the 6 steps (chop, stockpile, bed, food, dig down, defend) reached
+//      and finished from its "Show me" alone (no bar, panel or menu tap): the button arms the step's tool (the
+//      bed and food steps arm their second part after the first), the gesture on the map and the tool's Done, and
+//      the card moves on; the closing card shows after the sixth (at p390x664-safari and l844x335-safari)
+//   C3 "folds to a 2/6 chip": the fold button turns the card into a chip reading "<done>/6", and the chip opens it
+//   C4 hints by need (p390x664-safari): the sim stepped to the first night shows the one-line hint with "Show me",
+//      which selects the Hearth; it is recorded once for this hold and does not show again
+//   C5 the "What is new" deck (p390x664-safari): the W0 fixture v4-z3-day120 (a hold played before the new shell)
+//      shows its deck after the Dawn Ledger closes, Next through its cards, Got it, and not again after a reload;
+//      a hold founded under the new shell shows none
+// and the 14.4 probe (44 pt, 14 px, no overflow) on the card, the chip, the hint and the deck.
+async function runCoach(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [];
+  const ev = (fn, a) => page.evaluate(fn, a);
+  const portrait = vp.height > vp.width, full = vp.name === 'p390x664-safari' || vp.name === 'l844x335-safari', extra = vp.name === 'p390x664-safari';
+  const screen = async (name) => {
+    await page.waitForTimeout(150);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    screens.push({ name, ok: !list.length, n: list.length });
+    await page.screenshot({ path: join(OUT, `coach-${vp.name}-${name}.png`) });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  const ready = async () => { try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 10000 }); return true; } catch (_) { return false; } };
+  const card = () => ev(() => {
+    const e = document.querySelector('.ec-guide:not(.ec-intro)');
+    if (!e || e.hidden || getComputedStyle(e).display === 'none') return null;
+    const r = e.getBoundingClientRect(), t = e.querySelector('.ec-guide-t'), n = e.querySelector('.ec-guide-n');
+    return { h: Math.round(r.height), top: Math.round(r.top), share: r.height / innerHeight, title: t ? (t.lastChild && t.lastChild.nodeType === 3 ? t.lastChild.textContent : t.textContent) : '', n: n ? n.textContent.trim() : '', small: e.classList.contains('small'), chip: (e.querySelector('.ec-guide-chip') || {}).textContent || '', go: !!e.querySelector('[data-act=guide-go]') };
+  });
+  const tool = () => ev(() => { const t = window.__ecUI.shell.ctx.ui.tool; return t ? t.kind + ':' + (t.id || t.def || t.stamp || t.type || t.preset || '') : null; });
+  const endTool = async () => { if (await find(page, '[data-act=done]')) await tap(page, '[data-act=done]'); if (await tool()) await ev(() => window.__ecUI.shell.ctx.endTool()); await page.waitForTimeout(80); };
+  await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
+  await page.waitForTimeout(700);
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await ready())) { problems.push('no game'); return done(); }
+  await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; });
+  await page.waitForTimeout(1200);
+  const shares = [];
+  const c0 = await card();
+  if (c0) shares.push(c0.share);
+  await screen('card');
+  // C3: fold and open
+  await tap(page, '[data-act=guide-hide]'); await page.waitForTimeout(150);
+  const folded = await card();
+  await screen('chip');
+  await tap(page, '[data-act=guide-open]'); await page.waitForTimeout(150);
+  const opened = await card();
+  flow('C3', 'folds to an n/6 chip and opens again', c0 && /^1\/6/.test(c0.n) && folded && folded.small && /^0\/6$/.test(folded.chip.trim()) && opened && !opened.small && opened.go,
+    `card "${c0 ? c0.n + ' ' + c0.title : '-'}"; folded ${folded ? `"${folded.chip.trim()}"` : 'gone'}; opened ${opened ? opened.title : 'no'}`);
+  if (!full) {
+    flow('C1', 'coach card <= 20 % of the height', !portrait || (c0 && c0.share <= 0.2), c0 ? `${c0.h} of ${vp.height} pt (${(c0.share * 100).toFixed(1)} %)` : 'no card');
+    return done();
+  }
+  // C2: the six steps from "Show me" alone
+  const spots = [];
+  const openRect = (w, h) => ev(([w, h, used]) => {
+    const s = window.__ec.state, W = s.w, H = s.h, o = (s.zS | 0) * W * H;
+    const hb = s.bld[s.colony.hearth.id], hx = hb.x + 1, hy = hb.y + 1;
+    const clash = (x, y) => used.some((u) => x + w + 1 > u.x0 && x - 1 <= u.x1 && y + h + 1 > u.y0 && y - 1 <= u.y1);
+    for (let r = 4; r < 40; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const x = hx + dx, y = hy + dy;
+      let ok = x > 2 && y > 2 && x + w < W - 2 && y + h < H - 2 && !clash(x, y);
+      for (let yy = y - 1; yy <= y + h && ok; yy++) for (let xx = x - 1; xx <= x + w && ok; xx++) { const i = o + yy * W + xx; if (![1, 2, 3].includes(s.L.terrain[i]) || s.rt.occ[i] >= 0 || s.L.plant[i] || s.L.zone[i] || s.rt.itemAt[i] >= 0) ok = false; }
+      if (ok) return { x0: x, y0: y, x1: x + w - 1, y1: y + h - 1 };
+    }
+    return null;
+  }, [w, h, spots]);
+  const treesRect = () => ev(() => { const s = window.__ec.state, hb = s.bld[s.colony.hearth.id]; return { x0: hb.x - 7, y0: hb.y - 7, x1: hb.x + 9, y1: hb.y + 9 }; });
+  const tapTile = async (x, y) => { await focusTiles(page, { x0: x, y0: y, x1: x, y1: y }); const p = await tileScreen(page, x, y); await tapAt(page, p.x, p.y); };
+  const dragRect = async (r) => { await focusTiles(page, r, 0.8); await dragWorld(page, await tileScreen(page, r.x0, r.y0), await tileScreen(page, r.x1, r.y1)); };
+  /** The gesture for the armed tool. */
+  const gesture = async (t) => {
+    if (t === 'rect:chop') { await dragRect(await treesRect()); await endTool(); return; }
+    if (t.startsWith('zone:')) { const r = await openRect(t === 'zone:grow' ? 4 : 5, 4); if (!r) return; spots.push(r); await dragRect(r); await endTool(); return; }
+    if (t === 'stamp:bedroom') { const r = await openRect(5, 4); if (!r) return; spots.push(r); await dragRect(r); await confirmIfAsked(page); await endTool(); return; }
+    if (t === 'vert:stairs') { const r = await openRect(1, 1); if (!r) return; spots.push(r); await tapTile(r.x0, r.y0); await tap(page, '[data-act=done]'); await endTool(); return; }
+    if (t.startsWith('place:')) {
+      const n = t === 'place:brazier' ? 2 : 1;
+      for (let k = 0; k < n; k++) { const r = await openRect(t === 'place:carpenter' ? 2 : 1, 1); if (!r) return; spots.push(r); await tapTile(r.x0, r.y0); }
+      await endTool();
+    }
+  };
+  const EXPECT = { 'Chop some trees': ['rect:chop'], 'Make a stockpile': ['zone:stockpile'], 'Give everyone a bed': ['place:carpenter', 'stamp:bedroom'], 'Feed the hold': ['place:campfire', 'zone:grow'], 'Dig down': ['vert:stairs'], 'Light the Hearth': ['place:brazier'] };
+  const log = [];
+  let navTaps = 0, wrong = 0;
+  for (let k = 0; k < 6; k++) {
+    const c = await card();
+    if (!c || !c.go) { log.push(`step ${k + 1}: no card`); break; }
+    shares.push(c.share);
+    const want = EXPECT[c.title] || [];
+    const armed = [];
+    for (let part = 0; part < 3; part++) {
+      if (!(await tap(page, '[data-act=guide-go]'))) break;
+      navTaps++;
+      const t = await tool();
+      armed.push(t || 'none');
+      if (!t) break;
+      if (t !== want[part]) wrong++;
+      await gesture(t);
+      await page.waitForTimeout(1150);   // the coach checks once a second
+      const after = await card();
+      if (!after || after.title !== c.title) break;
+    }
+    const after = await card();
+    log.push(`${c.n} ${c.title} [${armed.join(', ')}] -> ${after ? (after.go ? after.n + ' ' + after.title : after.title) : 'gone'}`);
+    if (k === 2) await screen('card-step3');
+  }
+  const last = await card();
+  if (last) shares.push(last.share);
+  await screen('card-end');
+  const doneIds = await ev(() => { const s = window.__ec.state; try { return (JSON.parse(localStorage.getItem('ec2.guide.' + s.id + '.c6')) || {}).done || []; } catch (_) { return []; } });
+  flow('C2', 'completable with Show me only', doneIds.length === 6 && last && /begun/.test(last.title) && !wrong,
+    `${doneIds.length}/6 done (${doneIds.join(', ')}) with ${navTaps} Show me taps and no other menu tap${wrong ? `; ${wrong} armed the wrong tool` : ''}: ${log.join(' | ')}; end card "${last ? last.title : '-'}"`);
+  const maxShare = Math.max(...shares);
+  flow('C1', 'coach card <= 20 % of the height', !portrait || maxShare <= 0.2, `max ${(maxShare * 100).toFixed(1)} % over ${shares.length} cards (${Math.round(maxShare * vp.height)} of ${vp.height} pt)${portrait ? '' : ' (landscape: for the record)'}`);
+  if (!extra) return done();
+  // C4: the first night's hint
+  const hid = await ev(() => window.__ec.state.id);
+  await tap(page, '[data-act=guide-hide]');
+  await ev(() => { const s = window.__ec.state; const want = 21 * 600 + 30; if (s.tick < want) window.__ec.step(want - s.tick); });
+  let hint = null;
+  for (let w = 0; w < 30 && !hint; w++) { await page.waitForTimeout(250); hint = await ev(() => { const e = document.querySelector('.ec-intro.ec-needhint'); return e && !e.hidden ? { text: e.textContent, h: Math.round(e.getBoundingClientRect().height), go: !!e.querySelector('[data-act=hint-go]') } : null; }); }
+  if (hint) await screen('hint');
+  if (hint && hint.go) await tap(page, '[data-act=hint-go]');
+  await page.waitForTimeout(200);
+  const sel = await ev(() => { const sh = window.__ecUI.shell, s = sh.state, u = sh.ctx.ui.sel; return u && u.kind === 'building' && s.bld[u.id] ? s.bld[u.id].def : null; });
+  const rec = await ev((id) => { try { return JSON.parse(localStorage.getItem('ec2.hints.' + id)) || []; } catch (_) { return []; } }, hid);
+  await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closePeek(); sh.ctx.select(null); });
+  await page.waitForTimeout(1300);
+  const again = await ev(() => { const e = document.querySelector('.ec-intro.ec-needhint'); return !!(e && !e.hidden); });
+  flow('C4', 'the first night shows its hint once, with Show me', hint && /Hearth fed/.test(hint.text) && hint.go && sel === 'hearth' && rec.includes('night') && !again,
+    hint ? `"${hint.text.slice(0, 60)}" (${hint.h} pt); Show me selected ${sel || 'nothing'}; recorded ${rec.join(', ')}; shown again ${again}` : 'no hint by 21:00 on day 1');
+  // C5: the "What is new" deck on an older hold, none on a new one
+  const newDeck = await ev((id) => { try { return JSON.parse(localStorage.getItem('ec2.whatsnew.' + id)); } catch (_) { return null; } }, hid);
+  // a fresh device holding only the fixture: import it, then Continue from the title
+  const bytes = [...readFileSync(join(HERE, 'fixtures', 'v4-z3-day120.ecsave'))];
+  const dctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const dp = await dctx.newPage();
+  dp.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const dev = (fn, a) => dp.evaluate(fn, a);
+  const toGame = async () => {
+    await dp.goto(srv.url + '?debug=1&shell=2'); await dp.waitForTimeout(800);
+    if (!(await tap(dp, '[data-act=continue]'))) return false;
+    try { await dp.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 15000 }); } catch (_) { return false; }
+    await dev(() => { window.__ecUI.shell.setSpeed(0); });
+    await dp.waitForTimeout(1300);
+    if (await find(dp, '[data-act=ledger-close]')) await tap(dp, '[data-act=ledger-close]');
+    return true;
+  };
+  const deckNow = () => dev(() => { const e = document.querySelector('.ec-intro.ec-deck'); return e && !e.hidden ? { n: (e.querySelector('.ec-guide-n') || {}).textContent, t: e.querySelector('.ec-guide-t').textContent } : null; });
+  await dp.goto(srv.url + '?debug=1&shell=2'); await dp.waitForTimeout(600);
+  const fid = await dev(async (arr) => window.__ec.storage.importBlob(new Uint8Array(arr)), bytes);
+  const in1 = await toGame();
+  let deck = null;
+  for (let w = 0; w < 12 && !deck; w++) { await dp.waitForTimeout(250); deck = await deckNow(); }
+  const seenCards = [];
+  if (deck) {
+    const p0 = await probe(dp), l0 = [...(p0.overflowX ? ['horizontal overflow'] : []), ...p0.small.map((x) => 'target < 44 pt: ' + x), ...p0.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of l0) problems.push('[deck] ' + x);
+    screens.push({ name: 'deck', ok: !l0.length, n: l0.length });
+    await dp.screenshot({ path: join(OUT, `coach-${vp.name}-deck.png`) });
+    for (let k = 0; k < 4; k++) {
+      const d = await deckNow();
+      if (!d) break;
+      seenCards.push(d.t);
+      if (!(await tap(dp, '[data-act=deck-next]'))) { await tap(dp, '[data-act=deck-ok]'); break; }
+    }
+  }
+  const drec = await dev((id) => { try { return JSON.parse(localStorage.getItem('ec2.whatsnew.' + id)) || []; } catch (_) { return []; } }, fid);
+  const in2 = await toGame();
+  await dp.waitForTimeout(1500);
+  const deck2 = !!(await deckNow());
+  await dctx.close();
+  flow('C5', 'the What is new deck on an older hold, once', in1 && in2 && deck && seenCards.length >= 1 && seenCards.length <= 3 && drec.includes('menus') && !deck2 && Array.isArray(newDeck) && newDeck.length === 3,
+    `fixture day-120 hold${in1 ? '' : ' (not continued)'}: ${deck ? `"${deck.n}": ${seenCards.join(' > ')}` : 'no deck'}; recorded ${drec.join(', ')}; after a reload ${deck2 ? 'shown again' : 'none'}; new hold starts with ${Array.isArray(newDeck) ? newDeck.join(', ') : 'no record'} seen`);
+  return done();
+}
+if (flowsArg === 'coach') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of SHEET_VPS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runCoach(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-coach-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=coach [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/coach-*.png)`);
   process.exit(nbad ? 1 : 0);
 }
 

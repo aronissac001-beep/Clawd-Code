@@ -360,7 +360,7 @@ export function mountShell(root, api) {
     const mood = Math.max(0, Math.min(100, (c.mood || 0) / FIX));
     const ring = mood < 25 ? '#e0644e' : mood < 45 ? '#e8b04a' : '#8fd16a';
     const look = c.look || {};
-    const p = h('span.ec-portrait', { style: { width: size + 'px', height: size + 'px', '--ring': ring, '--cloth': CLOTH[(look.cloth | 0) % CLOTH.length], '--skin': SKIN[(look.skin | 0) % SKIN.length] } },
+    const p = h('span.ec-portrait', { style: { width: size + 'px', height: size + 'px', '--ring': ring, '--cloth': CLOTH[(look.cloth | 0) % CLOTH.length], '--skin': SKIN[(look.skin | 0) % SKIN.length], '--ink': (look.skin | 0) % SKIN.length >= 4 ? '#f6ead2' : '#1a0f08' } },
       h('span.ec-portrait-i', { text: (c.name || '?').slice(0, 1) }));
     if (c.drafted) p.classList.add('drafted');
     return p;

@@ -304,6 +304,7 @@ const FILES = [
   './js/game/world/weather.js',
   './js/game/world/worldrec.js',
   './js/main.js',
+  './js/ui/a11y.js',
   './js/ui/alerts.js',
   './js/ui/annals.js',
   './js/ui/app.js',

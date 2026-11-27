@@ -17,6 +17,7 @@ import { threatChip, threatViews } from '../game/threat/warnings.js';
 import { zS } from '../game/core/grid.js';
 import { fluidRec, FLOW } from '../game/world/fluids.js';
 import { levelName } from './levels.js';
+import { announce } from './a11y.js';
 
 // Z3.5: a threat that enters below the surface (a breach up a seep, a cavern pack, the Lamplost) is the
 // 'breach' alert with its level; the 'raid' alert keeps the surface threats. Flood and ember: the moving
@@ -318,6 +319,7 @@ export function alertTracker(s, extra = null) {
   const view = { idleSince: new Map() };
   let snooze = loadSnooze(s);
   let cur = [];
+  let said = null;   // alert ids already announced (UI memory)
   return {
     view,
     update() {
@@ -331,6 +333,9 @@ export function alertTracker(s, extra = null) {
         const a = safe(() => r.test(s, view, extra));
         if (a) out.push({ id: r.id, icon: r.icon, tone: a.tone !== undefined ? a.tone : r.tone, text: a.text, why: a.why, target: a.target });
       }
+      // 8.10: a new alert is said through the live region (the first update is the baseline, not news)
+      if (said) { const fresh = out.filter((a) => !said.has(a.id)); if (fresh.length) announce(fresh.map((a) => a.text).join('. ')); }
+      said = new Set(out.map((a) => a.id));
       cur = out;
       return out;
     },
