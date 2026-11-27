@@ -1147,3 +1147,41 @@ body.land .ec-medal .ec-portrait { width: 46px !important; height: 46px !importa
 body.land .ec-medal .ec-thumb { width: 46px !important; height: 46px !important; }
 body.land .ec-chead-n { margin-bottom: 2px; }
 body.land .ec-ribbon { padding: 1px 14px 1px 8px; }
+
+/* ---------- W1.2 the sheet engine (EMBERCROWN-WORLD.md 8.1 G21, 8.4 G22, 8.9; owner I; js/ui/sheet.js) ----------
+   One sheet: detents medium (--detent-mid) and large (up to the top bar) in portrait; in landscape 48vw at full
+   height over the side rail. The head row is the grabber (a tap cycles the detents, a swipe down closes); the
+   back arrow, the breadcrumb, "?" and close sit on it. Safe areas on all four sides. */
+:root { --sheet-w-land: 48vw; --detent-mid: 50vh; }
+@supports (height: 1dvh) { :root { --detent-mid: 50dvh; } }
+.ec-sheet, .ec-sheet[data-detent="medium"] { top: auto; bottom: 0; height: var(--detent-mid); max-height: calc(100% - var(--sa-t) - var(--top)); }
+.ec-sheet.tall, .ec-sheet[data-detent="large"] { top: calc(var(--sa-t) + var(--top)); bottom: 0; height: auto; max-height: none; }
+.ec-sheet:focus { outline: none; }
+.ec-sheet-head { position: relative; justify-content: flex-start; gap: 4px; min-height: 56px; padding-top: 10px; flex: none; }
+.ec-sheet-head > .ec-grab {
+  position: absolute; inset: 0; z-index: 0; width: 100%; height: auto; display: block; background: none; border: 0; border-radius: 0;
+  box-shadow: none; touch-action: none; cursor: grab;
+}
+.ec-sheet-head > .ec-grab i { position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgba(211, 195, 163, 0.45); }
+.ec-sheet-head > :not(.ec-grab) { position: relative; z-index: 1; }
+.ec-crumbs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; pointer-events: none; overflow: hidden; }
+.ec-crumbs h2 { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ec-crumb {
+  pointer-events: auto; flex: 0 1 auto; min-width: 44px; max-width: 42%; min-height: 44px; padding: 0 6px; border-radius: var(--r-md);
+  font-size: var(--fs-3); font-weight: 600; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ec-crumb-sep { flex: none; margin: 0 6px 0 0; color: var(--dim); font-size: var(--fs-3); }
+.ec-sheet-head .ec-head-r, .ec-sheet-head > .ec-ibtn { pointer-events: auto; }
+.ec-sheet-head [data-act="sheet-intro"][aria-expanded="true"] { background: var(--sel); border-color: var(--line); }
+.ec-sheet-intro { margin: 2px 0 8px; padding: 8px 10px; border-radius: var(--r-md); background: var(--well); font-size: var(--fs-2); line-height: 1.4; color: var(--text); }
+/* landscape: half the width at full height, over the side rail (G22); the HUD on the left stays clear of it */
+body.land .ec-sheet, body.land .ec-sheet[data-detent] {
+  left: auto; right: 0; top: 0; bottom: 0; height: auto; max-height: none; width: calc(var(--sheet-w-land) + var(--sa-r));
+  padding: var(--sa-t) max(12px, var(--sa-r)) max(8px, var(--sa-b)) 12px; border-radius: 0; border-top: 0; border-left: 1.5px solid var(--line);
+}
+body.land .ec-sheet-head { padding-top: 0; min-height: 52px; }
+body.land .ec-sheet-head > .ec-grab { display: none; }
+body.land.has-sheet .ec-top, body.land.has-sheet .ec-stockstrip { right: calc(var(--sheet-w-land) + var(--sa-r)); }
+body.land.has-sheet .ec-paused-frame { right: calc(var(--sheet-w-land) + var(--sa-r)); }
+body.land.has-sheet .ec-hint { left: calc(var(--sa-l) + (100% - var(--sa-l) - var(--sa-r) - var(--sheet-w-land)) / 2); }
+body.land.has-sheet .ec-toasts { right: calc(var(--sheet-w-land) + var(--sa-r) + 8px); }

@@ -26,6 +26,7 @@ import { cropSprite } from './beings.js';
 function drawCrop(g, kind, stage, x) { const sp = cropSprite(kind, stage); g.drawImage(sp.c, x + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
 import { pixelPath, PATH_ROUTE, edgeMarker } from './marks.js';
 import { uiArtSamples } from './ui.js';
+import { fxArtSamples } from './fx.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
@@ -274,6 +275,10 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   if (!only || only === 'ui') {
     section('UI art: panel frames, rune rule, icon sheet (ui.js)');
     try { uiArtSamples(document).figures.forEach((f) => grid.appendChild(f)); } catch (e) { report.errors.push(`ui art: ${e && e.message}`); }
+  }
+  if (!only || only === 'fx') {
+    section('FX art: particle frames and floating numbers (fx.js)');
+    try { fxArtSamples(document).figures.forEach((f) => grid.appendChild(f)); } catch (e) { report.errors.push(`fx art: ${e && e.message}`); }
   }
   if (!only || only === 'sfx') sfxSection();
 

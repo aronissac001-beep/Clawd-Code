@@ -161,9 +161,15 @@ and documented in `render/light.js`.)
 - **Ancestries**: Sylvari have long ears and a leaf sprig in the hair; Deepforge a heavy brow, a gold
   beard bead and a wider frame; Emberkin swept bone horns and coal-bright eyes.
 
-## 11. Rules of thumb
+## 11. Stage W1 additions (pixel FX)
 
-- Text is never drawn into art (the raid count is the only number; UI text stays HTML, >= 14 px).
+| Sheet | File | Frames | Rules |
+|---|---|---|---|
+| FX sheet | `fx.js` (`fxSheet`, `fxText`, `fxTint`) | 65 on 80 x 65: puffs (3 sizes), squares, star, chip, drop, splash x3, ripple x6 and a fade, leaf x4, petal x2, flake, mote, puddle (2 sizes), footprints L/R | Fades step through dithered alphas 16, 11 and 6 of 16, never canvas alpha; every tint snaps to 3 palette colours; drawn 1:1 at a whole art pixel; floating numbers use our own 5 x 7 glyphs (`0-9 + - % x . ! ? /`) with an ink outline, the only text in art besides the raid count |
+
+## 12. Rules of thumb
+
+- Text is never drawn into art (the raid count and the FX floating numbers are the only numbers; UI text stays HTML, >= 14 px).
 - No emoji, no image files, no external art; original designs only.
 - Every art key in `js/engine/art/keys.js` must draw (the contact sheet and `validate-data` check it).
 - A new piece: pick its ramp, block the silhouette in the mid shade, add the top-left light and the

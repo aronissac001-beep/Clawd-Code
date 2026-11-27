@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|all] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|all] [--json]
 // Playwright with touch emulation (hasTouch, deviceScaleFactor 2), at every gate viewport:
 //   portrait 375 x 635, 390 x 664, 430 x 740 (Safari), 390 x 763 (Home Screen app);
 //   landscape 844 x 335, 932 x 380 (Safari).
@@ -808,6 +808,180 @@ async function runOmenClock(vp) {
   const ok = !!chip && res.minutes <= 15 && speed === 3 && !errs.length;
   return { id: 10, name: 'scripted 3x play reaches the first omen in <= 15 minutes', ok, owner: 'I',
     detail: `${chip ? `chip "${chip}"` : 'no chip'} after ${res.minutes.toFixed(1)} min of play (fake clock; game day ${res.day} ${res.hour}:00); coach: ${steps.join(' > ')}${errs.length ? '; errors: ' + errs.slice(0, 2).join(' | ') : ''}` };
+}
+
+// ---- W1.2 --flows=sheets (EMBERCROWN-WORLD.md 8.1 G21, 8.4 G22, 12.3 W1.2) ---------------------------------------
+// The sheet engine (js/ui/sheet.js createSheets) at the six viewports plus landscape-left and -right:
+//   S1 "medium detent shows the selected colonist" (portrait): the colonist sits low on the map, its sheet opens
+//      at the medium detent (45-55 % of the height) and the colonist is inside the uncovered world; the grabber
+//      tap cycles to large (top at the top bar) and back; a swipe down from medium closes it
+//   S2 "Hold / Offices / back without a second sheet": Colony > Hold > Offices pushes inside the one sheet with
+//      a breadcrumb ending "/ Offices", back returns to the Hold tab, never two sheets
+//   S3 "landscape sheet keeps the selection visible": 45-50 % of the width at full height, inside the safe area,
+//      the colonist left of it inside the world
+//   S4 "? paragraphs": the colonist sheet's paragraph shows on the first visit only, then behind "?"
+// and the 14.4 probe (44 pt targets, 14 px text, no horizontal overflow) on every sheet screen at 100 % and 130 % text.
+const SHEET_VPS = [...VIEWPORTS,
+  { name: 'l844x335-left', width: 844, height: 335, safe: '0,0,21,47' }, { name: 'l844x335-right', width: 844, height: 335, safe: '0,47,21,0' }];
+async function runSheets(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [];
+  const screen = async (name) => {
+    await page.waitForTimeout(250);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    screens.push({ name, ok: !list.length, n: list.length });
+    await page.screenshot({ path: join(OUT, `sheets-${vp.name}-${name}.png`) });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  /** Tap the first visible match after scrolling it into view (tab strips scroll sideways). */
+  const tapIn = async (sel) => { await page.evaluate((sel) => { const e = [...document.querySelectorAll(sel)].find((x) => !x.closest('[hidden]')); if (e && e.scrollIntoView) e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, sel); await page.waitForTimeout(80); return tap(page, sel); };
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
+  await page.waitForTimeout(700);
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
+  await page.evaluate(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
+  const land = vp.width > vp.height;
+  // the sheet as the engine and the DOM see it
+  const sheetNow = () => page.evaluate(() => {
+    const sh = window.__ecUI.shell, e = document.querySelector('.ec-sheet'), all = [...document.querySelectorAll('.ec-sheet, [role=dialog].ec-sheet')];
+    const vis = all.filter((x) => !x.hidden && x.getBoundingClientRect().height > 0);
+    if (!e || e.hidden) return { open: false, count: vis.length };
+    const r = e.getBoundingClientRect(), eng = sh.ctx.sheets;
+    const crumb = [...e.querySelectorAll('.ec-crumbs .ec-crumb, .ec-crumbs h2')].map((x) => x.textContent.trim()).join(' / ');
+    return { open: true, count: vis.length, top: r.top, left: r.left, right: r.right, bottom: r.bottom, w: r.width, h: r.height, iw: innerWidth, ih: innerHeight,
+      detent: e.dataset.detent, crumb, title: eng ? eng.title() : null, tab: eng ? eng.tab() : null, depth: eng ? eng.depth() : null,
+      intro: !!e.querySelector('.ec-sheet-intro'), ins: sh.metrics().insets };
+  });
+  // where the selected colonist is drawn, against the world rect the chrome leaves (after the camera settles)
+  const colonistSeen = async () => {
+    await page.waitForTimeout(1400);
+    return page.evaluate(() => {
+      const sh = window.__ecUI.shell, s = sh.state, sel = sh.ui.sel, c = sel && s.col.find((x) => x.id === sel.id);
+      if (!c) return { ok: false, why: 'nothing selected' };
+      const p = sh.worldToScreen(c.x, c.y), w = sh.metrics().world;
+      const ok = !!w && p.x >= w.x + 8 && p.x <= w.x + w.width - 8 && p.y >= w.y + 8 && p.y <= w.y + w.height - 8;
+      return { ok, p: { x: Math.round(p.x), y: Math.round(p.y) }, world: w && { x: Math.round(w.x), y: Math.round(w.y), w: Math.round(w.width), h: Math.round(w.height) } };
+    });
+  };
+  // put the first colonist low (portrait) or right (landscape) on the map, then select it and open its sheet from the rail
+  await page.evaluate((land) => {
+    const sh = window.__ecUI.shell, cam = sh.camera, c = sh.state.col[0];
+    cam.setZoom(1);
+    if (land) cam.centerOn(c.x - cam.vw * 0.32 / cam.zoom, c.y, false); else cam.centerOn(c.x, c.y - cam.vh * 0.32 / cam.zoom, false);
+    sh.loop.poke();
+  }, land);
+  await page.waitForTimeout(200);
+  const r1 = await tap(page, '[data-act=colonist]');
+  await page.waitForTimeout(250);
+  // the second tap: the rail again (landscape) or the peek card's name plate (portrait: the card covers the rail)
+  const r2 = land ? await tap(page, '[data-act=colonist]') : await tap(page, '.ec-peek > :nth-child(2)');
+  const a = await sheetNow();
+  const seen = await colonistSeen();
+  await screen('colonist-medium');
+  if (!land) {
+    const midOk = a.open && a.detent === 'medium' && a.h >= 0.45 * a.ih - 1 && a.h <= 0.55 * a.ih + 1 + a.ins.b;
+    flow('S1', 'medium detent shows the selected colonist', r1 && r2 && midOk && seen.ok,
+      a.open ? `detent ${a.detent}, ${Math.round(a.h)} of ${a.ih} pt (${Math.round(100 * a.h / a.ih)} %); colonist at ${JSON.stringify(seen.p)} in world ${JSON.stringify(seen.world)}` : 'no sheet');
+    // the grabber: a tap to large, a tap back to medium, a swipe down closes
+    await tap(page, '[data-act=sheet-detent]');
+    const b = await sheetNow();
+    await screen('colonist-large');
+    await page.evaluate(() => { document.documentElement.dataset.ecText = '130'; });
+    await screen('colonist-large-130');
+    await page.evaluate(() => { delete document.documentElement.dataset.ecText; });
+    await tap(page, '[data-act=sheet-detent]');
+    const c = await sheetNow();
+    await page.evaluate(() => {
+      const g = document.querySelector('[data-act=sheet-detent]'), r = g.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + 20;
+      const o = (y, buttons) => ({ pointerId: 41, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons });
+      g.dispatchEvent(new PointerEvent('pointerdown', o(y, 1))); g.dispatchEvent(new PointerEvent('pointermove', o(y + 60, 1))); g.dispatchEvent(new PointerEvent('pointerup', o(y + 80, 0)));
+    });
+    await page.waitForTimeout(150);
+    const d = await sheetNow();
+    const largeTop = (b.ins ? b.ins.t : 0) + 44;
+    flow('S1b', 'grabber: tap cycles medium and large, swipe down closes', b.open && b.detent === 'large' && Math.abs(b.top - largeTop) <= 1 && c.detent === 'medium' && !d.open,
+      `tap: ${b.detent} (top ${Math.round(b.top)}, want ${largeTop}); tap: ${c.detent}; swipe down: ${d.open ? 'still open' : 'closed'}`);
+  } else {
+    const sa = a.ins || { t: 0, r: 0, b: 0, l: 0 };
+    const share = a.open ? (a.w - sa.r) / a.iw : 0;
+    const full = a.open && a.top <= 0.5 && a.bottom >= a.ih - 0.5 && a.right >= a.iw - 0.5;
+    flow('S3', 'landscape sheet keeps the selection visible', r1 && r2 && full && share >= 0.45 && share <= 0.5 + 0.005 && seen.ok,
+      a.open ? `${Math.round(100 * share)} % of the width (+${sa.r} pt inset), top ${Math.round(a.top)} bottom ${Math.round(a.bottom)} of ${a.ih}; colonist at ${JSON.stringify(seen.p)} in world ${JSON.stringify(seen.world)}` : 'no sheet');
+    await page.evaluate(() => { document.documentElement.dataset.ecText = '130'; });
+    await screen('colonist-side-130');
+    await page.evaluate(() => { delete document.documentElement.dataset.ecText; });
+  }
+  // S4: the paragraph on the first visit, then behind "?"
+  const introFirst = a.intro;
+  await page.evaluate(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.openSubjectSheet({ kind: 'colonist', id: sh.state.col[0].id }); });
+  await page.waitForTimeout(150);
+  const again = await sheetNow();
+  await tap(page, '[data-act=sheet-intro]');
+  const asked = await sheetNow();
+  await screen('colonist-intro');
+  flow('S4', '"?" paragraphs: first visit only, then behind "?"', introFirst && !again.intro && asked.intro, `first visit ${introFirst ? 'shown' : 'not shown'}; second ${again.intro ? 'shown' : 'hidden'}; after "?" ${asked.intro ? 'shown' : 'hidden'}`);
+  await page.evaluate(() => window.__ecUI.shell.ctx.closeSheet());
+
+  // S2: Colony > Hold > Offices > back, one sheet throughout
+  const counts = [];
+  const tabB = await tap(page, '[data-act=tab][data-tab=colony]');
+  await page.waitForTimeout(150);
+  const holdB = await tapIn('.ec-sheet [data-act=sheet-tab][data-tab=Hold]');
+  await page.waitForTimeout(150);
+  const h0 = await sheetNow(); counts.push(h0.count);
+  const offB = await tapIn('[data-act=hold-offices]');
+  await page.waitForTimeout(200);
+  const o = await sheetNow(); counts.push(o.count);
+  await screen('hold-offices');
+  await page.evaluate(() => { document.documentElement.dataset.ecText = '130'; });
+  await screen('hold-offices-130');
+  await page.evaluate(() => { delete document.documentElement.dataset.ecText; });
+  const backB = await tap(page, '[data-act=sheet-back]');
+  await page.waitForTimeout(150);
+  const k = await sheetNow(); counts.push(k.count);
+  const crumbOk = /^(Hold|Colony) \/ Offices$/.test(o.crumb || '');
+  flow('S2', 'Hold / Offices / back without a second sheet', tabB && holdB && offB && backB && crumbOk && o.depth === 1 && k.open && k.tab === 'Hold' && k.depth === 0 && counts.every((n) => n === 1),
+    `${h0.open ? `${h0.title}/${h0.tab}` : 'no Colony sheet'} > "${o.crumb}" (depth ${o.depth}) > back: ${k.open ? `${k.title}/${k.tab} depth ${k.depth}` : 'closed'}; sheets visible ${counts.join(', ')}`);
+  // Menu > Settings: a push at the large detent (portrait)
+  await page.evaluate(() => window.__ecUI.shell.ctx.closeSheet());
+  await tap(page, '[data-act=menu]');
+  await page.waitForTimeout(150);
+  await screen('menu');
+  const setB = await tapIn('[data-act=menu-settings]');
+  await page.waitForTimeout(200);
+  const st = await sheetNow();
+  await screen('menu-settings');
+  if (!land) flow('S5', 'Menu > Settings pushes at the large detent', setB && st.open && st.crumb === 'Menu / Settings' && st.detent === 'large' && st.count === 1, `${st.open ? `"${st.crumb}" at ${st.detent}` : 'no sheet'}; sheets visible ${st.count}`);
+  return done();
+}
+if (flowsArg === 'sheets') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of SHEET_VPS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runSheets(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-sheets-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=sheets [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/sheets-*.png)`);
+  process.exit(nbad ? 1 : 0);
 }
 
 const report = [];

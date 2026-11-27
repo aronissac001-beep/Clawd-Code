@@ -12,7 +12,10 @@ export const SIZES = Object.freeze({
   speed: 56,
   tab: 72,
   peek: LAYOUT.peek ?? 120,
-  sheet: 0.75, sheetMax: 0.92,
+  sheet: 0.75, sheetMax: 0.92,  // Stage 1 sheet heights (kept for old callers)
+  detentMid: 0.5,               // W1.2 (8.1, 8.9 --detent-mid): the medium detent, a share of the height
+  sheetLand: 0.48,              // W1.2 (G22, 8.9 --sheet-w-land): landscape sheets, a share of the width, full height
+  keepMargin: 48,               // W1.2: the selection stays at least this far inside the uncovered world
   landscapePanel: LAYOUT.landscapePanel ?? 320,
   sideRail: 56,                 // landscape: the bottom bar becomes a vertical rail on the right
   alert: 44, alertsVisible: 4,
@@ -84,4 +87,44 @@ export function measureWorld(doc = document) {
     else bottom = Math.min(bottom, r.top);
   }
   return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
+/**
+ * The planned sheet rect (CSS px) for a viewport (W1.2, G21, G22): portrait medium is the bottom
+ * detentMid of the height, large reaches up to the top bar; landscape is sheetLand of the width (plus the
+ * right inset) at full height, over the side rail.
+ */
+export function plannedSheet(w, h, ins = { t: 0, r: 0, b: 0, l: 0 }, detent = 'medium') {
+  const S = SIZES;
+  if (isLandscape(w, h)) { const width = w * S.sheetLand + ins.r; return { side: 'right', x: w - width, y: 0, width, height: h }; }
+  const y = detent === 'large' ? ins.t + S.topBar : h * (1 - S.detentMid);
+  return { side: 'bottom', x: 0, y, width: w, height: h - y };
+}
+/** How much of the canvas rect a sheet rect covers: { side: 'bottom' | 'right' | null, px }. */
+export function sheetCover(sheet, canvas, land) {
+  if (!sheet || !canvas || !(sheet.width > 0 && sheet.height > 0)) return { side: null, px: 0 };
+  if (land) return { side: 'right', px: Math.max(0, Math.min(canvas.width, canvas.right - sheet.left)) };
+  return { side: 'bottom', px: Math.max(0, Math.min(canvas.height, canvas.bottom - sheet.top)) };
+}
+/**
+ * The camera centre (world units) that brings world point (wx, wy) to the middle of the part of the canvas
+ * the sheet leaves uncovered, or null when the point is already at least `margin` inside it. cam: the
+ * engine camera (worldToScreen in canvas px, x, y, zoom, vw, vh). Pure: the caller moves the camera.
+ */
+export function keepVisible(cam, wx, wy, cover, margin = SIZES.keepMargin) {
+  const p = cam.worldToScreen(wx, wy);
+  let r = cam.vw, b = cam.vh;
+  if (cover && cover.side === 'right') r -= cover.px;
+  else if (cover && cover.side === 'bottom') b -= cover.px;
+  const m = Math.max(0, Math.min(margin, r / 4, b / 4));
+  if (p.x >= m && p.x <= r - m && p.y >= m && p.y <= b - m) return null;
+  return { x: cam.x + (p.x - r / 2) / cam.zoom, y: cam.y + (p.y - b / 2) / cam.zoom };
+}
+/**
+ * The camera centre that puts world point (wx, wy) in the middle of the uncovered part of the view (for a
+ * camera without C's setInset; with it, Camera.centerOn does this itself).
+ */
+export function centreFor(cam, wx, wy, cover) {
+  const px = cover && cover.px > 0 ? cover.px / 2 / cam.zoom : 0;
+  return { x: wx + (cover && cover.side === 'right' ? px : 0), y: wy + (cover && cover.side === 'bottom' ? px : 0) };
 }

@@ -58,7 +58,7 @@ export function openColony(ctx, tab = 'People') {
     else if (t === 'Chronicle') chronicleTab(el, ctx);
     else if (t === 'Military') militaryTab(el, ctx);
     else if (t === 'Hold') holdTab(el, ctx);
-  }, { tabs: COLONY_TABS, tab: COLONY_TABS.includes(tab) ? tab : 'People' });
+  }, { tabs: COLONY_TABS, tab: COLONY_TABS.includes(tab) ? tab : 'People', crumb: (t) => t });
 }
 
 // ---- Work: roles or the Advanced grid (10.4) --------------------------------------------------------------

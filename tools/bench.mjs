@@ -23,6 +23,9 @@
 //           batched mean of 100 runs per sample), the region full rebuild and 64 dirty clusters (6.2, reported)
 //   miners6 (Stage Z1 E3) 6 miners tunnelling for 2 game hours on maze3d: link Dijkstra per tick p95 < 0.3 ms,
 //           fewer than 1 linkStamp bump per 8 mined voxels
+//   particles (W1.8; tools/lib/bench-particles.mjs) the pixel FX particles: no arc( / fillText in particles.js,
+//           0 bytes allocated per frame by update + draw at 900 particles (node), draw time <= the W0 engine
+//           at 900 particles (Chromium, 390 x 664 x 3); its failures fail the run even without --enforce
 //   Scenes may also be named with --scene=a,b.
 // Default: save tick trunc bot, plus maze from Stage 1b.
 import { syntheticColony } from './lib/synthetic.mjs';
@@ -188,6 +191,16 @@ if (scenes.includes('maze3d') || scenes.includes('miners6')) {
   }
 }
 
+let hardFail = false;
+if (scenes.includes('particles')) {
+  const { runParticles } = await import('./lib/bench-particles.mjs');
+  const { r, fails, warns } = await runParticles({ browserName: (argv.find((a) => a.startsWith('--browser=')) || '--browser=chromium').split('=')[1] });
+  out.scenes.particles = r;
+  for (const f of fails) fail(f);
+  for (const w of warns) out.warnings.push(w);
+  hardFail = fails.length > 0;
+}
+
 if (flags.has('--json')) console.log(JSON.stringify(out, null, 1));
 else {
   for (const [k, v] of Object.entries(out.scenes)) console.log(`${k}: ${JSON.stringify(v)}`);
@@ -195,4 +208,4 @@ else {
   for (const w of out.warnings) console.log('warn ' + w);
   console.log(`bench: ${out.failures.length ? out.failures.length + ' threshold(s) missed' : 'all thresholds met'}${out.warnings.length ? `, ${out.warnings.length} warning(s)` : ''}${flags.has('--enforce') ? '' : ' (not enforced before Stage 1a)'}`);
 }
-process.exit(flags.has('--enforce') && out.failures.length ? 1 : 0);
+process.exit((flags.has('--enforce') && out.failures.length) || hardFail ? 1 : 0);

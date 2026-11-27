@@ -335,6 +335,7 @@ export class Renderer {
     SP.EMIS.length = 0;
     const sky = this.light.ambOverride !== null ? this.light.ambOverride : ambientOf(s.tick);
     ctx.carve = sky < 2.9;
+    this.particles.reduced = !!this.settings.reduceMotion;
     if (!lod.calm) this.particles.update(dt);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';

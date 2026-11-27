@@ -13,4 +13,12 @@ export const EN = Object.freeze({
   'list.pair': '{a} and {b}',
   'list.sep': '{a}, {b}',
   'list.more': { one: '{n} other', other: '{n} others' },
+  // ---- sheet.js: the sheet engine (W1.2) ----
+  'sheet.close': 'Close',
+  'sheet.backTo': 'Back to {title}',
+  'sheet.crumbs': 'Where you are',
+  'sheet.taller': 'Sheet size: make it taller',
+  'sheet.shorter': 'Sheet size: make it shorter',
+  'sheet.about': 'About {title}',
+  'sheet.intro.colonist': 'Each tab shows one side of this colonist: needs, skills, health, gear, friends, a log of their days and their story. Swipe the portrait left or right for the next colonist.',
 });

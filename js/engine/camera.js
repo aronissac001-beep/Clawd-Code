@@ -60,7 +60,19 @@ export class Camera {
     this.x += before.x - after.x; this.y += before.y - after.y;
     this.clamp();
   }
+  /**
+   * W1.2a (EMBERCROWN-WORLD.md G22): the part of the view an open sheet covers, CSS px per side ('top',
+   * 'right', 'bottom', 'left'). centerOn aims at the middle of the rest, and the clamp lets the map edge reach it.
+   */
+  setInset(side, px) {
+    if (!this.inset) this.inset = { top: 0, right: 0, bottom: 0, left: 0 };
+    if (!(side in this.inset)) return;
+    this.inset[side] = Math.max(0, +px || 0);
+    this.clamp();
+  }
   centerOn(x, y, smooth = true) {
+    const i = this.inset;
+    if (i) { x += (i.right - i.left) / 2 / this.zoom; y += (i.bottom - i.top) / 2 / this.zoom; }
     if (smooth) this.focus = { x, y };
     else { this.x = x; this.y = y; this.clamp(); }
   }
@@ -91,9 +103,9 @@ export class Camera {
     // Allow a margin past the map edge so edge tiles can sit mid-screen above the HUD.
     const m = 160;
     const hw = this.vw / 2 / this.zoom, hh = this.vh / 2 / this.zoom;
-    const WW = worldW(), WH = worldH();
-    const minX = Math.min(hw - m, WW / 2), maxX = Math.max(WW - hw + m, WW / 2);
-    const minY = Math.min(hh - m, WH / 2), maxY = Math.max(WH - hh + m, WH / 2);
+    const WW = worldW(), WH = worldH(), i = this.inset, z = this.zoom;
+    const minX = Math.min(hw - m - (i ? i.left / z : 0), WW / 2), maxX = Math.max(WW - hw + m + (i ? i.right / z : 0), WW / 2);
+    const minY = Math.min(hh - m - (i ? i.top / z : 0), WH / 2), maxY = Math.max(WH - hh + m + (i ? i.bottom / z : 0), WH / 2);
     this.x = Math.max(minX, Math.min(maxX, this.x));
     this.y = Math.max(minY, Math.min(maxY, this.y));
   }

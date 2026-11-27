@@ -35,7 +35,7 @@
 import { militaryTap, militaryPicking } from './military.js';
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { RES_COLORS } from './icons.js';
-import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets } from './layout.js';
+import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets, sheetCover, keepVisible, centreFor } from './layout.js';
 import { SpeedButton } from './speed.js';
 import { Loupe } from './loupe.js';
 import { TILE, W, H, D, zS, PLANE } from '../game/core/grid.js';
@@ -66,7 +66,7 @@ import { buildPanel, ordersPanel, STAGE } from './architect.js';
 import { zonesPanel } from './zonesui.js';
 import { createTool } from './toolbar.js';
 import { peekContent, contextItems } from './peek.js';
-import { openSubjectSheet, openColony, openMenu } from './sheet.js';
+import { openSubjectSheet, openColony, openMenu, createSheets, selectionPoint } from './sheet.js';
 import { mountGuide } from './guide.js';
 import { chipView, threatWatch, omenLetter, jumpToEdge, foeAt, draftAll, draftedIds, orderDrafted, firstOmen, imminentAdvice, endText } from './threatui.js';
 import { alertTracker } from './alerts.js';
@@ -277,6 +277,7 @@ export function mountShell(root, api) {
     const dpr = Math.min(r.cfg.dprCap || 2, devicePixelRatio || 1);
     r.resize(rc.width, rc.height, dpr); cam.resize(rc.width, rc.height, dpr);
     if (speed.isOpen) speed.layoutFan();
+    if (ui.sheet) sheets.relayout();   // W1.2: a turned phone re-places the sheet and the camera
     dirtyChrome = true; loop.poke();
   }
   window.addEventListener('resize', layout);
@@ -499,70 +500,29 @@ export function mountShell(root, api) {
   }
   function closePanel(sync = true) { if (!ui.panel) return; ui.panel = null; panel.hidden = true; for (const b of tabs.children) b.classList.remove('on'); if (sync) syncChrome(); }
 
-  // ---- sheets (a stack: a sheet opened with { back: true } returns to the one under it) -----------------
-  const stack = [];
-  let cur = null;
-  function openSheet(title, build, opts = {}) {
-    if (opts.back && cur) stack.push(cur); else stack.length = 0;
-    closePanel(false);
-    hideCtx();
-    if (cur && cur.opts.onClose && !opts.back) { const f = cur.opts.onClose; cur.opts.onClose = null; f(); }
-    cur = { title, build, opts, tab: opts.tab || (opts.tabs ? opts.tabs[0] : null) };
-    renderSheet(false);
-    sheet.classList.remove('tall');
-    sheet.hidden = false;
-    ui.sheet = title;
-    peek.hidden = true;
-    syncChrome();
-  }
-  function renderSheet(keep = true) {
-    if (!cur) return;
-    const oldBody = sheet.querySelector('.ec-sheet-body'), oldStrip = sheet.querySelector('.ec-strip');
-    const sy = keep && oldBody ? oldBody.scrollTop : 0, sx = keep && oldStrip ? oldStrip.scrollLeft : 0;
-    clear(sheet);
-    const grab = h('div.ec-grab', { 'aria-hidden': 'true' }, h('i'));
-    const x = h('button.ec-ibtn.ec-close', { type: 'button', 'data-act': 'close-sheet', 'aria-label': 'Close', html: icon('x') });
-    onTap(x, () => closeSheet());
-    const headRow = h('div.ec-panel-head', null);
-    if (stack.length) { const bk = h('button.ec-ibtn.ec-close', { type: 'button', 'data-act': 'sheet-back', 'aria-label': 'Back', html: icon('back') }); onTap(bk, () => back()); headRow.append(bk); }
-    headRow.append(h('h2', { text: cur.title }), h('span.ec-head-r', null, cur.opts.help ? helpButton(ctx, cur.opts.help) : helpButton(ctx, cur.title), x));
-    sheet.append(grab, headRow);
-    if (cur.opts.head) sheet.append(cur.opts.head());
-    const bodyEl = h('div.ec-sheet-body');
-    if (cur.opts.tabs) {
-      const st = h('div.ec-strip', { role: 'tablist' });
-      for (const n of cur.opts.tabs) {
-        const b = h('button.ec-strip-tab' + (n === cur.tab ? '.on' : ''), { type: 'button', role: 'tab', 'aria-selected': n === cur.tab ? 'true' : 'false', 'data-tab': n, 'data-act': 'sheet-tab', text: n });
-        onTap(b, () => { cur.tab = n; renderSheet(false); });
-        st.append(b);
-      }
-      sheet.append(st, bodyEl);
-      cur.build(bodyEl, cur.tab);
-      st.scrollLeft = sx;
-      if (!keep) { const on = st.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' }); }
-    } else { sheet.append(bodyEl); cur.build(bodyEl, null); }
-    bodyEl.scrollTop = sy;
-    dragToResize(grab);
-  }
-  function back() { if (stack.length) { cur = stack.pop(); ui.sheet = cur.title; renderSheet(false); } else closeSheet(); }
-  function closeSheet(sync = true) {
-    if (!ui.sheet) return;
-    const closers = [cur, ...stack].map((x) => x && x.opts.onClose).filter(Boolean);
-    ui.sheet = null; cur = null; stack.length = 0; sheet.hidden = true;
-    for (const f of closers) f();
-    if (ui.sel && sync) renderPeek();
-    if (sync) syncChrome();
-  }
-  /** Drag the grab bar: up to 92%, down to close (10.1). */
-  function dragToResize(grab) {
-    let y0 = null;
-    grab.addEventListener('pointerdown', (e) => { y0 = e.clientY; try { grab.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } });
-    grab.addEventListener('pointerup', (e) => {
-      if (y0 === null) return; const dy = e.clientY - y0; y0 = null;
-      if (dy < -30) sheet.classList.add('tall');
-      else if (dy > 30) { if (sheet.classList.contains('tall')) sheet.classList.remove('tall'); else closeSheet(); }
-    });
-  }
+  // ---- sheets (W1.2: sheet.js createSheets; one sheet, sub-screens push with a breadcrumb, two detents) ----
+  const sheets = createSheets(sheet, {
+    before: () => { closePanel(false); hideCtx(); },
+    shown: (title) => { ui.sheet = title; peek.hidden = true; syncChrome(); },
+    hidden: (sync) => { ui.sheet = null; if (ui.sel && sync) renderPeek(); if (sync) syncChrome(); },
+    help: (key) => helpButton(ctx, key),
+    land: () => ui.landscape,
+    cover: (rect) => {
+      // G22: the camera shifts so the selection stays visible beside (landscape) or above (portrait) the sheet
+      const cv = canvas.getBoundingClientRect(), c = sheetCover(rect, cv, ui.landscape);
+      sheetCovers = c;
+      if (cam.setInset) { cam.setInset('bottom', c.side === 'bottom' ? c.px : 0); cam.setInset('right', c.side === 'right' ? c.px : 0); }
+      const p = rect ? selectionPoint(s, ui.sel) : null;
+      const to = p ? keepVisible(cam, p.x, p.y, c) : null;
+      if (to) { ui.follow = null; if (cam.setInset) cam.centerOn(p.x, p.y); else cam.centerOn(to.x, to.y); }   // with C's setInset the camera aims beside the sheet itself
+      loop.poke();
+    },
+  });
+  let sheetCovers = { side: null, px: 0 };   // what the open sheet covers of the canvas (centerOn aims beside it)
+  const openSheet = (title, build, opts) => sheets.open(title, build, opts);
+  const renderSheet = (keep = true) => sheets.render(keep);
+  const back = () => sheets.back();
+  const closeSheet = (sync = true) => sheets.close(sync);
 
   // ---- selection: peek card and full sheet -------------------------------------------------------------
   function select(sel, again = false, quiet = false) {
@@ -667,7 +627,7 @@ export function mountShell(root, api) {
     if (levels && res && res.ok) levels.renderGhost(true);
     return res || { ok: false };
   }
-  function centerOn(x, y) { ui.follow = null; cam.centerOn(x, y); loop.poke(); }
+  function centerOn(x, y) { ui.follow = null; const p = cam.setInset ? { x, y } : centreFor(cam, x, y, sheetCovers); cam.centerOn(p.x, p.y); loop.poke(); }
   function followCam() {
     if (ui.follow === null) return;
     const c = s.col.find((x) => x.id === ui.follow);
@@ -907,7 +867,7 @@ export function mountShell(root, api) {
   const ctx = {
     s, r, cam, ui,
     send, toast: (t, tone) => toast.show(t, tone),
-    openSheet, closeSheet, refreshSheet: () => renderSheet(true), back, sheetTab: () => (cur ? cur.tab : null),
+    openSheet, closeSheet, refreshSheet: () => renderSheet(true), back, sheetTab: () => sheets.tab(), sheets,
     openPanel, closePanel, reopenPanel: () => { if (ui.panel) { renderPanel(); syncChrome(); } },
     startTool, endTool, refreshBar: () => renderBar(), hint: () => showHint(), redraw: () => loop.poke(),
     setStripes: (v) => r.setOverlay('stripes', v && v.length ? v : null),

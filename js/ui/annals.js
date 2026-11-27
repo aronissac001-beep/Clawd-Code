@@ -36,7 +36,7 @@ export function annalsIndex(s) {
 /** The Annals sheet (Colony > Annals). */
 export function openAnnals(ctx, tab = 'Years') {
   const state = { tab: T.tabs.includes(tab) ? tab : 'Years', page: [] };
-  ctx.openSheet(T.title, (el) => annalsView(el, ctx.s, ctx, state), {});
+  ctx.openSheet(T.title, (el) => annalsView(el, ctx.s, ctx, state), { push: true });
 }
 
 /** The Annals into el. state: { tab, page: [keys] } (kept by the caller across re-renders). */

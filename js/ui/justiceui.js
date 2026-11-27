@@ -36,7 +36,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 export function openJustice(ctx) {
   const st = { pick: false };
-  ctx.openSheet('Justice', (el) => justicePanel(el, ctx.s, ctx, st), {});
+  ctx.openSheet('Justice', (el) => justicePanel(el, ctx.s, ctx, st), { push: true });
 }
 
 /** The Laws row (Settings > Hold, and the top of the Justice screen). */
