@@ -310,6 +310,13 @@ function gpuOnly(root) {
   root.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh || o.userData.keepCpu) return; const g = o.geometry; if (!g || g.userData.gpuOnly) return;
     g.computeBoundingSphere(); g.computeBoundingBox(); g.userData.gpuOnly = true;
+    // normals as 16-bit (4 lanes keeps every vertex 4-byte aligned for Metal): 8 bytes instead of 12, no visible change
+    const N = g.attributes.normal;
+    if (N && N.itemSize === 3 && N.array instanceof Float32Array && !N.isInterleavedBufferAttribute) {
+      const a = N.array, n = N.count, q = new Int16Array(n * 4);
+      for (let i = 0; i < n; i++) { q[i * 4] = Math.round(a[i * 3] * 32767); q[i * 4 + 1] = Math.round(a[i * 3 + 1] * 32767); q[i * 4 + 2] = Math.round(a[i * 3 + 2] * 32767); }
+      g.setAttribute('normal', new THREE.BufferAttribute(q, 4, true));
+    }
     for (const k in g.attributes) g.attributes[k].onUpload(dropArray); if (g.index) g.index.onUpload(dropArray);
   });
   return root;
