@@ -229,7 +229,7 @@ function bunker(K) {
   // the east retaining wall (x = X1), stepping down the north bank; the silo corridor goes through it
   stepWall(K, 'z', X1, Z0 - RUN, Z1, eGround, [[-11.8, -8.2]]);
   K.box(X1, -10, 0.6, 3.6, TOP + COPE - CEIL, 'concrete', { y: CEIL, collide: false }); block(K, X1, -10, 0.6, 3.6, 1.1 - COPE, TOP + COPE);
-  for (const [x, z] of [[-24, Z1 + 0.32], [-12, Z1 + 0.32], [8, Z1 + 0.32]]) vbox(K, x, z, 1.2, 0.05, 0.8, '#ffe8a0', 3.0); // lamp housings
+  facade(K, fGround);
   for (const x of [-30, -18, 6, 12]) vbox(K, x, Z1 + 0.33, 2.4, 0.05, 0.25, 'hazard', 4.4);
   K.light(-3, Z1 + 2, 3.2, '#ffd890', 1.3, 14);
 
@@ -339,6 +339,96 @@ function bunker(K) {
   K.npc('scientist', -41.5, 41.5, { y: 3.92, guard: true }); K.npc('scientist', 41.5, -41.5, { y: 3.92, guard: true });
   K.npc('scientist', 22, 22, { patrol: [[22, 22], [40, 22], [40, 2], [22, 2]] });
   K.npc('scientist_heavy', -24, 26, { patrol: [[-24, 26], [-36, 36], [-12, 34]] });
+}
+/** canvas textures for the facade's signs and the camo net (made once) */
+const TEX = {};
+function canvasTex(key, w, h, draw) {
+  if (TEX[key]) return TEX[key];
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 2; return (TEX[key] = t);
+}
+function trefoil(g, cx, cy, r, col) {
+  g.fillStyle = col; g.beginPath(); g.arc(cx, cy, r * 0.18, 0, PI * 2); g.fill();
+  for (let k = 0; k < 3; k++) { const a = -PI / 2 + k * PI * 2 / 3; g.beginPath(); g.moveTo(cx + Math.cos(a - 0.52) * r * 0.28, cy + Math.sin(a - 0.52) * r * 0.28); g.arc(cx, cy, r, a - 0.52, a + 0.52); g.arc(cx, cy, r * 0.28, a + 0.52, a - 0.52, true); g.fill(); }
+}
+const SIGNS = {
+  rad: (g, w, h) => { g.fillStyle = '#f0c030'; g.fillRect(0, 0, w, h); g.strokeStyle = '#1a1a1a'; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10); trefoil(g, w / 2, h / 2, w * 0.36, '#1a1a1a'); },
+  danger: (g, w, h) => { g.fillStyle = '#e8e4da'; g.fillRect(0, 0, w, h); g.fillStyle = '#b02a20'; g.fillRect(0, 0, w, h * 0.42); g.fillStyle = '#fff'; g.font = '900 ' + h * 0.3 + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('DANGER', w / 2, h * 0.22);
+    g.fillStyle = '#1a1a1a'; g.font = '800 ' + h * 0.17 + 'px system-ui, sans-serif'; g.fillText('AUTHORISED', w / 2, h * 0.58); g.fillText('PERSONNEL ONLY', w / 2, h * 0.8); },
+  silo: (g, w, h) => { g.fillStyle = '#ddd8cc'; g.fillRect(0, 0, w, h); g.fillStyle = '#7a1c14'; g.font = '900 ' + h * 0.62 + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('LAUNCH COMPLEX 7', w / 2, h * 0.54); },
+  stencil: (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(40,38,34,0.88)'; g.font = '900 ' + h * 0.8 + 'px Impact, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('BUNKER 7', w / 2, h * 0.54);
+    g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 70; i++) { g.fillStyle = 'rgba(0,0,0,' + (0.3 + Math.random() * 0.6) + ')'; g.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 6, 1 + Math.random() * 3); } // worn paint
+    g.globalCompositeOperation = 'source-over'; },
+  b1: (g, w, h) => { g.fillStyle = '#e0dcd0'; g.fillRect(0, 0, w, h); g.fillStyle = '#1a1a1a'; g.font = '900 ' + h * 0.7 + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('B-1', w / 2, h * 0.55); },
+  b2: (g, w, h) => { g.fillStyle = '#e0dcd0'; g.fillRect(0, 0, w, h); g.fillStyle = '#1a1a1a'; g.font = '900 ' + h * 0.7 + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('B-2', w / 2, h * 0.55); },
+};
+/** a flat sign facing local +Z (the drive) */
+function sign(K, key, x, y, z, w, h, cw = 128, ch = 128, o = {}) {
+  const t = canvasTex(key, cw, ch, SIGNS[key]); if (!t) return;
+  const mat = new THREE.MeshLambertMaterial({ map: t, transparent: !!o.alpha, alphaTest: o.alpha ? 0.3 : 0, depthWrite: !o.alpha });
+  lmesh(K, new THREE.PlaneGeometry(w, h), mat, x, y, z, 0);
+}
+/** the bunker's front: pilasters, a plinth and a cornice break the long wall into bays; formwork joints, vent grilles,
+ *  conduits on brackets with a valve, wall lamps, signs and a stencil, hazard bands, sandbags and a camo net over the
+ *  east bay. Visual only, except the sandbags and the net's poles. About 2.5k triangles. */
+function facade(K, fGround) {
+  const F = Z1 + 0.3, H = TOP + COPE;                                                                  // the wall's face, its top
+  const PIL = [-34, -28, -15.6, -9.6, 4.6, 14.5];
+  for (const x of PIL) {
+    const h = Math.max(1, fGround(x) + COPE);
+    vbox(K, x, F + 0.16, 0.8, 0.32, h, 'concrete_dark', 0, true);
+    vbox(K, x, F + 0.2, 1.0, 0.4, 0.28, 'concrete_dark', h - 0.28);                                    // its cap
+    vbox(K, x, F + 0.33, 0.82, 0.02, 0.75, 'hazard', 0.05);                                            // a hazard band at its foot
+  }
+  // the plinth (darker, a little proud) and the cornice under the coping, either side of the portal
+  for (const [a, b] of [[-33.6, -6.3], [-0.0, X1 + 0.3]]) { vbox(K, (a + b) / 2, F + 0.07, b - a, 0.14, 0.72, 'concrete_dark', 0); vbox(K, (a + b) / 2, F + 0.11, b - a, 0.22, 0.32, 'concrete_dark', H - 0.62); }
+  for (const [a, b] of [[-33.6, -6.3], [4.2, X1]]) vbox(K, (a + b) / 2, F + 0.012, b - a, 0.02, 0.06, '#5e5b55', 2.9); // a formwork joint
+  // vent grilles low in the bays: a frame and slats
+  for (const x of [-31, -12.6, 12]) { vbox(K, x, F + 0.04, 1.3, 0.08, 0.8, 'metal_dark', 1.0); for (let k = 0; k < 4; k++) vbox(K, x, F + 0.1, 1.16, 0.05, 0.08, 'metal', 1.1 + k * 0.17); }
+  // two conduits on brackets (a gas line in yellow), a drop into a junction box by the portal, a valve wheel
+  const pipeX = (x0, x1, y, z, r, surf) => lmesh(K, M.cyl(r, r, x1 - x0, 8), M.surf(surf), (x0 + x1) / 2, y, z, 0, { rz: Q, cast: true });
+  pipeX(-33.8, -6.8, 3.9, F + 0.62, 0.11, 'metal'); pipeX(-33.8, -6.8, 4.2, F + 0.62, 0.08, 'yellow_paint');
+  for (let x = -32.5; x < -7; x += 3) vbox(K, x, F + 0.32, 0.1, 0.62, 0.55, 'metal_dark', 3.7);
+  lmesh(K, M.cyl(0.11, 0.11, 3.1, 8), M.surf('metal'), -6.8, 2.4, F + 0.62); lmesh(K, M.cyl(0.08, 0.08, 3.4, 8), M.surf('yellow_paint'), -7.15, 2.55, F + 0.62);
+  vbox(K, -7.0, F + 0.3, 0.9, 0.55, 1.0, 'metal_dark', 0.35); vbox(K, -7.0, F + 0.58, 0.7, 0.02, 0.12, 'hazard', 1.1);
+  lmesh(K, M.cyl(0.11, 0.11, 2.2, 8), M.surf('metal'), -33.8, 2.8, F + 0.62);                         // down into the ground at the west end
+  lmesh(K, new THREE.TorusGeometry(0.22, 0.035, 4, 10), M.surf('red_paint'), -25, 3.9, F + 0.85, 0, { rx: 0 }); vbox(K, -25, F + 0.75, 0.06, 0.18, 0.06, 'metal_dark', 3.87);
+  // wall lamps: a dark housing over a glowing lens, each casting a pool of light on the apron at night
+  const lens = new THREE.MeshBasicMaterial({ color: '#fff0c8' });
+  for (const x of [-24, -12, 8]) {
+    vbox(K, x, F + 0.2, 0.7, 0.4, 0.3, 'metal_dark', 3.25); vbox(K, x, F + 0.06, 0.2, 0.12, 0.4, 'metal_dark', 3.0);
+    lmesh(K, M.box(0.6, 0.05, 0.32), lens, x, 3.23, F + 0.22);
+    K.light(x, F + 1.4, 2.9, '#ffe2b0', 0.9, 10);
+  }
+  // signs: over the door, beside the side doors, on the portal pillar, door numbers, a big stencil
+  sign(K, 'silo', -3, 5.15, Z1 + 1.585, 2.8, 0.36, 256, 32);
+  for (const x of [-22 - 2.1, 9 - 2.1]) sign(K, 'rad', x, 1.75, F + 0.02, 0.7, 0.7, 64, 64);
+  sign(K, 'danger', -5.65, 1.6, Z1 + 1.515, 1.0, 0.62, 128, 80);
+  sign(K, 'b1', -22, 2.35, Z1 + 0.59, 0.5, 0.26, 64, 32); sign(K, 'b2', 9, 2.35, Z1 + 0.59, 0.5, 0.26, 64, 32);
+  sign(K, 'stencil', -18.1, 1.55, F + 0.015, 4.0, 1.0, 256, 64, { alpha: true });
+  // sandbags along the wall, either side
+  bags(K, -30.5, Z1 + 1.6, 3.4, 0.9); bags(K, 12.6, Z1 + 1.55, 3.0, 0.9);
+  // the camo net over the east bay: a sagging sheet from the wall top out to two poles
+  const nx0 = 5.4, nx1 = 13.8, nz0 = F + 0.35, nz1 = Z1 + 6.6, ny0 = TOP - 0.4, ny1 = 2.75, NU = 10, NV = 7;
+  for (const x of [nx0 + 0.5, nx1 - 0.5]) K.cyl(x, nz1 - 0.2, 0.07, ny1 + 0.1, 'metal_dark', { seg: 6 });
+  const tex = canvasTex('camo', 128, 128, (g, w, h) => {
+    g.clearRect(0, 0, w, h); const R = (a, b) => a + Math.random() * (b - a);
+    for (let i = 0; i < 260; i++) { g.fillStyle = ['#4a5a30', '#5d6b3c', '#3c4628', '#6e6a44', '#57492e'][i % 5]; g.beginPath(); g.ellipse(R(0, w), R(0, h), R(3, 9), R(2, 6), R(0, 3), 0, PI * 2); g.fill(); }
+    g.strokeStyle = '#2e3220'; g.lineWidth = 1.5; for (let k = 0; k <= w; k += 16) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, h); g.stroke(); g.beginPath(); g.moveTo(0, k); g.lineTo(w, k); g.stroke(); }
+  });
+  if (tex) {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    const pos = [], uv = [], idx = [];
+    for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+      const u = i / NU, v = j / NV, x = nx0 + (nx1 - nx0) * u, z = nz0 + (nz1 - nz0) * v;
+      const y = ny0 + (ny1 - ny0) * v - 0.55 * Math.sin(PI * u) * Math.sin(PI * Math.min(1, v * 1.15)) - (j === NV && i % 5 ? 0.25 : 0) + (K.R() - 0.5) * 0.12;
+      const [wx, wz] = K.toWorld(x, z); pos.push(wx - K.mon.x, y, wz - K.mon.z); uv.push(u * 3.4, v * 2.4);
+    }
+    for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) { const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    M.add(statics(K), g, new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), 0, 0, 0, { cast: false });
+  }
 }
 /** a cheap sandbag wall (w x d, two courses of bags) */
 function bags(K, x, z, w, d) {
