@@ -178,7 +178,8 @@ export const Game = {
     for (const s of p.inv.arts) if (s) inv.addStack(s);
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
-    const by = src && src.owner && src.owner.def ? src.owner.def.name : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    const o = src && src.owner, an = n => (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
+    const by = o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def ? an(o.def.name) : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
     Swim.reset(p);
     setTimeout(() => G.ui.deathScreen(by), 1400);
     this.save();

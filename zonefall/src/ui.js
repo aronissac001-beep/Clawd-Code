@@ -629,7 +629,7 @@ export const UI = {
   openInventory(side) {
     const p = G.player; if (!p || p.dead) return;
     this.sel = null; this.attPick = null;
-    this.openSheet('Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
+    this.openSheet(side && side.title ? side.title.replace(/ \(burning\)$/, '') : 'Inventory', body => this.invBody(body, side), { cls: 'wide inv', tabs: [{ label: 'Inventory', on: true, fn: () => this.openInventory(side) }, { label: 'Craft', fn: () => this.openCraft() }, { label: 'Tech tree', fn: () => this.openTech() }] });
   },
   invBody(body, side) {
     const p = G.player; const inv = p.inv; this.curSide = side || null; if (this.dragGrids) this.dragGrids.clear();
@@ -1478,8 +1478,9 @@ export const UI = {
       <p><b>Survive the island.</b> You wash up on a beach with a rock and a torch. Hit trees and rocks for wood and stone (look at them and hold the hand button), pick hemp for cloth, hunt animals for meat and leather. Keep an eye on <b>health, food and water</b>.</p>
       <p><b>Build like you mean it.</b> Open the hammer menu: lay 3 m foundations, then walls, doorways, windows and roofs on their edges. Put real doors in doorways — they swing open when you walk into them and close behind you; raiders have to break them. Stairs, ladders and triangle pieces let you shape it how you like. Upgrade twig → wood → stone → sheet metal → armored.</p>
       <p><b>Claim it.</b> A Tool Cupboard on your foundations claims the land and stops decay. Keep it stocked: every day it takes a share of what the base cost to build (upkeep). Other survivors on the island build too, and now and then one who has gathered enough explosives will try to raid you, so lock your doors and upgrade your walls.</p>
+      <p><b>Unlock blueprints.</b> Smash barrels and put junk in a recycler for scrap. Stand by your own workbench and open Craft → <b>Tech tree</b> to spend it on better guns, armour and explosives (Workbench T1, T2, T3).</p>
       <p><b>Explore monuments.</b> Gas stations and supermarkets have recyclers; the Dish Array, Harbor, Train Yard, Water Treatment, Airfield, Garrison 9 and the Reactor Sector hold military loot behind keycard doors (some need a fuse or a lever). Haven Market is a safe trading post. Outlaw Forts can be raided with satchels or C4.</p>
-      <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, 1–6 belt, B build, Tab inventory, Q craft, M map.</p>
+      <p><b>Controls (touch):</b> left thumb moves (push the stick all the way forward to sprint), drag anywhere on the right to look. FIRE shoots / swings / throws (drag on it to keep aiming), the eye button aims down sights, ⤒ jumps, ⤓ crouches, the hand button uses or gathers (hold). Tap belt slots to switch, eat or heal. <b>Keyboard:</b> WASD, mouse look (click to lock), left click fire, right click aim, Space jump, C crouch, Shift sprint, E use, R reload, H heal, G throw, 1–6 belt, B build (Q rotates, X hammer), Tab inventory, M map.</p>
       <p class="dim">Tip: Add Zonefall to your Home Screen (Share → Add to Home Screen) and play in landscape.</p></div><button id="h-back">Back</button>`;
     $('#h-back').onclick = () => this.menu();
   },
