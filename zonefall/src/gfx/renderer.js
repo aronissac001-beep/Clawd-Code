@@ -144,7 +144,7 @@ export class Renderer {
     sources.sort((a, b) => ((a.x - tx) ** 2 + (a.z - tz) ** 2) - ((b.x - tx) ** 2 + (b.z - tz) ** 2));
     for (let i = 0; i < this.pool.length; i++) {
       const l = this.pool[i], s = i < n ? sources[i] : null;
-      if (s && (s.x - tx) ** 2 + (s.z - tz) ** 2 < 80 * 80) { l.position.set(s.x, s.y, s.z); l.color.set(s.color || '#ffb060'); l.intensity = s.intensity; l.distance = s.range; }
+      if (s && (s.x - tx) ** 2 + (s.z - tz) ** 2 < 80 * 80) { l.position.set(s.x, s.y, s.z); l.color.set(s.color || '#ffb060'); l.intensity = s.intensity; l.distance = s.range; l.decay = s.decay ?? 1.6; }
       else l.intensity = 0;
     }
   }

@@ -488,9 +488,20 @@ export const Game = {
       if (p.rig) p.rig.root.visible = false;
       // ---- lights
       const src = []; const night = G.night;
+      // indoors at night the sky and the moon don't reach you: dim them, so a lit room reads as lit (and a dark one as dark)
+      const inside = night > 0.05 && !p.dead && !veh && Build.isInside(p.x, p.z, p.y) ? 1 : 0;
+      this.inK = (this.inK || 0) + (inside - (this.inK || 0)) * Math.min(1, dt * 2.5);
+      if (this.inK > 0.01) { const k = this.inK * night; R.hemi.intensity *= 1 - 0.55 * k; R.sun.intensity *= 1 - 0.8 * k; }
       if (night > 0.05) {
         for (const l of G.lights) if (!l.night || night > 0.3) src.push({ x: l.x, y: l.y, z: l.z, color: l.color, intensity: l.intensity * night * 1.4, range: l.range });
-        for (const d of Build.deploys) { const D = DEPLOY[d.type], L = D.light; if (!L) continue; if (isLit(d)) src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: D.lightCol || (d.type === 'floodlight' ? '#fff2d0' : '#ffa050'), intensity: (D.lightK || (d.type === 'floodlight' ? 3 : 2.2)) * (0.9 + Math.random() * 0.1) * Math.max(0.35, night), range: L * 1.2 }); } // powered lights only when powered (power.js isLit)
+        for (const d of Build.deploys) { const D = DEPLOY[d.type], L = D.light; if (!L || !isLit(d)) continue; // powered lights only when powered (power.js isLit)
+          const col = D.lightCol || (d.type === 'floodlight' ? '#fff2d0' : '#ffa050'), fl = 0.95 + Math.random() * 0.05, nk = Math.max(0.35, night);
+          if (d.type === 'floodlight') { // the light lands where the beam does: a strong pool out in front, and a little at the lamp
+            const c = Math.cos(d.ry || 0), sn = Math.sin(d.ry || 0);
+            src.push({ x: d.x + c * 4.2, y: d.y + 2.6, z: d.z + sn * 4.2, color: col, intensity: 9 * fl * nk, range: 17, decay: 1.1 });
+          } else if (D.elec) src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: col, intensity: (D.lightK || 2.2) * 2.0 * fl * nk, range: L * 1.05, decay: 1.25 }); // ceiling lights: a bright pool under them, falling off toward the walls
+          else src.push({ x: d.x, y: d.y + (D.lightY ?? 1.2), z: d.z, color: col, intensity: (D.lightK || 2.2) * fl * nk, range: L * 1.2 });
+        }
       } else for (const d of Build.deploys) { if (DEPLOY[d.type].oven && d.state.lit) src.push({ x: d.x, y: d.y + 0.8, z: d.z, color: '#ffa050', intensity: 1.2, range: 5 }); }
       for (const d of Build.deploys) if (DEPLOY[d.type].oven && d.state.lit && G.fx && (d.x - cx) ** 2 + (d.z - cz) ** 2 < 2500) G.fx.fire(d.x, d.y + (d.type === 'furnace' ? 1.4 : 0.25), d.z, d.type === 'furnace' ? 0.5 : 1);
       if (G.fx) for (const l of G.fx.lights) src.push(l);
@@ -498,7 +509,7 @@ export const Game = {
       const cam = R.camera.position;
       if (!p.dead) {
         if (p.lightOn) src.unshift({ x: cam.x + Math.cos(p.yaw) * 0.5 - Math.sin(p.yaw) * 0.3, y: cam.y - 0.1, z: cam.z + Math.sin(p.yaw) * 0.5 + Math.cos(p.yaw) * 0.3, color: '#ffb060', intensity: 3.2 * (0.9 + Math.random() * 0.1), range: 14 });
-        else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night, range: 9 });
+        else if (night > 0.4) src.unshift({ x: cam.x, y: cam.y + 1, z: cam.z, color: '#9ab0e0', intensity: 1.2 * night * (1 - 0.5 * this.inK), range: 9 }); // (dimmer indoors: a dark room stays dark-ish, a lit one is lit by its lights)
       }
       G.lightSources = src; R.assignLights(src);
       // gun flashlight from the eyes at night (a Weapon Flashlight attachment: brighter, longer, on from dusk)
