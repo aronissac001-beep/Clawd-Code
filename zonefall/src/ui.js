@@ -1533,7 +1533,7 @@ export const UI = {
   deathScreen(by) {
     const d = $('#death'); d.classList.remove('hidden'); G.uiBlock = true;
     const opts = G.game.respawnOptions();
-    d.innerHTML = `<h2>YOU DIED</h2><p>Killed by ${by}. Your gear is in a bag where you fell.</p><div class="resp"></div>`;
+    d.innerHTML = `<h2>YOU DIED</h2><p>Killed by ${by}.${G.deathBag ? ' Your gear is in a bag where you fell.' : ''}</p><div class="resp"></div>`;
     const box = d.querySelector('.resp');
     const done = () => { d.classList.add('hidden'); G.uiBlock = false; };
     for (const o of opts) { const b = el('button', o.cd > 0 ? '' : 'primary', o.label + (o.cd > 0 ? ' (' + Math.ceil(o.cd) + 's)' : '')); b.disabled = o.cd > 0; b.onclick = () => { done(); G.game.respawn(o.d); }; box.appendChild(b); }

@@ -176,12 +176,14 @@ export const Game = {
     for (const v of [p.inv.belt, p.inv.main]) for (const s of v.items()) inv.addStack(s);
     for (const k of ['helmet', 'armor', 'bag']) if (p.inv.equip[k]) inv.addStack(p.inv.equip[k]);
     for (const s of p.inv.arts) if (s) inv.addStack(s);
+    G.deathBag = null;
     if (!inv.empty()) { const bag = Live.dropInv(p.x, p.z, inv, 'bag', 1500, p.y + 0.5); bag.death = true; G.deathBag = bag; }
     G.buildMode = null; document.body.classList.remove('building');
     const o = src && src.owner, an = n => (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
-    const by = o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def ? an(o.def.name) : src && src.kind === 'rad' ? 'radiation' : src && src.kind === 'bleed' ? 'bleeding out' : src && (src.kind === 'starve' || src.kind === 'thirst') ? (src.kind === 'starve' ? 'starvation' : 'thirst') : src && src.kind === 'explosion' ? 'an explosion' : src && src.kind === 'nuke' ? 'a nuclear strike' : src && src.kind === 'drown' ? 'drowning' : 'the island';
+    const how = { rad: 'radiation', bleed: 'bleeding out', starve: 'starvation', thirst: 'thirst', explosion: 'an explosion', shrapnel: 'shrapnel', nuke: 'a nuclear strike', drown: 'drowning', fall: 'a fall', anomaly: 'an anomaly', cactus: 'a cactus', spikes: 'spikes', crush: 'being crushed', train: 'a train', vehicle: 'a vehicle', poison: 'poison' };
+    const by = o && o.name && (o.bot || o.remote !== undefined) ? o.name : o && o.def && o.def.name ? an(o.def.name) : (src && how[src.kind]) || 'the island';
     Swim.reset(p);
-    setTimeout(() => G.ui.deathScreen(by), 1400);
+    setTimeout(() => { if (G.player === p && p.dead && G.mode === 'play') G.ui.deathScreen(by); }, 1400); // (not if you already left for the menu)
     this.save();
   },
   respawnOptions() {
