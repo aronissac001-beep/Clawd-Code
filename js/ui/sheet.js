@@ -7,7 +7,7 @@
 // shell hands the engine its hooks and moves the camera (hooks.cover) so the selection stays visible.
 // Subjects: colonist (colonistui.js), building (bills, billsui.js; info; the room it stands in), zone
 // (zonesui.js), animal, item and tile (details, the room). The Colony sheet lives in colonyui.js; the Menu
-// and Settings (every setting of A's save/settings.js) live here.
+// and Settings in menu.js and settingsui.js (re-exported here).
 import { h, clear, onTap, icon } from './kit.js';
 import { t as tx } from './strings.js';   // aliased: openSubjectSheet has a local t (the terrain)
 import { def, structDef } from '../game/core/content.js';
@@ -16,12 +16,8 @@ import { colonistHeader, colonistTab, COLONIST_TABS } from './colonistui.js';
 import { billsTab, benchRecipes } from './billsui.js';
 import { zoneSheet } from './zonesui.js';
 import { buildingStatus } from './peek.js';
-import { openMoveToApp } from './cards.js';
 import { openColony as colonySheet, COLONY_TABS as TABS } from './colonyui.js';
-import { openHelp } from './help.js';
-import { openLetters } from './letters.js';
 import { roomInfo } from '../game/world/rooms.js';
-import { SETTINGS } from '../game/save/settings.js';
 import { FIX } from '../game/core/schema.js';
 
 // ---- the sheet engine ------------------------------------------------------------------------------------
@@ -315,112 +311,7 @@ export const COLONY_TABS = TABS;
 /** The Colony sheet (10.3; colonyui.js). */
 export function openColony(ctx, tab = 'People') { colonySheet(ctx, tab); }
 
-/** The Menu (10.3): Save now, Back up, Colonies, Settings, Help, Quit to title. */
-export function openMenu(ctx, api) {
-  ctx.openSheet('Menu', (el) => {
-    const item = (label, fn, locked, act) => {
-      const b = h('button.ec-row' + (locked ? '.locked' : ''), { type: 'button', 'data-act': act || 'menu-' + label.toLowerCase().replace(/\s+/g, '-'), 'aria-disabled': locked ? 'true' : null },
-        h('span.ec-row-n', { text: label }), locked ? h('span.ec-row-s', { text: locked }) : null);
-      onTap(b, () => (locked ? ctx.toast(`${label}: ${locked}`) : fn()));
-      return b;
-    };
-    el.append(...[
-      item('Save now', async () => { try { const r = await api.saveNow(); ctx.toast(r ? 'Saved.' : 'Nothing to save.'); } catch (e) { ctx.toast('Save failed: ' + e.message, 'bad'); } }),
-      item('Back up', () => (api.backupColony ? backUpNow(ctx, api) : backUp(ctx, api))),
-      api.isStandalone && api.isStandalone() ? null : item('Move colony to the app', () => openMoveToApp(ctx, api), null, 'menu-move'),
-      ctx.letters ? item('Letters', () => openLetters(ctx, ctx.letters), null, 'menu-letters') : null,
-      item('Help', () => openHelp(ctx)),
-      item('Colonies', () => { ctx.toast('Saved. The colony list is on the title screen.'); ctx.quit(); }, null, 'menu-colonies'),
-      item('Settings', () => openSettings(ctx, api)),
-      item('Quit to title', () => { ctx.quit(); }),
-    ].filter(Boolean));
-  });
-}
-/**
- * Settings (10.9, 14.8 row A): every setting of A's save/settings.js, grouped (Display, Play,
- * Controls, Sound, Saves), then Storage (11.1: whether the browser keeps the saves, the storage mode
- * and use). Values live in A's settings (readSettings / writeSettings, applied to <html> as data-ec-*).
- * Backup reminders can be turned off only in the Home Screen app (11.5).
- */
-const SET_GROUPS = [
-  ['Display', ['textSize', 'reduceMotion', 'colourSafe', 'batterySaver']],
-  ['Play', ['autoPauseImminent', 'autoPauseLetter', 'autoPauseDowned', 'advancedGrid']],
-  ['Controls', ['leftHanded', 'twoFingerPause']],
-  ['Sound', ['sound', 'music', 'volume']],
-  ['Saves', ['backupPrompt']],
-];
-export function openSettings(ctx, api) {
-  ctx.openSheet('Settings', (el) => {
-    settingsList(el, { read: () => (api.readSettings ? api.readSettings() : {}), write: (patch) => { if (api.writeSettings) api.writeSettings(patch); ctx.refreshSheet(); },
-      toast: ctx.toast, standalone: !!(api.isStandalone && api.isStandalone()) });
-    const info = h('p.ec-bio-d', { role: 'status', text: 'Checking storage...' });
-    el.append(h('h3.ec-sub', { text: 'Storage' }), info);
-    if (api.storageInfo) {
-      api.storageInfo().then((x) => {
-        const kb = (n) => (n === null || n === undefined ? null : `${Math.max(1, Math.round(n / 1024))} KB`);
-        const used = kb(x.usage), mine = x.colonies.find((c) => c.id === ctx.s.id);
-        info.textContent = [x.persistText, x.mode === 'idb' ? 'Saves are in the browser database.' : x.mode === 'local' ? 'Saves are in the small fallback store: back up often.' : x.mode === 'none' ? 'This browser keeps no saves: back up before you leave.' : '',
-          mine && mine.size ? `This colony: ${kb(mine.size)}.` : '', used ? `This site uses ${used}.` : '', x.max ? `Colonies: ${x.count || x.colonies.length} of ${x.max}.` : ''].filter(Boolean).join(' ');
-      }).catch(() => { info.textContent = 'The browser did not say how it keeps the saves. Back up your hold now and then.'; });
-    } else info.textContent = 'Storage details are not offered here.';
-  }, { push: true, detent: 'large' });
-}
-/**
- * The settings rows (shared by the in-game sheet and the title). o: { read() -> settings,
- * write(patch) (stores and redraws), toast(text), standalone }.
- */
-export function settingsList(el, o) {
-  const st = o.read() || {}, app = !!o.standalone;
-  for (const [group, keys] of SET_GROUPS) {
-    el.append(h('h3.ec-sub', { text: group }));
-    for (const key of keys) {
-      const d = SETTINGS[key];
-      if (!d) continue;
-      const v = st[key] === undefined ? d.def : st[key];
-      if (d.type === 'bool') {
-        const enabled = key !== 'backupPrompt' || app;
-        const b = h('button.ec-row.ec-toggle', { type: 'button', role: 'switch', 'aria-checked': v ? 'true' : 'false', 'data-act': 'set-' + key, 'aria-disabled': enabled ? null : 'true' },
-          h('span.ec-row-n', null, d.label, h('span.ec-row-help', { text: d.help })), h('span.ec-row-s', { text: enabled ? (v ? 'On' : 'Off') : 'App only' }));
-        onTap(b, () => { if (!enabled) { o.toast('Backup reminders can be turned off once Embercrown runs from your Home Screen.'); return; } o.write({ [key]: !v }); });
-        el.append(b);
-      } else if (d.type === 'enum') {
-        el.append(h('div.ec-row-help.ec-set-l', { text: `${d.label}: ${d.help}` }));
-        const seg = h('div.ec-seg', { role: 'radiogroup', 'aria-label': d.label });
-        for (const x of d.vals) {
-          const b = h('button.ec-seg-b' + (v === x ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': v === x ? 'true' : 'false', 'data-act': `set-${key}-${x}`, text: key === 'textSize' ? `${x}%` : String(x) });
-          onTap(b, () => o.write({ [key]: x }));
-          seg.append(b);
-        }
-        el.append(seg);
-      } else if (d.type === 'int') {
-        const step = 10;
-        const minus = h('button.ec-ibtn.ec-mini', { type: 'button', 'data-act': `set-${key}-minus`, 'aria-label': `${d.label} down`, html: icon('minus'), disabled: v <= d.min });
-        const plus = h('button.ec-ibtn.ec-mini', { type: 'button', 'data-act': `set-${key}-plus`, 'aria-label': `${d.label} up`, html: icon('plus'), disabled: v >= d.max });
-        onTap(minus, () => o.write({ [key]: Math.max(d.min, v - step) }));
-        onTap(plus, () => o.write({ [key]: Math.min(d.max, v + step) }));
-        el.append(h('div.ec-row', null, h('span.ec-row-n', { text: d.label }), minus, h('b.ec-bill-n', { text: String(v) }), plus));
-      }
-    }
-  }
-}
-/** Back up through A's backupColony (share sheet with the .ecsave file, else a download); called inside the tap. */
-function backUpNow(ctx, api) {
-  api.backupColony(ctx.s.id).then((r) => {
-    if (r && r.ok) ctx.toast(r.via === 'share' ? 'Backup shared.' : `Backup saved: ${r.filename}.`);
-    else if (r && r.reason !== 'cancelled') ctx.toast(`Backup failed: ${r ? r.reason : 'unknown'}.`, 'bad');
-  }).catch((e) => ctx.toast('Backup failed: ' + (e && e.message ? e.message : e), 'bad'));
-}
-/** Back up: save, then hand the EC2 blob to the share sheet (or download it). */
-async function backUp(ctx, api) {
-  try {
-    await api.saveNow();
-    const x = await api.exportBlob(ctx.s.id);
-    const file = typeof File === 'function' ? new File([x.bytes], x.filename, { type: 'application/octet-stream' }) : null;
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Embercrown backup' }); ctx.toast('Backup shared.'); return; }
-    const url = URL.createObjectURL(new Blob([x.bytes], { type: 'application/octet-stream' }));
-    const a = document.createElement('a'); a.href = url; a.download = x.filename; document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    ctx.toast('Backup saved to your downloads.');
-  } catch (e) { if (e && e.name === 'AbortError') return; ctx.toast('Backup failed: ' + (e && e.message ? e.message : e), 'bad'); }
-}
+// The Menu and Settings (W1.4, EMBERCROWN-WORLD.md 8.7) live in menu.js and settingsui.js.
+export { openMenu } from './menu.js';
+export { openSettings, settingsList } from './settingsui.js';
 

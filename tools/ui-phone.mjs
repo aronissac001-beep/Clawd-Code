@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|all] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|all] [--json]
 // Playwright with touch emulation (hasTouch, deviceScaleFactor 2), at every gate viewport:
 //   portrait 375 x 635, 390 x 664, 430 x 740 (Safari), 390 x 763 (Home Screen app);
 //   landscape 844 x 335, 932 x 380 (Safari).
@@ -810,6 +810,204 @@ async function runOmenClock(vp) {
     detail: `${chip ? `chip "${chip}"` : 'no chip'} after ${res.minutes.toFixed(1)} min of play (fake clock; game day ${res.day} ${res.hour}:00); coach: ${steps.join(' > ')}${errs.length ? '; errors: ' + errs.slice(0, 2).join(' | ') : ''}` };
 }
 
+// ---- W1.4 --flows=cards,settings (EMBERCROWN-WORLD.md 8.1, 8.4, 8.6, 8.7; 11 items 9, 10, 12, 26; 12.3 W1.4) -----------
+// Build cards, the peek card, the level pill and list, the Menu and Settings at the six viewports:
+//   C1 (portrait) the Build panel at the medium detent (50 % of the height) shows min(8, n) whole cards on every
+//      tab after its first visit (W0: 6, three of them cut); the oracle "8 build cards visible"
+//   C2 no wrapped card name at 130 % text on any tab (one line each; ellipses are counted, not failed)
+//   C3 "More later (N)": the locked cards fold into one row that names the reasons; a tap lists N cards
+//   P1 the peek card's chevron (44 pt) opens the full sheet; P2 (landscape) the peek card is compact: <= 280 x 120
+//   L1 the level pill names the band (no floating plate); a tap opens the level list sheet (44 pt rows, its two
+//      buttons above the list); a row tap goes to that level and closes it
+//   M1 the Menu: Save now, Back up to a file, Holds and ruins, Settings, Help, Quit to title, each with its icon
+//   S1 Settings: the five groups and the jump strip; every switch toggles in one tap (aria-checked and the stored value)
+// and the 14.4 probe (44 pt targets, 14 px text, no horizontal overflow) on each screen at 100 % and 130 % text.
+async function runCards(vp, want) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [];
+  const screen = async (name) => {
+    await page.waitForTimeout(200);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    screens.push({ name, ok: !list.length, n: list.length });
+    await page.screenshot({ path: join(OUT, `cards-${vp.name}-${name}.png`) });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const tapIn = async (sel, block = 'nearest') => { await page.evaluate(([sel, block]) => { const e = [...document.querySelectorAll(sel)].find((x) => !x.closest('[hidden]')); if (e && e.scrollIntoView) e.scrollIntoView({ block, inline: 'nearest' }); }, [sel, block]); await page.waitForTimeout(80); return tap(page, sel); };
+  const text = async (pct) => { await page.evaluate((pct) => { if (pct === 100) delete document.documentElement.dataset.ecText; else document.documentElement.dataset.ecText = String(pct); window.dispatchEvent(new Event('resize')); }, pct); await page.waitForTimeout(150); };
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  await page.goto(srv.url + '?debug=1');
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('ec2.seen.')) localStorage.removeItem(k); } } catch (_) { /* none */ } });
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
+  await page.evaluate(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
+  const land = vp.width > vp.height;
+  const sheetNow = () => page.evaluate(() => {
+    const e = document.querySelector('.ec-sheet'), vis = [...document.querySelectorAll('.ec-sheet')].filter((x) => !x.hidden && x.getBoundingClientRect().height > 0);
+    if (!e || e.hidden) return { open: false, count: vis.length };
+    const eng = window.__ecUI.shell.ctx.sheets;
+    return { open: true, count: vis.length, title: eng ? eng.title() : null, detent: e.dataset.detent, crumb: [...e.querySelectorAll('.ec-crumbs .ec-crumb, .ec-crumbs h2')].map((x) => x.textContent.trim()).join(' / ') };
+  });
+  const closeAll = () => page.evaluate(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.closePeek(); if (sh.ui.panel) sh.togglePanel(sh.ui.panel); });
+
+  if (want.has('cards')) {
+    // C1/C2/C3: the Build panel, every tab
+    await tap(page, '[data-act=tab][data-tab=build]');
+    await page.waitForTimeout(200);
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('.ec-panel [data-act^=build-tab-]')].map((b) => b.dataset.tab));
+    const measure = () => page.evaluate(() => {
+      const pn = document.querySelector('.ec-panel'), r = pn.getBoundingClientRect(), cards = [...pn.querySelectorAll('.ec-grid > .ec-card')];
+      const whole = cards.filter((c) => { const q = c.getBoundingClientRect(); return q.top >= r.top - 0.5 && q.bottom <= r.bottom + 0.5; }).length;
+      const names = [...pn.querySelectorAll('.ec-bc .ec-card-n')].map((n) => { const lh = parseFloat(getComputedStyle(n).lineHeight) || parseFloat(getComputedStyle(n).fontSize) * 1.3; return { t: n.textContent, lines: Math.round(n.getBoundingClientRect().height / lh), cut: n.scrollWidth > n.clientWidth + 0.5 }; });
+      const later = pn.querySelector('[data-act=build-later]');
+      return { h: r.height, ih: innerHeight, n: cards.length, whole, names, note: !!pn.querySelector('.ec-help-line'), later: later ? later.textContent.trim() : null };
+    });
+    const firstNote = [], per = [];
+    for (const id of tabs) { await tapIn(`[data-act=build-tab-${id}]`); await page.waitForTimeout(60); firstNote.push((await measure()).note); }
+    for (const id of tabs) { await tapIn(`[data-act=build-tab-${id}]`); await page.waitForTimeout(60); per.push({ id, ...(await measure()) }); }
+    await tapIn('[data-act=build-tab-structure]');
+    await screen('build');
+    if (!land) {
+      const m = per[0], detentOk = Math.abs(m.h - 0.5 * m.ih) <= 2;
+      const bad = per.filter((x) => x.whole < Math.min(8, x.n));
+      const best = Math.max(...per.map((x) => x.whole));
+      flow('C1', '8 build cards visible in the portrait medium detent', detentOk && !bad.length && best >= 8,
+        `panel ${Math.round(m.h)} of ${m.ih} pt; whole cards per tab: ${per.map((x) => `${x.id} ${x.whole}/${x.n}`).join(', ')}; paragraph on first visit ${firstNote.filter(Boolean).length}/${tabs.length}, after ${per.filter((x) => x.note).length}`);
+    }
+    // C3: More later
+    const lt = per.find((x) => x.later);
+    if (lt) {
+      await tapIn(`[data-act=build-tab-${lt.id}]`);
+      await tapIn('[data-act=build-later]');
+      const opened = await page.evaluate(() => ({ locked: document.querySelectorAll('.ec-panel .ec-bc.locked').length, exp: document.querySelector('[data-act=build-later]').getAttribute('aria-expanded') }));
+      await screen('build-later');
+      const n = +(/\((\d+)\)/.exec(lt.later) || [0, -1])[1];
+      flow('C3', '"More later (N)" folds the locked cards and names why', opened.exp === 'true' && opened.locked === n && /Needs/.test(lt.later), `${lt.id}: "${lt.later.slice(0, 70)}"; a tap lists ${opened.locked} locked cards`);
+      await tapIn('[data-act=build-later]');
+    }
+    // C2: 130 % text, every tab
+    await text(130);
+    const wrapped = [], cut = [];
+    for (const id of tabs) {
+      await tapIn(`[data-act=build-tab-${id}]`); await page.waitForTimeout(60);
+      const m = await measure();
+      for (const x of m.names) { if (x.lines > 1) wrapped.push(`${id}: ${x.t}`); if (x.cut) cut.push(x.t); }
+    }
+    await tapIn('[data-act=build-tab-workshops]');
+    await screen('build-130');
+    await text(100);
+    flow('C2', 'no wrapped card name at 130 %', !wrapped.length, `${wrapped.length} wrapped${wrapped.length ? ': ' + wrapped.slice(0, 4).join('; ') : ''}; ${cut.length} shown with an ellipsis${cut.length ? ' (' + cut.slice(0, 3).join(', ') + ')' : ''}`);
+    await closeAll();
+
+    // P1/P2: the peek card
+    await page.evaluate(() => { const sh = window.__ecUI.shell, c = sh.state.col[0]; sh.select({ kind: 'colonist', id: c.id }); });
+    await page.waitForTimeout(250);
+    const pk = await page.evaluate(() => { const p = document.querySelector('.ec-peek'), r = p.getBoundingClientRect(), o = p.querySelector('[data-act=peek-open]'), q = o && o.getBoundingClientRect();
+      return { w: r.width, h: r.height, right: r.right, bottom: r.bottom, iw: innerWidth, ih: innerHeight, open: q ? { w: q.width, h: q.height, t: o.textContent.trim() } : null }; });
+    await screen('peek');
+    if (land) {
+      await text(130); await screen('peek-130'); await text(100);
+      flow('P2', 'landscape peek card is compact (<= 280 x 120)', pk.w <= 280.5 && pk.h <= 120.5 && pk.right <= pk.iw && pk.bottom <= pk.ih, `${Math.round(pk.w)} x ${Math.round(pk.h)} at right ${Math.round(pk.right)}, bottom ${Math.round(pk.bottom)} of ${pk.iw} x ${pk.ih}`);
+    }
+    await tap(page, '[data-act=peek-open]');
+    await page.waitForTimeout(200);
+    const ps = await sheetNow();
+    flow('P1', 'the peek chevron opens the full sheet', pk.open && pk.open.w >= 44 && pk.open.h >= 44 && ps.open && ps.count === 1, `chevron ${pk.open ? `"${pk.open.t}" ${Math.round(pk.open.w)} x ${Math.round(pk.open.h)}` : 'missing'}; ${ps.open ? `sheet "${ps.title}"` : 'no sheet'}`);
+    await closeAll();
+
+    // L1: the level pill and the level list
+    const pill = await page.evaluate(() => { const c = document.querySelector('[data-act=level-chip]'); return c ? { t: c.textContent.trim(), plate: !!document.querySelector('.ec-lv-plate'), w: c.getBoundingClientRect().width, h: c.getBoundingClientRect().height } : null; });
+    if (pill) {
+      await page.evaluate(() => { const sh = window.__ecUI.shell; sh.setLevel(sh.viewZ() - 2); });
+      await page.waitForTimeout(150);
+      const pill2 = await page.evaluate(() => document.querySelector('[data-act=level-chip]').textContent.trim());
+      await screen('pill');
+      await tap(page, '[data-act=level-chip]');
+      await page.waitForTimeout(250);
+      const ls = await sheetNow();
+      const geo = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.ec-sheet [data-act=ruler-row]')], b = document.querySelector('.ec-sheet [data-act=ruler-stairs]');
+        return { rows: rows.map((r) => ({ z: +r.dataset.z, h: r.getBoundingClientRect().height, top: r.getBoundingClientRect().top, on: r.classList.contains('on'), t: r.textContent.trim().slice(0, 40) })), btn: b ? b.getBoundingClientRect().bottom : null, italic: [...document.querySelectorAll('.ec-sheet .ec-lvlist *')].some((e) => getComputedStyle(e).fontStyle === 'italic') };
+      });
+      await screen('levels');
+      const target = geo.rows.find((r) => !r.on);
+      if (target) { await tapIn(`.ec-sheet [data-act=ruler-row][data-z="${target.z}"]`); await page.waitForTimeout(200); }
+      const after = await sheetNow();
+      const nowZ = await page.evaluate(() => window.__ecUI.shell.viewZ());
+      flow('L1', 'level pill with the band name; the level list is a sheet of 44 pt rows', !pill.plate && /[A-Za-z]/.test(pill.t) && /^-2\s*\S+/.test(pill2) && pill.h >= 44 && ls.open && ls.title === 'Levels' && geo.rows.length > 0 && geo.rows.every((r) => r.h >= 44) && geo.btn !== null && geo.btn <= geo.rows[0].top + 0.5 && !geo.italic && (!target || (!after.open && nowZ === target.z)),
+        `pill "${pill.t}" then "${pill2}" (${Math.round(pill.w)} x ${Math.round(pill.h)}), plate ${pill.plate ? 'shown' : 'gone'}; list "${ls.title}" ${geo.rows.length} rows (min ${Math.round(Math.min(...geo.rows.map((r) => r.h)))} pt), buttons above ${geo.btn <= (geo.rows[0] || { top: 0 }).top + 0.5}; row tap -> level ${nowZ}${target ? ` (want ${target.z})` : ''}, sheet ${after.open ? 'open' : 'closed'}`);
+      await page.evaluate(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.setLevel(sh.levels ? sh.viewZ() : sh.viewZ()); });
+    }
+  }
+
+  if (want.has('settings')) {
+    await closeAll();
+    // M1: the Menu
+    await tap(page, '[data-act=menu]');
+    await page.waitForTimeout(200);
+    const menu = await page.evaluate(() => [...document.querySelectorAll('.ec-sheet .ec-menu-row')].map((r) => ({ act: r.dataset.act, ic: !!r.querySelector('.ec-menu-ic .ic, .ec-menu-ic svg, .ec-menu-ic img, .ec-menu-ic canvas'), t: r.querySelector('.ec-row-n').textContent })));
+    await screen('menu');
+    const wantM = ['menu-save-now', 'menu-back-up', 'menu-holds', 'menu-settings', 'menu-help', 'menu-quit-to-title'];
+    const got = menu.map((m) => m.act).filter((a) => a !== 'menu-letters');
+    flow('M1', 'the Menu holds storage and app only, grouped, with icons', JSON.stringify(got) === JSON.stringify(wantM) && menu.every((m) => m.ic), menu.map((m) => m.t + (m.ic ? '' : ' (no icon)')).join(', '));
+    // S1: Settings
+    await tapIn('[data-act=menu-settings]');
+    await page.waitForTimeout(250);
+    const ss = await sheetNow();
+    const groups = await page.evaluate(() => [...document.querySelectorAll('.ec-sheet [data-group]')].map((g) => g.dataset.group));
+    await screen('settings');
+    await tapIn('[data-act=set-jump-sound]');
+    await page.waitForTimeout(150);
+    const jump = await page.evaluate(() => { const b = document.querySelector('.ec-sheet .ec-sheet-body') || document.querySelector('.ec-sheet'), g = document.querySelector('.ec-sheet [data-group=sound]'); return Math.round(g.getBoundingClientRect().top - b.getBoundingClientRect().top); });
+    await screen('settings-sound');
+    const keys = await page.evaluate(() => [...document.querySelectorAll('.ec-sheet [role=switch]')].map((b) => ({ key: b.dataset.act.slice(4), off: b.getAttribute('aria-disabled') === 'true' })));
+    let ok1 = 0; const bad = [], skipped = [];
+    for (const k of keys) {
+      if (k.off) { skipped.push(k.key); continue; }
+      const read = () => page.evaluate((key) => ({ v: window.__ec.storage.readSettings()[key], a: document.querySelector(`.ec-sheet [data-act=set-${key}]`).getAttribute('aria-checked') }), k.key);
+      const a = await read();
+      await tapIn(`.ec-sheet [data-act=set-${k.key}]`, 'center');
+      const b = await read();
+      if (b.v === !a.v && b.a === String(!a.v)) ok1++; else bad.push(`${k.key} ${a.v}->${b.v} (${b.a})`);
+      await tapIn(`.ec-sheet [data-act=set-${k.key}]`, 'center');   // put it back
+    }
+    await text(130); await screen('settings-130'); await text(100);
+    flow('S1', 'Settings: five groups, a jump strip, every switch toggles in one tap',
+      ss.open && ss.crumb === 'Menu / Settings' && JSON.stringify(groups) === JSON.stringify(['display', 'play', 'sound', 'storage', 'access']) && jump >= 0 && jump <= 120 && ok1 === keys.length - skipped.length && ok1 > 0,
+      `"${ss.crumb}" at ${ss.detent}; groups ${groups.join(', ')}; jump to Sound puts it ${jump} pt under the sheet top; ${ok1}/${keys.length - skipped.length} switches toggle in one tap${skipped.length ? ` (${skipped.join(', ')}: Home Screen app only, explained on tap)` : ''}${bad.length ? '; failed: ' + bad.join(', ') : ''}`);
+  }
+  return done();
+}
+if (flowsArg.split(',').some((f) => f === 'cards' || f === 'settings')) {
+  const want = new Set(flowsArg.split(','));
+  const rep = [];
+  let nbad = 0;
+  for (const vp of VIEWPORTS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runCards(vp, want); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-cards-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=${flowsArg} [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/cards-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+
 // ---- W1.2 --flows=sheets (EMBERCROWN-WORLD.md 8.1 G21, 8.4 G22, 12.3 W1.2) ---------------------------------------
 // The sheet engine (js/ui/sheet.js createSheets) at the six viewports plus landscape-left and -right:
 //   S1 "medium detent shows the selected colonist" (portrait): the colonist sits low on the map, its sheet opens
@@ -981,6 +1179,185 @@ if (flowsArg === 'sheets') {
     if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
   }
   console.log(`ui-phone --flows=sheets [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/sheets-*.png)`);
+  process.exit(nbad ? 1 : 0);
+}
+
+// ---- W1.3a --flows=ia-people (EMBERCROWN-WORLD.md 8.1, 8.5, 11 item 27, 12.3 W1.3a) -------------------------------
+// The new shell (?shell=2 until A's flags.js SHELL2 is on) at the six viewports plus landscape-left and -right:
+//   B1 "the 5-slot bar": Build | Mark | People | Hold | World beside the speed button, each slot >= 44 pt
+//   P1 "the work grid <= 2 taps from the map": People, Grid
+//   P2 "a colonist's skills <= 2 taps from the map": People, ">" on a row (pushed on Skills, "People / <name>")
+//   P3 "the Military alert <= 2 taps from the map": People, Muster (the switch is pinned on the List)
+//   P4 "the old long-press shortcuts still work": Mark re-arms the last tool, the stock chip opens Stock, a
+//      portrait opens its context menu
+//   P5 "Mark = Orders + Zones": one panel, two segments; "People / Military" pushes without a second sheet
+//   R1 "the colonist rail collapses to +N": a narrowed rail shows fit - 1 portraits and "+N" (opens People), and
+//      the rail never scrolls sideways at any viewport
+// and the 14.4 probe on every new screen at 100 % (and the People list at 130 %) text.
+async function runIaPeople(vp) {
+  const bctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: which === 'chromium' ? true : undefined });
+  const page = await bctx.newPage();
+  const errs = [];
+  page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+  page.on('pageerror', (e) => errs.push('pageerror: ' + e.message.slice(0, 200)));
+  const problems = [], flows = [], screens = [];
+  const screen = async (name) => {
+    await page.waitForTimeout(250);
+    const p = await probe(page);
+    const list = [...(p.overflowX ? ['horizontal overflow'] : []), ...p.small.map((x) => 'target < 44 pt: ' + x), ...p.tiny.map((x) => 'text < 14 px: ' + x)];
+    for (const x of list) problems.push(`[${name}] ${x}`);
+    screens.push({ name, ok: !list.length, n: list.length });
+    await page.screenshot({ path: join(OUT, `ia-${vp.name}-${name}.png`) });
+  };
+  const flow = (id, name, ok, detail) => flows.push({ id, name, ok: !!ok, detail, owner: 'I' });
+  const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
+  const ev = (fn, a) => page.evaluate(fn, a);
+  const toMap = async () => { await ev(() => { const sh = window.__ecUI.shell; if (sh.ctx.ui.tool) sh.ctx.endTool(); sh.ctx.closeSheet(); sh.ctx.closePanel(); sh.ctx.closePeek(); }); await page.waitForTimeout(120); };
+  const sheetNow = () => ev(() => {
+    const e = document.querySelector('.ec-sheet'), eng = window.__ecUI.shell.ctx.sheets;
+    const vis = [...document.querySelectorAll('.ec-sheet')].filter((x) => !x.hidden && x.getBoundingClientRect().height > 0).length;
+    if (!e || e.hidden) return { open: false, count: vis };
+    const crumb = [...e.querySelectorAll('.ec-crumbs .ec-crumb, .ec-crumbs h2')].map((x) => x.textContent.trim()).join(' / ');
+    return { open: true, count: vis, crumb, title: eng.title(), tab: eng.tab(), depth: eng.depth(), detent: e.dataset.detent };
+  });
+  const inView = (sel) => ev((sel) => { const e = [...document.querySelectorAll(sel)].find((x) => !x.closest('[hidden]')); if (!e) return false; const r = e.getBoundingClientRect(), b = document.querySelector('.ec-sheet').getBoundingClientRect(); return r.height > 0 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1 && r.top < innerHeight; }, sel);
+  const press = async (sel) => { const p = await find(page, sel); if (!p) return null; await holdAt(page, p.x, p.y, 620); return p; };
+  await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
+  await page.waitForTimeout(700);
+  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
+  await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
+  await page.waitForTimeout(300);
+  // B1: the bar
+  const bar = await ev(() => [...document.querySelectorAll('.ec-tabs [data-act=tab]')].map((b) => { const r = b.getBoundingClientRect(); return { id: b.dataset.tab, w: Math.round(r.width), h: Math.round(r.height), l: (b.querySelector('.ec-tab-l') || {}).textContent, fs: parseFloat(getComputedStyle(b.querySelector('.ec-tab-l')).fontSize) }; }));
+  const speedOk = await ev(() => { const e = document.querySelector('.ec-speed-host .ec-speed, .ec-speed'); return !!e && e.getBoundingClientRect().width >= 44; });
+  flow('B1', 'the 5-slot bar with the speed button', bar.map((b) => b.l).join(',') === 'Build,Mark,People,Hold,World' && bar.every((b) => b.w >= 44 && b.h >= 44 && b.fs >= 14) && speedOk,
+    bar.map((b) => `${b.l} ${b.w}x${b.h}`).join(', ') + (speedOk ? '; speed' : '; no speed button'));
+  await screen('map');
+  // P1: the work grid
+  let taps = 0;
+  if (await tap(page, '[data-act=tab][data-tab=people]')) taps++;
+  await page.waitForTimeout(200);
+  const p0 = await sheetNow();
+  await screen('people-list');
+  const milSeen = await inView('[data-act=alert-muster]');
+  await ev(() => { document.documentElement.dataset.ecText = '130'; });
+  await screen('people-list-130');
+  await ev(() => { delete document.documentElement.dataset.ecText; });
+  if (await tap(page, '[data-act=sheet-tab][data-tab=Grid]')) taps++;
+  await page.waitForTimeout(200);
+  const g = await ev(() => { const e = document.querySelector('.ec-sheet .ec-wgrid'); return e ? e.querySelectorAll('[data-act^=prio-]').length : 0; });
+  await screen('people-grid');
+  flow('P1', 'the work grid <= 2 taps from the map', taps <= 2 && g > 0 && p0.open && p0.title === 'People', `${taps} taps; ${g} cells; sheet ${p0.open ? p0.title + '/' + p0.tab + ' at ' + p0.detent : 'closed'}`);
+  if (await tap(page, '[data-act=sheet-tab][data-tab=Schedule]')) await screen('people-schedule');
+  await tap(page, '[data-act=sheet-tab][data-tab=List]');
+  // P2: a colonist's skills
+  await toMap(); taps = 0;
+  if (await tap(page, '[data-act=tab][data-tab=people]')) taps++;
+  await page.waitForTimeout(150);
+  if (await tap(page, '[data-act=person-open]')) taps++;
+  await page.waitForTimeout(250);
+  const p2 = await sheetNow();
+  const skills = await ev(() => document.querySelectorAll('.ec-sheet .ec-skill').length);
+  await screen('people-colonist');
+  const bk = await tap(page, '[data-act=sheet-back]');
+  await page.waitForTimeout(150);
+  const p2b = await sheetNow();
+  flow('P2', "a colonist's skills <= 2 taps from the map", taps <= 2 && p2.open && p2.tab === 'Skills' && p2.depth === 1 && /^People \/ /.test(p2.crumb) && skills > 0 && p2.count === 1 && bk && p2b.title === 'People' && p2b.depth === 0,
+    `${taps} taps; "${p2.crumb}" tab ${p2.tab}, ${skills} skill rows, sheets ${p2.count}; back: ${p2b.title} depth ${p2b.depth}`);
+  // P3: the Military alert
+  await toMap(); taps = 0;
+  if (await tap(page, '[data-act=tab][data-tab=people]')) taps++;
+  await page.waitForTimeout(150);
+  if (await tap(page, '[data-act=alert-muster]')) taps++;
+  await page.waitForTimeout(150);
+  const lv = await ev(() => { const m = window.__ecUI.shell.state.colony.mil; return m ? m.alert : 'peace'; });
+  const on = await ev(() => { const b = document.querySelector('.ec-sheet [data-act=alert-muster]'); return b ? b.getAttribute('aria-checked') : null; });
+  flow('P3', 'the Military alert <= 2 taps from the map', taps <= 2 && lv === 'muster' && on === 'true' && milSeen, `${taps} taps; alert ${lv}; switch on ${on}; pinned in view at open ${milSeen}`);
+  await tap(page, '[data-act=alert-peace]');
+  // P5: People / Military, then Mark with its two segments
+  await tap(page, '[data-act=people-squads]');
+  await page.waitForTimeout(200);
+  const pm = await sheetNow();
+  await screen('people-military');
+  await toMap();
+  const mk = await tap(page, '[data-act=tab][data-tab=mark]');
+  await page.waitForTimeout(150);
+  const m0 = await ev(() => ({ panel: window.__ecUI.shell.ctx.ui.panel, title: (document.querySelector('.ec-panel .ec-panel-head h2') || {}).textContent, orders: !!document.querySelector('.ec-panel [data-act=order-mine]') }));
+  await screen('mark-orders');
+  await tap(page, '[data-act=mark-zones]');
+  await page.waitForTimeout(150);
+  const m1 = await ev(() => ({ zones: !!document.querySelector('.ec-panel [data-act=zone-stockpile]'), seg: window.__ecUI.shell.ctx.ui.markSeg }));
+  await screen('mark-zones');
+  flow('P5', 'Mark = Orders + Zones; People / Military in one sheet', mk && m0.panel === 'mark' && m0.orders && m1.zones && m1.seg === 'zones' && pm.crumb === 'People / Military' && pm.count === 1,
+    `panel ${m0.panel} "${m0.title}", orders ${m0.orders}, zones ${m1.zones}; "${pm.crumb}" sheets ${pm.count}`);
+  // P4: the long-press shortcuts
+  await tap(page, '[data-act=mark-orders]');
+  await page.waitForTimeout(100);
+  await tap(page, '[data-act=order-mine]');
+  await page.waitForTimeout(150);
+  const t0 = await ev(() => { const t = window.__ecUI.shell.ctx.ui.tool; return t ? `${t.kind}:${t.id}` : null; });
+  await toMap();
+  await press('[data-act=tab][data-tab=mark]');
+  const t1 = await ev(() => { const t = window.__ecUI.shell.ctx.ui.tool; return t ? `${t.kind}:${t.id}` : null; });
+  await toMap();
+  await press('[data-act=stock]');
+  await page.waitForTimeout(150);
+  const st = await sheetNow();
+  await screen('hold-stock');
+  await toMap();
+  await press('[data-act=colonist]');
+  const cm = await ev(() => { const m = document.querySelector('.ec-ctxmenu'); return m && !m.hidden ? m.querySelectorAll('[role=menuitem]').length : 0; });
+  await ev(() => { const s = document.querySelector('.ec-ctx-scrim'); if (s) s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true })); });
+  flow('P4', 'the old long-press shortcuts still work', t0 === 'rect:mine' && t1 === t0 && st.open && st.title === 'Hold' && st.tab === 'Stock' && cm > 0,
+    `Mark re-arms ${t1} (was ${t0}); stock chip: ${st.open ? st.title + '/' + st.tab : 'nothing'}; portrait menu items ${cm}`);
+  // Hold and World slots
+  await toMap();
+  await tap(page, '[data-act=tab][data-tab=hold]'); await page.waitForTimeout(150); const hs = await sheetNow(); await screen('hold');
+  await toMap(); await tap(page, '[data-act=tab][data-tab=world]'); await page.waitForTimeout(150); const ws = await sheetNow(); await screen('world');
+  const lit = await ev(() => (document.querySelector('.ec-tabs .ec-tab.on') || {}).dataset);
+  if (!(hs.open && hs.title === 'Hold' && ws.open && ws.title === 'World' && ws.count === 1 && lit && lit.tab === 'world')) problems.push(`[slots] Hold ${hs.title}, World ${ws.title} (sheets ${ws.count}), lit ${lit && lit.tab}`);
+  // R1: the rail
+  await toMap();
+  const natural = await ev(() => { const r = document.querySelector('.ec-rail'); return { sw: r.scrollWidth, cw: r.clientWidth, more: !!r.querySelector('[data-act=rail-more]') }; });
+  const narrow = await ev(async () => {
+    const r = document.querySelector('.ec-rail'), sh = window.__ecUI.shell, n = sh.state.col.length;
+    const width = 44 * 2 + 4 * 2 + 16 + 4;   // room for 2 portraits and a third slot squeezed out
+    r.style.maxWidth = width + 'px'; r.style.flex = '0 0 ' + width + 'px';
+    window.dispatchEvent(new Event('resize'));
+    await new Promise((f) => setTimeout(f, 400));
+    const ports = r.querySelectorAll('[data-act=colonist]').length, more = r.querySelector('[data-act=rail-more]');
+    return { n, ports, more: more ? more.textContent : null, sw: r.scrollWidth, cw: r.clientWidth };
+  });
+  const rm = await tap(page, '[data-act=rail-more]');
+  await page.waitForTimeout(150);
+  const rs = await sheetNow();
+  await ev(() => { const r = document.querySelector('.ec-rail'); r.style.maxWidth = ''; r.style.flex = ''; window.dispatchEvent(new Event('resize')); });
+  const want = narrow.n > narrow.ports + 0 ? `+${narrow.n - narrow.ports}` : null;
+  flow('R1', 'the colonist rail collapses to +N', natural.sw <= natural.cw + 1 && narrow.more === want && narrow.sw <= narrow.cw + 1 && rm && rs.open && rs.title === 'People',
+    `natural ${natural.sw}/${natural.cw}${natural.more ? ' (+N)' : ''}; narrowed: ${narrow.ports} of ${narrow.n} and ${narrow.more}, ${narrow.sw}/${narrow.cw}; +N opens ${rs.open ? rs.title : 'nothing'}`);
+  return done();
+}
+if (flowsArg === 'ia-people') {
+  const rep = [];
+  let nbad = 0;
+  for (const vp of SHEET_VPS) {
+    if (only && !only.split(',').includes(vp.name)) continue;
+    let r;
+    try { r = await runIaPeople(vp); } catch (e) { r = { vp: vp.name, flows: [], screens: [], problems: ['harness: ' + String(e && e.stack || e).slice(0, 400)] }; }
+    r.ok = !r.problems.length && r.flows.length > 0 && r.flows.every((f) => f.ok);
+    if (!r.ok) nbad++;
+    rep.push(r);
+  }
+  await browser.close(); await srv.close();
+  writeFileSync(join(OUT, `ui-ia-people-${which}.json`), JSON.stringify(rep, null, 1));
+  for (const r of rep) {
+    console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.vp}  screens: ${r.screens.map((x) => x.name + (x.ok ? '' : `(${x.n})`)).join(' ')}`);
+    for (const f of r.flows) console.log(`      ${f.ok ? 'ok  ' : 'FAIL'} ${f.id} ${f.name}: ${f.detail}`);
+    for (const p of r.problems.slice(0, 14)) console.log('      ' + p);
+    if (r.problems.length > 14) console.log(`      ... ${r.problems.length - 14} more`);
+  }
+  console.log(`ui-phone --flows=ia-people [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${nbad ? nbad + ' viewport(s) with problems' : 'all viewports clean'} (screenshots tools/out/ui-phone/ia-*.png)`);
   process.exit(nbad ? 1 : 0);
 }
 

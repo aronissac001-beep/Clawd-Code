@@ -1185,3 +1185,94 @@ body.land.has-sheet .ec-top, body.land.has-sheet .ec-stockstrip { right: calc(va
 body.land.has-sheet .ec-paused-frame { right: calc(var(--sheet-w-land) + var(--sa-r)); }
 body.land.has-sheet .ec-hint { left: calc(var(--sa-l) + (100% - var(--sa-l) - var(--sa-r) - var(--sheet-w-land)) / 2); }
 body.land.has-sheet .ec-toasts { right: calc(var(--sheet-w-land) + var(--sa-r) + 8px); }
+
+/* ---------- W1.4 (EMBERCROWN-WORLD.md 8.1, 8.4, 8.6, 8.7; 11 items 9, 10, 12, 26): compact build cards, the peek
+   chevron and the compact landscape peek, the level pill and the level list, the Menu and Settings ---------- */
+/* Build: the panel stands at the medium detent in portrait; one scrolling category strip with a fade edge; one-line cards */
+body:not(.land) .ec-panel[data-panel="build"] { height: var(--detent-mid); max-height: calc(100% - var(--sa-t) - var(--top) - var(--bar) - var(--sa-b)); padding: 0 max(var(--sp-2), var(--sa-r)) 8px max(var(--sp-2), var(--sa-l)); }
+.ec-panel[data-panel="build"] .ec-panel-head { min-height: 48px; }
+body .ec-panel[data-panel="build"] .ec-bstrip { display: flex; flex-wrap: nowrap; overflow-x: auto; margin: 0 0 6px; padding-right: 28px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+body .ec-panel[data-panel="build"] .ec-bstrip .ec-strip-tab { flex: none; flex-direction: row; gap: 6px; height: 44px; min-width: 0; padding: 0 12px; }
+body .ec-panel[data-panel="build"] .ec-bstrip .ec-strip-tab .ic { width: 18px; height: 18px; }
+.ec-bgrid.ec-bgrid2, body.land .ec-bgrid.ec-bgrid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+:root[data-ec-text="130"] .ec-bgrid.ec-bgrid2, :root[data-ec-text="130"] body.land .ec-bgrid.ec-bgrid2 { grid-template-columns: minmax(0, 1fr); }
+body .ec-card.ec-bc { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 46px; padding: 2px 3px 2px 2px; text-align: left;
+  background: linear-gradient(var(--raised-hi), var(--raised) 46%); border-color: var(--line-soft); }
+.ec-bc-art { position: relative; flex: none; width: 34px; height: 40px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--brass-hi);
+  background: var(--well); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.45); }
+.ec-bc-art .ec-thumb { display: block; width: 32px; height: 32px; image-rendering: pixelated; }
+.ec-bc-art .ic { width: 24px; height: 24px; }
+.ec-bc-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.ec-bc .ec-card-n, .ec-bc .ec-card-sub, .ec-bc .ec-card-why { display: block; grid-column: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; line-height: 1.25; }
+.ec-bc .ec-card-n { font-size: var(--fs-1); font-weight: 700; color: var(--text); }
+.ec-bc .ec-card-sub { font-size: var(--fs-1); color: var(--brass-hi); }
+.ec-bc .ec-card-why { font-size: var(--fs-1); color: #ffd08a; }
+.ec-bc.locked { background: var(--surface-2); border-style: dashed; }
+.ec-bc.locked .ec-thumb { filter: grayscale(0.85) brightness(0.65); }
+.ec-bc .ec-bcard-lock { position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; background: var(--surface); color: #ffd08a; }
+.ec-bc .ec-bcard-lock .ic { width: 14px; height: 14px; }
+.ec-later { grid-column: 1 / -1; min-height: 46px; padding: 4px 10px; border: 1px dashed var(--line-soft); border-radius: var(--r-md); background: var(--surface-2); }
+.ec-later .ec-row-n { font-size: var(--fs-2); font-weight: 650; }
+.ec-later .ec-row-help { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ec-later-ic { flex: none; color: var(--brass-hi); }
+.ec-later-ic .ic { width: 20px; height: 20px; }
+.ec-bc-note { margin: 4px 0 0; }
+/* the peek card: the chevron that opens the full sheet; in landscape a compact 280 x 120 card at the bottom right */
+.ec-peek-open { flex: none; height: 44px; min-width: 64px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 6px 0 10px;
+  border-radius: var(--r-md); border: 1px solid var(--line-soft); background: var(--raised); box-shadow: var(--bevel); color: var(--brass-hi); font-size: var(--fs-1); font-weight: 650; }
+.ec-peek-open .ic { width: 16px; height: 16px; }
+body.land .ec-peek { top: auto; bottom: calc(var(--sa-b) + 8px); right: calc(var(--sa-r) + var(--side) + 8px); width: 280px; height: 120px; gap: 4px; padding: 0 8px 8px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-2); }
+body.land .ec-peek .ec-peek-acts { gap: 6px; }
+body.land .ec-peek .ec-act { min-width: 0; padding: 0 4px; font-size: var(--fs-1); }
+
+/* the level pill: the band swatch, the number and the band name in one pill (no floating plate) */
+.ec-lv-capsule { width: auto; align-items: flex-end; background: none; box-shadow: none; }
+body.land .ec-lv-capsule { align-items: flex-start; }
+.ec-lv-btn { box-shadow: 0 0 0 1px var(--line-soft), var(--sh-1); }
+.ec-lv-chip.ec-lv-pill { width: auto; min-width: 52px; max-width: calc(140px * var(--ts)); height: 52px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 12px 0 10px; border-radius: 26px; white-space: nowrap; }
+.ec-lv-pill .ec-lv-n { font-size: var(--fs-3); }
+.ec-lv-pill .ec-lv-n:empty { display: none; }
+.ec-lv-pill .ec-lv-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-2); font-weight: 600; color: var(--text); }
+/* the level list: a sheet with its two buttons above the rows; no faint italic text */
+.ec-lvlist-head { margin: 8px 0 6px; font-size: var(--fs-1); color: var(--dim); }
+.ec-lvlist-acts { margin: 0 0 8px; }
+.ec-lvlist-acts .ec-act[hidden] { display: none; }
+.ec-ruler-list.ec-lvlist { flex: none; overflow: visible; }
+.ec-lvlist .ec-ruler-row { min-height: 52px; padding: 6px 12px 6px 16px; font-size: var(--fs-2); }
+.ec-lvlist .ec-ruler-t b { font-variant-numeric: tabular-nums; }
+.ec-lvlist .ec-ruler-sub { margin-top: 2px; font-size: var(--fs-1); color: var(--dim); }
+.ec-lvlist .ec-ruler-fold { display: flex; align-items: center; min-height: 44px; padding: 6px 16px; font-size: var(--fs-1); font-style: normal; color: var(--dim); }
+.ec-lvlist-here { margin-left: 8px; font-size: var(--fs-1); font-weight: 600; color: var(--good); }
+/* the Menu: two groups of rows, each with its icon */
+.ec-menu-group { margin: 8px 0 12px; border: 1px solid var(--line-faint); border-radius: var(--r-lg); background: var(--surface-2); overflow: hidden; }
+.ec-menu-group > .ec-row:last-child { border-bottom: 0; }
+.ec-row.ec-menu-row { min-height: 52px; padding: 4px 12px; }
+.ec-menu-ic { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); color: var(--brass-hi); }
+.ec-menu-ic .ic { width: 20px; height: 20px; }
+.ec-menu-row .ec-row-s { color: var(--dim); }
+/* Settings: a sticky jump strip, group heads, pixel-art switches (44 x 28 inside 52 pt rows) */
+body .ec-strip.ec-setjump { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: nowrap; overflow-x: auto; margin: 4px 0 0; background: var(--surface-2); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+body .ec-setjump .ec-strip-tab { flex: none; min-width: 0; padding: 0 12px; color: var(--text); }
+.ec-setgroup { scroll-margin-top: 60px; }
+.ec-row.ec-swrow { min-height: 52px; padding: 4px; }
+.ec-swrow .ec-row-n { flex: 1; }
+.ec-switch { position: relative; flex: none; width: 44px; height: 28px; background: #3a3036; box-shadow: inset 0 0 0 2px #120e12, inset 0 4px 0 rgba(0, 0, 0, 0.35); }
+.ec-switch i { position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; background: var(--dim);
+  box-shadow: inset 0 0 0 2px #120e12, inset -2px -2px 0 rgba(0, 0, 0, 0.3), inset 2px 2px 0 rgba(255, 255, 255, 0.3); }
+.ec-swrow[aria-checked="true"] .ec-switch { background: #4f7a32; }
+.ec-swrow[aria-checked="true"] .ec-switch i { left: 20px; background: var(--text); }
+.ec-swrow[aria-disabled="true"] .ec-switch { opacity: 0.45; }
+.ec-setenum { padding: 8px 4px 4px; border-bottom: 1px solid var(--line-faint); }
+.ec-setenum > .ec-row-n { display: block; font-size: var(--fs-3); }
+.ec-setenum .ec-seg { margin-top: 6px; }
+.ec-setstore { padding: 4px 0; }
+.ec-sheet-body:has(.ec-setjump) { scroll-padding-top: 56px; }
+body.land .ec-peek .ec-peek-open { min-width: 44px; padding: 0; }
+body.land .ec-peek .ec-peek-open-t { display: none; }
+body.land.has-peek:not(.has-panel):not(.has-sheet) .ec-paused-frame { right: calc(var(--sa-r) + var(--side)); }
+/* W1.3a: the People sheet's pinned alert row and the rail's "+N" chip */
+.ec-people-mil { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 4px 0 6px; background: var(--surface); }
+.ec-rail-more { background: var(--raised); border: 1px solid var(--line); color: var(--brass-hi); font-size: var(--fs-2); font-weight: 700; }

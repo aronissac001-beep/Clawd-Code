@@ -13,3 +13,7 @@ export function fortressRequested(search = '') {
   if (FORTRESS) return true;
   try { return new URLSearchParams(search || '').get('fortress') === '1'; } catch { return false; }
 }
+
+// SHELL2: the new shell (EMBERCROWN-WORLD.md 8.1, Stage W1): the 5-slot bar, the People, Hold and World sheets.
+// UI only, never read by the sim. Off until W1.10; the debug URL ?shell=2 turns it on (js/ui/peopleui.js SHELL2_ON).
+export const SHELL2 = false;

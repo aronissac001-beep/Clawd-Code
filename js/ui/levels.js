@@ -1,25 +1,26 @@
 // Level controls (owner I; EMBERCROWN-FORTRESS.md 4.1-4.5, F22; Stage Z1 step E7). Only on a map with
 // D > 1: a D = 1 colony never mounts this, so the Stage 2.9 shell is unchanged.
 //   The capsule: [up] (44 x 44, a badge with the colonists above and a red dot for hostiles above), the
-//   level chip (44 x 52: the relative level in 17 px bold tabular figures, a 14 px band swatch under it)
-//   and [down] (the lowest control, where the thumb rests). Portrait: bottom right, 8 pt above the bottom
-//   bar (sliding with the peek card); landscape: bottom left. The band plate beside the chip names the band.
-//   Tap an arrow: one level. Hold it (450 ms): the next interesting level that way. Drag the chip
-//   vertically: a relative scrub with acceleration and detents (js/game/tools/levels.js Scrub) and a label
-//   bubble. Tap the chip: the depth ruler. Long-press the chip: Go to surface, Go to deepest dig.
+//   level pill (52 pt tall: the band swatch, the relative level in bold tabular figures and the band name in
+//   one pill, "-3 Outer", W1.4 / EMBERCROWN-WORLD.md 8.4; no floating plate) and [down] (the lowest control,
+//   where the thumb rests). Portrait: bottom right, 8 pt above the bottom bar (sliding with the peek card);
+//   landscape: bottom left. Tap an arrow: one level. Hold it (450 ms): the next interesting level that way.
+//   Drag the pill vertically: a relative scrub with acceleration and detents (js/game/tools/levels.js Scrub)
+//   and a label bubble. Tap the pill: the level list. Long-press it: Go to surface, Go to deepest dig.
 //   Navigation stays inside the explored range: down stops at the deepest known level plus 1 ("Unexplored
 //   below: dig or sound to see more"), up at the highest known solid level.
 //   The capsule locks during world gestures: while a pan, pinch or tool drag owns a pointer (the shell sets
 //   body.wgest), it takes no new pointer, and a tool drag crossing it keeps drawing.
-//   The depth ruler: a 132 pt panel at full world height (from the right in portrait, the left in
-//   landscape): "Surface 0" and "Deepest -9" on top, one 44 pt row per explored level (unexplored runs folded
-//   into one row) with its colonists, hostiles (red dot), alerts (amber dot) and pending work, and "Nearest
-//   stairs" at the bottom. Tapping a row jumps there and closes the ruler.
+//   The level list (W1.4, 11 item 26; was the depth ruler drop-down): a sheet (ctx.openSheet) with "Surface 0,
+//   deepest -9", Section view and Nearest stairs right above the list, then one 52 pt row per explored level
+//   (unexplored runs folded into one row) with its band name, colonists, jobs, hostiles (red dot) and alerts
+//   (amber dot). Tapping a row jumps there and closes the sheet.
 //   The ghost column (4.4): while a Mine, Carve hall, Stairs, Ramp or Channel tool is open (and 3 s after
 //   Done), one 44 pt tick per level holding that tool's designations; tapping a tick jumps to the level.
 // View level = the camera's `level` (UI memory, never sim state). mountLevels(root, ctx, hooks) -> api.
 //   hooks: getZ(), setZ(z, why) -> bool, showCtx(p, items), centerTile(x, y), alertLevels() -> [z], toolKind() -> kind|null
 import { h, clear, onTap } from './kit.js';
+import { t } from './strings.js';
 import { D, zS, TILE } from '../game/core/grid.js';
 import { bandOfRel } from '../data/levels.js';
 import { routeChevrons } from './threatui.js';
@@ -64,19 +65,19 @@ export function mountLevels(root, ctx, hooks) {
   const upB = h('button.ec-lv-btn.ec-lv-up', { type: 'button', 'data-act': 'level-up', 'aria-label': 'Up one level', html: SVG_UP });
   const dnB = h('button.ec-lv-btn.ec-lv-down', { type: 'button', 'data-act': 'level-down', 'aria-label': 'Down one level', html: SVG_DOWN });
   upB.append(badge()); dnB.append(badge());
-  const chipN = h('b.ec-lv-n'), chipG = h('i.ec-lv-glyph', { 'aria-hidden': 'true' });
-  const chip = h('button.ec-lv-chip', { type: 'button', 'data-act': 'level-chip', 'aria-label': 'Level' }, chipN, chipG);
+  // W1.4 (EMBERCROWN-WORLD.md 8.4): the level pill, the number and the band name in one pill (no floating plate)
+  const chipN = h('b.ec-lv-n'), chipG = h('i.ec-lv-glyph', { 'aria-hidden': 'true' }), chipW = h('span.ec-lv-w');
+  const chip = h('button.ec-lv-chip.ec-lv-pill', { type: 'button', 'data-act': 'level-chip', 'aria-label': 'Level' }, chipG, chipN, chipW);
   const capsule = h('div.ec-lv-capsule', { role: 'group', 'aria-label': 'Levels' }, upB, chip, dnB);
-  const plate = h('div.ec-lv-plate', { 'aria-hidden': 'true' });
   const ghost = h('div.ec-lv-ghost', { hidden: true, role: 'group', 'aria-label': 'Levels with designations' });
   const bubble = h('div.ec-lv-bubble', { hidden: true, role: 'status' });
-  const el = h('div.ec-levels', null, plate, ghost, capsule);   // portrait: plate, ghost, capsule (right); landscape reversed
-  const rulerList = h('div.ec-ruler-list');
-  const rulerHead = h('div.ec-ruler-head');
-  const nearest = h('button.ec-ruler-near', { type: 'button', 'data-act': 'ruler-stairs', text: LEVEL_TEXT.nearest });
-  const secB = h('button.ec-ruler-near.ec-ruler-sec', { type: 'button', 'data-act': 'ruler-section', text: LEVEL_TEXT.section });
-  const ruler = h('section.ec-ruler', { hidden: true, role: 'dialog', 'aria-label': 'Depth ruler' }, rulerHead, rulerList, secB, nearest);
-  const scrim = h('div.ec-ruler-scrim', { hidden: true });
+  const el = h('div.ec-levels', null, ghost, capsule);   // portrait: ghost, capsule (right); landscape reversed
+  // the level list (11 item 26): a sheet with one 52 pt row per level, its band name, and its two buttons on top
+  const rulerList = h('div.ec-ruler-list.ec-lvlist', { role: 'list' });
+  const rulerHead = h('p.ec-lvlist-head');
+  const nearest = h('button.ec-act.ec-lvlist-b', { type: 'button', 'data-act': 'ruler-stairs', text: LEVEL_TEXT.nearest });
+  const secB = h('button.ec-act.ec-lvlist-b', { type: 'button', 'data-act': 'ruler-section', text: LEVEL_TEXT.section });
+  const rulerActs = h('div.ec-peek-acts.ec-lvlist-acts', null, secB, nearest);
   // Z3.5 route chevrons: where the threat's route preview leaves (or reaches) the view level, a 44 pt stair
   // chevron over the world; tapping it switches to the level the route goes to (the arrival one: back where
   // it came from) and centres there. Data once a second (tick), positions every frame.
@@ -111,7 +112,7 @@ export function mountLevels(root, ctx, hooks) {
     }
     for (; k < CHEV_MAX; k++) if (chevB[k].style.display !== 'none') { chevB[k].style.display = 'none'; chevB[k]._c = null; }
   }
-  root.append(el, bubble, scrim, ruler, chevs);
+  root.append(el, bubble, chevs);
   // Z4: the section view (a side cut through every level; 4.1)
   const sec = mountSection(root, ctx, { range: () => { refresh(); return st.range; }, go: (zz) => go(zz, 'section'), z: () => z() });
   const openSection = () => { closeRuler(); sec.open(); };
@@ -222,18 +223,27 @@ export function mountLevels(root, ctx, hooks) {
     chip.addEventListener('click', (e) => { if (e.detail === 0) openRuler(); });
   }
 
-  // ---- the depth ruler ---------------------------------------------------------------------------------------
+  // ---- the level list (W1.4, 11 item 26: was the depth ruler drop-down) -----------------------------------------
+  // A sheet (one sheet at a time, G21): "Surface 0 . Deepest -9", the Section view and Nearest stairs buttons right
+  // above the list, then one row per explored level (unexplored runs folded into one row). A tap on a row goes
+  // there and closes the sheet. Without a sheet engine (tests) nothing opens.
   function openRuler() {
     refresh();
-    st.ruler = true; ruler.hidden = false; scrim.hidden = false;
+    if (!ctx.openSheet) return;
+    st.ruler = true;
     document.body.classList.add('has-ruler');
-    renderRuler();
-    const on = rulerList.querySelector('.on');
-    if (on) rulerList.scrollTop = Math.max(0, on.offsetTop - rulerList.clientHeight / 2 + on.offsetHeight / 2);
+    ctx.openSheet(t('level.list'), (body) => {
+      body.append(rulerHead, rulerActs, rulerList);
+      renderRuler();
+      requestAnimationFrame(() => { const on = rulerList.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'center' }); });
+    }, { onClose: () => { st.ruler = false; document.body.classList.remove('has-ruler'); }, help: 'Levels' });
   }
-  function closeRuler() { st.ruler = false; ruler.hidden = true; scrim.hidden = true; document.body.classList.remove('has-ruler'); }
-  scrim.addEventListener('pointerdown', (e) => { e.preventDefault(); closeRuler(); });
-  onTap(secB, () => openSection());
+  function closeRuler() {
+    if (!st.ruler) return;
+    st.ruler = false; document.body.classList.remove('has-ruler');
+    if (ctx.closeSheet) ctx.closeSheet();
+  }
+  onTap(secB, () => { closeRuler(); openSection(); });
   onTap(nearest, () => {
     const c = ctx.cam, tx = Math.floor(c.x / 32), ty = Math.floor(c.y / 32);
     const p = nearestStair(s, z(), tx, ty);
@@ -243,23 +253,21 @@ export function mountLevels(root, ctx, hooks) {
   function renderRuler() {
     const sm = st.sum, r = st.range, cur = z(), alerts = new Set(hooks.alertLevels());
     secB.hidden = !sectionReady(sm);
-    clear(rulerHead);
-    rulerHead.append(h('div', { text: `Surface ${levelText(zS)}` }), h('div', { text: r.deepest === null ? 'Deepest: none' : `Deepest ${levelText(r.deepest)}` }));
-    const sc = rulerList.scrollTop;
+    rulerHead.textContent = r.deepest === null ? t('level.rangeNone') : t('level.range', { deep: levelText(r.deepest) });
     clear(rulerList);
     for (const row of rulerRows(sm, r)) {
-      if (row.kind === 'fold') { rulerList.append(h('div.ec-ruler-fold', { text: `Unexplored · ${row.n} ${row.n === 1 ? 'level' : 'levels'}` })); continue; }
+      if (row.kind === 'fold') { rulerList.append(h('div.ec-ruler-fold', { role: 'listitem', text: t('level.unexplored', { n: row.n }) })); continue; }
       const zz = row.z, b = bandOfRel(zz - zS);
-      const sub = [];
-      if (sm.col[zz]) sub.push(`${sm.col[zz]} here`);
-      if (sm.work[zz]) sub.push(`${sm.work[zz]} jobs`);
-      const dots = h('span.ec-ruler-dots', null, sm.foe[zz] ? h('i.red', { 'aria-label': 'Hostiles' }) : null, alerts.has(zz) ? h('i.amber', { 'aria-label': 'Alert' }) : null);
-      const b0 = h('button.ec-ruler-row' + (zz === cur ? '.on' : ''), { type: 'button', 'data-act': 'ruler-row', 'data-z': String(zz), style: { '--tint': b.tint } },
-        h('span.ec-ruler-t', null, h('b', { text: levelText(zz) }), ` · ${b.short}`), dots, h('span.ec-ruler-sub', { text: sub.join(' · ') || ' ' }));
+      const sub = [b.name];
+      if (sm.col[zz]) sub.push(t('level.here', { n: sm.col[zz] }));
+      if (sm.work[zz]) sub.push(t('level.jobs', { n: sm.work[zz] }));
+      if (sm.foe[zz]) sub.push(t('level.foes'));
+      const dots = h('span.ec-ruler-dots', null, sm.foe[zz] ? h('i.red', { 'aria-label': t('level.foes') }) : null, alerts.has(zz) ? h('i.amber', { 'aria-label': t('level.alert') }) : null);
+      const b0 = h('button.ec-ruler-row.ec-lvrow2' + (zz === cur ? '.on' : ''), { type: 'button', role: 'listitem', 'data-act': 'ruler-row', 'data-z': String(zz), 'aria-current': zz === cur ? 'true' : null, style: { '--tint': b.tint } },
+        h('span.ec-ruler-t', null, h('b', { text: levelText(zz) }), ` ${b.short}`, zz === cur ? h('span.ec-lvlist-here', { text: t('level.you') }) : null), dots, h('span.ec-ruler-sub', { text: sub.join(' \u00b7 ') }));
       onTap(b0, () => { closeRuler(); go(zz, 'ruler'); });
       rulerList.append(b0);
     }
-    rulerList.scrollTop = sc;
   }
 
   // ---- the ghost column ----------------------------------------------------------------------------------------
@@ -311,17 +319,17 @@ export function mountLevels(root, ctx, hooks) {
     upB.classList.toggle('end', cur >= st.range.hi); dnB.classList.toggle('end', cur <= st.range.lo);
     if (key === st.shown) return;
     st.shown = key;
-    chipN.textContent = levelText(cur);
+    chipN.textContent = cur === zS ? '' : levelText(cur);
+    chipW.textContent = b.short;
     chipG.style.background = b.tint;
-    chip.setAttribute('aria-label', `${levelWord(cur)}. Tap for the depth ruler, drag to scrub`);
-    plate.textContent = b.short;
+    chip.setAttribute('aria-label', t('level.pill', { level: levelWord(cur) }));
     if (st.ruler) renderRuler();
     renderGhost(true);
   }
   refresh(); render();
 
   return {
-    el, capsule, ruler, bubble, ghost, st,
+    el, capsule, ruler: rulerList, bubble, ghost, st,
     /** Once a second: the summary, badges, the ruler and the ghost column. */
     tick() { refresh(); render(); if (st.ruler) renderRuler(); if (sec.isOpen) sec.draw(); renderGhost(); chevData(); placeChevs(); },
     section: sec, openSection,
@@ -332,6 +340,6 @@ export function mountLevels(root, ctx, hooks) {
     chevrons: () => st.chev,
     go, step, jump, openRuler, closeRuler, setGhost, renderGhost, say,
     get rulerOpen() { return st.ruler; },
-    destroy() { sec.destroy(); chevs.remove(); el.remove(); bubble.remove(); ruler.remove(); scrim.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
+    destroy() { closeRuler(); sec.destroy(); chevs.remove(); el.remove(); bubble.remove(); clearTimeout(st.bubbleT); document.body.classList.remove('has-levels', 'has-ruler', 'lv-scrub'); },
   };
 }

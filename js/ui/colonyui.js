@@ -4,11 +4,12 @@
 // lore), Stock (every item by category, tap to find it), Chronicle (the hold's history and its deeds)
 // and Hold (tier progress, the Hearth and its upgrade, wealth, factions, nemeses, the storyteller,
 // the season and weather). Read-only views of state; every change is a command (C3).
+// W1.3a (EMBERCROWN-WORLD.md 8.1): with the new shell (SHELL2_ON) People, Work, Schedule and Military move to the
+// People sheet (peopleui.js), this sheet is titled Hold (Overview, Stock, Research, Chronicle), and openWorld is
+// the World slot's interim sheet (Annals, Letters, The dead, factions) until W1.3b's holdui.js and worldui.js.
 import { h, onTap, icon } from './kit.js';
 import { def, all, structDef } from '../game/core/content.js';
-import { WORK_IDS, SCHED } from '../game/core/schema.js';
 import { dayOf, seasonOf, yearOf, SEASON_NAMES, TICKS_PER_DAY, dayOfSeason } from '../game/core/time.js';
-import { workGrid, schedulePreset, scheduleName, SCHEDULES } from '../game/people/roles.js';
 import { hasTech, costOf, eraOpen } from '../game/colony/research.js';
 import { tierView } from '../game/colony/tiers.js';
 import { computeWealth } from '../game/colony/wealth.js';
@@ -19,6 +20,7 @@ import { fullName } from '../game/threat/nemesis.js';
 import { weatherText } from '../game/world/weather.js';
 import { outdoorTemp } from '../game/world/temperature.js';
 import { peopleList } from './rolesui.js';
+import { SHELL2_ON, openPeople, workTab, scheduleTab } from './peopleui.js';
 import { STAGE } from './stage.js';
 // Stage Z2 (EMBERCROWN-FORTRESS.md 3.4-3.13): the Military tab and the hold's offices, justice, Annals, dead,
 // halls, renown, births and laws from the Hold tab
@@ -26,13 +28,18 @@ import { militaryTab } from './military.js';
 import { openOffices } from './officesui.js';
 import { openJustice, lawsSwitch } from './justiceui.js';
 import { openAnnals } from './annals.js';
+import { openLetters } from './letters.js';
 import { openDead } from './burialui.js';
 import { hallsView } from '../game/colony/visitors.js';
 import { renownLines } from '../game/colony/renown.js';
 import { birthsOn } from '../game/people/family.js';
 import { whenOf } from '../game/colony/verbs/discovery.js';
 
-export const COLONY_TABS = Object.freeze(['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']);
+const OLD_TABS = Object.freeze(['People', 'Work', 'Schedule', 'Research', 'Stock', 'Military', 'Chronicle', 'Hold']);
+/** With the new shell (W1.3a) People, Work, Schedule and Military live on the People sheet; this sheet is Hold. */
+const HOLD_TABS = Object.freeze(['Overview', 'Stock', 'Research', 'Chronicle']);
+export const COLONY_TABS = SHELL2_ON ? HOLD_TABS : OLD_TABS;
+const PEOPLE_TABS = { People: 'List', Work: 'List', Schedule: 'Schedule', Military: 'List' };
 const S2 = STAGE !== '1a' && STAGE !== '1b';
 const TAB_HELP = {
   People: 'Everyone in the hold with their roles. Tap a name to find them, a chip to change the role.',
@@ -42,13 +49,19 @@ const TAB_HELP = {
   Stock: 'Everything the colony owns, stored or not. Tap a kind to find a stack on the map.',
   Chronicle: 'The hold\'s history as it happened, and the deeds it is working toward.',
   Military: 'Squads, their uniforms and drills, and the alert: Peace, Muster or Shelter.',
+  Overview: 'How far the hold has come: its offices, laws, Annals and halls, its tier, the Hearth, wealth, friends and enemies.',
   Hold: 'How far the hold has come: its offices, laws, Annals and halls, its tier, the Hearth, wealth, friends and enemies.',
 };
 
 /** The Colony sheet (10.3). ui: per-open state (work page, grid on). */
 export function openColony(ctx, tab = 'People') {
+  if (SHELL2_ON) {
+    // the old links ("Colony > Work", the ledger's "Hold", the stock chip's long-press) land on the new sheets
+    if (PEOPLE_TABS[tab]) { openPeople(ctx, { view: tab === 'Work' && ctx.settings && ctx.settings().advancedGrid ? 'Grid' : PEOPLE_TABS[tab], military: tab === 'Military' }); return; }
+    if (tab === 'Hold' || !HOLD_TABS.includes(tab)) tab = 'Overview';
+  }
   const ui = { page: 0, grid: null };
-  ctx.openSheet('Colony', (el, t) => {
+  ctx.openSheet(SHELL2_ON ? 'Hold' : 'Colony', (el, t) => {
     if (TAB_HELP[t]) el.append(h('p.ec-note.ec-help-line', { text: TAB_HELP[t] }));
     if (t === 'People') peopleList(el, ctx);
     else if (t === 'Work') workTab(el, ctx, ui);
@@ -57,137 +70,12 @@ export function openColony(ctx, tab = 'People') {
     else if (t === 'Stock') stockTab(el, ctx);
     else if (t === 'Chronicle') chronicleTab(el, ctx);
     else if (t === 'Military') militaryTab(el, ctx);
-    else if (t === 'Hold') holdTab(el, ctx);
-  }, { tabs: COLONY_TABS, tab: COLONY_TABS.includes(tab) ? tab : 'People', crumb: (t) => t });
+    else if (t === 'Hold' || t === 'Overview') holdTab(el, ctx);
+  }, { tabs: COLONY_TABS, tab: COLONY_TABS.includes(tab) ? tab : COLONY_TABS[0], crumb: (t) => t });
 }
 
-// ---- Work: roles or the Advanced grid (10.4) --------------------------------------------------------------
-const PAGES_P = [['Labour', ['haul', 'chop', 'mine', 'build', 'grow']], ['Make', ['cook', 'smith', 'craft', 'tailor', 'art']], ['Care', ['care', 'animals', 'lore']]];
-// landscape: the sheet is the 320 pt overlay panel, so the pages stay at most 5 columns there too
-const PAGES_L = PAGES_P;
-const WORK_ICON = { haul: 'crate', chop: 'axe', mine: 'pick', build: 'hammer', grow: 'farm', cook: 'food', smith: 'sword', craft: 'saw', tailor: 'banner', art: 'relic', care: 'heart', animals: 'pop', lore: 'book' };
-function workTab(el, ctx, ui) {
-  const adv = ui.grid !== null ? ui.grid : !!(ctx.settings && ctx.settings().advancedGrid);
-  const seg = h('div.ec-seg', { role: 'radiogroup', 'aria-label': 'Work view' });
-  for (const [label, v] of [['Roles', false], ['Grid', true]]) {
-    const b = h('button.ec-seg-b' + (adv === v ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': adv === v ? 'true' : 'false', 'data-act': 'work-' + (v ? 'grid' : 'roles'), text: label });
-    onTap(b, () => { ui.grid = v; ctx.refreshSheet(); });
-    seg.append(b);
-  }
-  el.append(seg);
-  if (!adv) { peopleList(el, ctx, { work: true }); return; }
-  const pages = ctx.isLand() ? PAGES_L : PAGES_P;
-  if (ui.page >= pages.length) ui.page = 0;
-  const pg = h('div.ec-seg', { role: 'radiogroup', 'aria-label': 'Work types' });
-  pages.forEach(([label], k) => {
-    const b = h('button.ec-seg-b' + (ui.page === k ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': ui.page === k ? 'true' : 'false', 'data-act': 'grid-page-' + k, text: label });
-    onTap(b, () => { ui.page = k; ctx.refreshSheet(); });
-    pg.append(b);
-  });
-  el.append(pg);
-  const works = pages[ui.page][1];
-  const grid = h('div.ec-wgrid', { role: 'grid', style: { '--cols': String(works.length) } });
-  const head = h('div.ec-wrow.ec-whead', { role: 'row' }, h('span.ec-wname', { text: '' }));
-  for (const w of works) {
-    const d = def('worktype', w) || { name: w };
-    const b = h('button.ec-wh', { type: 'button', role: 'columnheader', 'data-act': 'grid-head-' + w, 'aria-label': d.name, html: icon(WORK_ICON[w] || 'gear') });
-    onTap(b, () => { ui.sort = ui.sort === w ? null : w; ctx.toast(`${d.name}${ui.sort ? ': sorted by skill' : ''}.`); ctx.refreshSheet(); });
-    head.append(b);
-  }
-  grid.append(head);
-  let rows = workGrid(ctx.s);
-  if (ui.sort) { const k = WORK_IDS.indexOf(ui.sort); rows = rows.slice().sort((a, b) => b.cells[k].lvl - a.cells[k].lvl || a.colId - b.colId); }
-  for (const r of rows) {
-    const c = ctx.s.col.find((x) => x.id === r.colId);
-    const row = h('div.ec-wrow', { role: 'row' }, h('span.ec-wname', null, ctx.portrait(c, 32), h('span', { text: r.name.split(' ')[0] }), r.custom ? h('i.ec-wcustom', { 'aria-label': 'Custom', text: '*' }) : null));
-    for (const w of works) {
-      const k = WORK_IDS.indexOf(w), cell = r.cells[k];
-      const b = h('button.ec-wcell' + (cell.off ? '.off' : '') + (cell.p === 1 ? '.p1' : cell.p === 4 ? '.p4' : ''), {
-        type: 'button', role: 'gridcell', 'data-act': `prio-${w}`, 'data-col': String(r.colId), 'aria-label': `${r.name} ${w}: ${cell.off ? 'ruled out' : cell.p ? 'priority ' + cell.p : 'off'}`, 'aria-disabled': cell.off ? 'true' : null,
-      }, h('b', { text: cell.off ? '' : cell.p ? String(cell.p) : '' }), h('span.ec-wbar', null, h('i', { style: { width: Math.round((cell.lvl / 20) * 100) + '%' } })),
-      cell.passion ? h('span.ec-wpass', { html: icon('flame') + (cell.passion > 1 ? icon('flame') : '') }) : null);
-      const set = (p) => { ctx.send({ t: 'prio', colId: r.colId, work: w, p }); ctx.refreshSheet(); };
-      onTap(b, () => (cell.off ? ctx.toast(`${r.name.split(' ')[0]}'s past rules out ${(def('worktype', w) || { name: w }).name.toLowerCase()}.`) : set(cell.p === 0 ? 1 : cell.p >= 4 ? 0 : cell.p + 1)), {
-        longpress: () => { if (!cell.off) prioPicker(ctx, r, w, set); },
-      });
-      row.append(b);
-    }
-    grid.append(row);
-  }
-  el.append(grid, h('p.ec-note', { text: 'Tap a cell: 1, 2, 3, 4, off. Long-press for the whole row or column. The bar is the skill; a flame is a passion. Any edit marks the colonist Custom.' }));
-}
-function prioPicker(ctx, r, w, set) {
-  ctx.openSheet(`${r.name.split(' ')[0]}: ${(def('worktype', w) || { name: w }).name}`, (el) => {
-    const grid = h('div.ec-grid');
-    const opt = (label, act, fn) => { const b = h('button.ec-card', { type: 'button', 'data-act': act }, h('span.ec-card-ic', { html: icon('check') }), h('span.ec-card-n', { text: label })); onTap(b, () => { fn(); ctx.back(); }); grid.append(b); };
-    for (const p of [1, 2, 3, 4]) opt(`Priority ${p}`, 'pick-' + p, () => set(p));
-    opt('Off', 'pick-off', () => set(0));
-    opt('Whole row', 'pick-row', () => { const p = r.cells[WORK_IDS.indexOf(w)].p || 3; for (const c of r.cells) if (!c.off) ctx.send({ t: 'prio', colId: r.colId, work: c.work, p }, null, true); });
-    opt('Whole column', 'pick-col', () => { const p = r.cells[WORK_IDS.indexOf(w)].p || 3; for (const c of ctx.s.col) if (!c.hp.dead) ctx.send({ t: 'prio', colId: c.id, work: w, p }, null, true); });
-    el.append(grid);
-  }, { back: true });
-}
-
-// ---- Schedule (5.2) ---------------------------------------------------------------------------------------
-const SCH = [['Sleep', SCHED.SLEEP, 'sleep'], ['Work', SCHED.WORK, 'work'], ['Joy', SCHED.JOY, 'joy'], ['Any', SCHED.ANY, 'any']];
-const SCH_CLASS = ['sleep', 'work', 'joy', 'any'];
-function strip(sched) {
-  const st = h('span.ec-sched', { role: 'img', 'aria-label': 'Schedule' });
-  for (let k = 0; k < 24; k++) st.append(h('i.' + SCH_CLASS[sched[k] | 0]));
-  return st;
-}
-function scheduleTab(el, ctx) {
-  const s = ctx.s;
-  el.append(h('div.ec-sched-key', null, ...SCH.map(([n, , c]) => h('span', null, h('i.' + c), n))));
-  for (const c of s.col) {
-    if (c.hp.dead) continue;
-    const name = scheduleName(c.sched);
-    const preset = SCHEDULES.find((p) => p.id === name);
-    const b = h('button.ec-srow', { type: 'button', 'data-act': 'sched-edit', 'data-col': String(c.id), 'aria-label': `${c.name}: ${preset ? preset.name : 'Custom'} schedule. Edit` },
-      h('span.ec-srow-n', null, h('b', { text: c.name.split(' ')[0] }), h('span', { text: preset ? preset.name : 'Custom' })), strip(c.sched));
-    onTap(b, () => scheduleEditor(ctx, c));
-    el.append(b);
-  }
-  // one tap for everyone
-  el.append(h('h3.ec-sub', { text: 'Everyone' }));
-  const grid = h('div.ec-grid');
-  for (const p of SCHEDULES) {
-    const b = h('button.ec-card', { type: 'button', 'data-act': 'sched-all-' + p.id }, h('span.ec-card-ic', { html: icon(p.id === 'night' ? 'moon' : 'sun') }), h('span.ec-card-n', { text: p.name }), h('span.ec-card-sub', { text: p.text }));
-    onTap(b, () => { const hrs = Array.from(schedulePreset(p.id)); for (const c of s.col) if (!c.hp.dead) ctx.send({ t: 'sched', colId: c.id, hours: hrs }, null, true); ctx.toast(`Everyone: ${p.name}.`); ctx.refreshSheet(); });
-    grid.append(b);
-  }
-  el.append(grid);
-}
-/** The hour editor: presets, a brush and the 24 hours as a 6 x 4 grid of 44 pt cells. */
-export function scheduleEditor(ctx, c) {
-  const st = { brush: SCHED.WORK };
-  ctx.openSheet(`${c.name.split(' ')[0]}: schedule`, (el) => {
-    const send = (hrs, ok) => { ctx.send({ t: 'sched', colId: c.id, hours: hrs }, ok); ctx.refreshSheet(); };
-    const pre = h('div.ec-seg', { role: 'group', 'aria-label': 'Presets' });
-    const name = scheduleName(c.sched);
-    for (const p of SCHEDULES) {
-      const b = h('button.ec-seg-b' + (name === p.id ? '.on' : ''), { type: 'button', 'data-act': 'sched-' + p.id, text: p.name });
-      onTap(b, () => send(Array.from(schedulePreset(p.id)), `${c.name.split(' ')[0]}: ${p.name}.`));
-      pre.append(b);
-    }
-    el.append(h('h3.ec-sub', { text: 'Presets' }), pre, h('h3.ec-sub', { text: 'Paint hours with' }));
-    const brush = h('div.ec-seg', { role: 'radiogroup', 'aria-label': 'Brush' });
-    for (const [n, v, cl] of SCH) {
-      const b = h('button.ec-seg-b.ec-brush-' + cl + (st.brush === v ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': st.brush === v ? 'true' : 'false', 'data-act': 'brush-' + cl, text: n });
-      onTap(b, () => { st.brush = v; ctx.refreshSheet(); });
-      brush.append(b);
-    }
-    el.append(brush);
-    const hours = h('div.ec-hours', { role: 'grid', 'aria-label': 'Hours' });
-    for (let k = 0; k < 24; k++) {
-      const v = c.sched[k] | 0;
-      const b = h('button.ec-hour.' + SCH_CLASS[v], { type: 'button', role: 'gridcell', 'data-act': 'hour-' + k, 'aria-label': `${String(k).padStart(2, '0')}:00 ${SCH[v][0]}` }, h('b', { text: String(k).padStart(2, '0') }), h('span', { text: SCH[v][0] }));
-      onTap(b, () => { const hrs = Array.from(c.sched); hrs[k] = st.brush === v ? (v + 1) % 4 : st.brush; send(hrs); });
-      hours.append(b);
-    }
-    el.append(hours, h('p.ec-note', { text: 'Tap an hour to paint it with the brush (tap again to cycle). Night owls like Night watch.' }));
-  }, { back: true });
-}
+// Work (the grid), Schedule and Military moved to the People sheet (peopleui.js, W1.3a); the old tabs below
+// call them while the new shell is off.
 
 // ---- Research (7.12) ------------------------------------------------------------------------------------
 function researchTab(el, ctx) {
@@ -329,8 +217,19 @@ function holdTab(el, ctx) {
     h('div.ec-fact', null, h('span', { text: 'Storyteller' }), h('b', { text: sd ? sd.name : s.colony.storyteller })),
     h('div.ec-fact', null, h('span', { text: 'Difficulty' }), h('b', { text: diff ? diff.charAt(0).toUpperCase() + diff.slice(1) : '' })),
     h('div.ec-fact', null, h('span', { text: 'Day' }), h('b', { text: String(dayOf(s.tick) + 1) }))));
-  // factions
+  if (S2) factionsBlock(el, ctx);
+  // nemeses (9.10)
+  const nems = (s.st && s.st.nemeses) || [];
   if (S2) {
+    el.append(banner('skull', nems.length ? 'Nemeses' : 'No nemeses'));
+    if (!nems.length) el.append(h('p.ec-note', { text: 'A raid leader who escapes, wounded or ransomed, remembers the hold, and comes back.' }));
+    for (const n of nems) el.append(nemesisRow(ctx, n));
+  }
+}
+/** The factions: name, standing, goodwill; a waiting envoy. */
+function factionsBlock(el, ctx) {
+  const s = ctx.s;
+  {
     el.append(banner('banner', 'Factions'));
     for (const f of GOODWILL_IDS) {
       const d = def('faction', f) || { name: f };
@@ -342,13 +241,17 @@ function holdTab(el, ctx) {
       el.append(h('p.ec-note', { text: `The ${fd.name} envoy waits for ${e.n} ${it.name.toLowerCase()} by day ${Math.floor((e.until | 0) / TICKS_PER_DAY) + 1}: keep them in a stockpile.` }));
     }
   }
-  // nemeses (9.10)
-  const nems = (s.st && s.st.nemeses) || [];
-  if (S2) {
-    el.append(banner('skull', nems.length ? 'Nemeses' : 'No nemeses'));
-    if (!nems.length) el.append(h('p.ec-note', { text: 'A raid leader who escapes, wounded or ransomed, remembers the hold, and comes back.' }));
-    for (const n of nems) el.append(nemesisRow(ctx, n));
-  }
+}
+/** The World slot (W1.3a, interim until W1.3b's worldui.js): Annals, Letters and The dead push inside it. */
+export function openWorld(ctx) {
+  ctx.openSheet('World', (el) => {
+    const go = (label, act, fn) => { const b = h('button.ec-act', { type: 'button', 'data-act': act, text: label }); onTap(b, fn); return b; };
+    el.append(h('div.ec-rchips.ec-hold-go', { style: { justifyContent: 'flex-start', flexWrap: 'wrap', gap: '6px' } },
+      go('Annals', 'world-annals', () => openAnnals(ctx)),
+      ctx.letters ? go('Letters', 'world-letters', () => openLetters(ctx, ctx.letters)) : null,
+      go('The dead', 'world-dead', () => openDead(ctx))));
+    if (S2) factionsBlock(el, ctx);
+  }, { intro: { key: 'world', text: 'The world beyond the hold: its Annals, the letters that reach you, the dead you remember and the factions that watch you.' } });
 }
 // Z2: the hold's people and customs, first on the Hold tab (each opens its own screen)
 function holdZ2(el, ctx) {

@@ -33,6 +33,8 @@
 // Follow follows a colonist across levels, the alert stack sits above the capsule and the map button moves to
 // the top right (portrait). Long-press Orders reopens the last Orders tool (Recent). A D = 1 colony is unchanged.
 import { militaryTap, militaryPicking } from './military.js';
+import { SHELL2_ON, openPeople, railMore } from './peopleui.js';
+import { openWorld } from './colonyui.js';
 import { h, clear, onTap, icon, Toaster } from './kit.js';
 import { RES_COLORS } from './icons.js';
 import { SIZES, isLandscape, measureWorld, plannedWorld, safeInsets, sheetCover, keepVisible, centreFor } from './layout.js';
@@ -81,12 +83,24 @@ import { hearthColdView, annalsView, playDefeat, prepareRuinExport, shareRuinExp
 import { weatherText } from '../game/world/weather.js';
 import { outdoorTemp } from '../game/world/temperature.js';
 
-const TABS = [
+const OLD_TABS = [
   { id: 'build', label: 'Build', icon: 'build' },
   { id: 'orders', label: 'Orders', icon: 'orders' },
   { id: 'zones', label: 'Zones', icon: 'zones' },
   { id: 'colony', label: 'Colony', icon: 'colony' },
 ];
+// W1.3a (EMBERCROWN-WORLD.md 8.1, G20): the bar by activity, Build | Mark | People | Hold | World, with the speed
+// button; Mark is Orders and Zones as two segments of one panel; People, Hold and World open their sheets
+const NEW_TABS = [
+  { id: 'build', label: 'Build', icon: 'build' },
+  { id: 'mark', label: 'Mark', icon: 'orders' },
+  { id: 'people', label: 'People', icon: 'colony' },
+  { id: 'hold', label: 'Hold', icon: 'castle' },
+  { id: 'world', label: 'World', icon: 'world' },
+];
+const TABS = SHELL2_ON ? NEW_TABS : OLD_TABS;
+/** The bar slot of a sheet (its root title), so the slot lights while its sheet is open. */
+const SHEET_TAB = { People: 'people', Hold: 'hold', World: 'world' };
 // the ruin viewer's bottom bar (1.3): read, export, leave; no tool opens on a fallen hold
 const RUIN_TABS = [
   { id: 'annals', label: 'Annals', icon: 'book' },
@@ -94,7 +108,8 @@ const RUIN_TABS = [
   { id: 'export', label: 'Export', icon: 'export' },
   { id: 'leave', label: 'Leave', icon: 'back' },
 ];
-const PANEL_TITLE = { build: 'Build', orders: 'Orders', zones: 'Zones' };
+const PANEL_TITLE = { build: 'Build', orders: 'Orders', zones: 'Zones', mark: 'Mark: Orders, Zones' };
+const MARK_SEGS = [['orders', 'Orders'], ['zones', 'Zones']];
 const CLOTH = ['#8a4a3a', '#3f5f8a', '#5f7a3a', '#7a5a2a', '#6a3f7a', '#2f6f6a', '#8a6f3a', '#5a5a66'];
 const SKIN = ['#f1d2b0', '#e2b98f', '#c99a6e', '#a8774f', '#7e5536', '#5a3b26'];
 
@@ -145,7 +160,7 @@ export function mountShell(root, api) {
   const ui = {
     speed: 1, sel: null, peek: null, sheet: null, panel: null, tool: null, stroke: null,
     stockOpen: false, map: false, landscape: false, narrow: false, follow: null,
-    buildState: { tab: 'rooms' }, zonesState: { pick: false }, lastCmd: null, lastRes: null, menu: null,
+    buildState: { tab: 'rooms' }, zonesState: { pick: false }, markSeg: 'orders', lastCmd: null, lastRes: null, menu: null,
   };
 
   // ---- DOM -----------------------------------------------------------------------------------------
@@ -235,8 +250,8 @@ export function mountShell(root, api) {
       if (ui.stroke && loupe.visible) drawLoupe();
       const m = Math.floor(s.tick / 10);
       // the stock chip follows hauling (not only commands): refreshed with the clock, each game minute
-      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) { renderStock(); renderThreat(); } }
-      if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); }
+      if (m !== lastMinute || dirtyChrome) { lastMinute = m; renderClock(); if (!dirtyChrome) { renderStock(); renderThreat(); if (SHELL2_ON) renderRail(); } }
+      if (dirtyChrome) { dirtyChrome = false; renderRail(); renderStock(); renderThreat(); renderAlerts(); if (SHELL2_ON) renderRail(); }
       if (ui.map) drawMini();
       if (levels) levels.frame();
       amb.tick(ambKind(), seasonOf(s.tick));
@@ -351,14 +366,32 @@ export function mountShell(root, api) {
     return p;
   }
   let railKey = null;
+  /** How many 44 pt portraits fit the rail now (W1.3a, 11 item 27): the rail collapses to "+N", never scrolls or hides. */
+  function railFit() {
+    const cs = getComputedStyle(rail), gap = parseFloat(cs.columnGap || cs.gap) || 4;
+    const w = (rail.clientWidth || (ui.landscape ? 0 : innerWidth)) - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);   // hidden under a sheet: the portrait rail is full width
+    return w > 0 ? Math.max(1, Math.floor((w + gap) / (44 + gap))) : 0;
+  }
+  // the rail's width moves with the threat chip, a turned phone and the top row's other chips: re-fit it then
+  const railRO = SHELL2_ON && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { dirtyChrome = true; if (loop) loop.poke(); }) : null;
+  if (railRO) railRO.observe(rail);
   function renderRail() {
     const vz = viewZ();
-    const key = s.col.map((c) => `${c.id}:${c.name}:${c.drafted ? 1 : 0}:${Math.round(c.mood / FIX / 10)}:${deep && (c.z | 0) !== vz ? c.z | 0 : ''}`).join('|') + (ui.sel && ui.sel.kind === 'colonist' ? ':' + ui.sel.id : '');
+    const fit = SHELL2_ON ? railFit() : 0;
+    const key = 'f' + fit + '|' + s.col.map((c) => `${c.id}:${c.name}:${c.drafted ? 1 : 0}:${Math.round(c.mood / FIX / 10)}:${deep && (c.z | 0) !== vz ? c.z | 0 : ''}`).join('|') + (ui.sel && ui.sel.kind === 'colonist' ? ':' + ui.sel.id : '');
     if (key === railKey) return;
     railKey = key;
     clear(rail);
     if (!s.col.length) { rail.append(h('p.ec-rail-empty', { text: 'No colonists.' })); return; }
-    for (const c of s.col) {
+    let shown = s.col, more = 0;
+    if (fit && s.col.length > fit) {
+      // the first fit - 1 portraits (the selected colonist always among them), then "+N" opens People
+      shown = s.col.slice(0, fit - 1);
+      const sc = ui.sel && ui.sel.kind === 'colonist' ? s.col.find((c) => c.id === ui.sel.id) : null;
+      if (sc && !shown.includes(sc) && shown.length) shown[shown.length - 1] = sc;
+      more = s.col.length - shown.length;
+    }
+    for (const c of shown) {
       const away = deep && (c.z | 0) !== vz;
       const b = h('button.ec-rail-btn', { type: 'button', role: 'listitem', 'data-act': 'colonist', 'data-col': String(c.id), 'aria-label': away ? `${c.name}, ${levelWord(c.z | 0)}` : c.name }, portrait(c),
         away ? h('span.ec-lvbadge', { text: levelText(c.z | 0), 'aria-hidden': 'true' }) : null);
@@ -377,6 +410,7 @@ export function mountShell(root, api) {
       });
       rail.append(b);
     }
+    if (more) rail.append(railMore(ctx, more));
   }
 
   // ---- alerts -----------------------------------------------------------------------------------------
@@ -459,10 +493,25 @@ export function mountShell(root, api) {
     for (const t of ruin.on ? RUIN_TABS : TABS) {
       const b = h('button.ec-tab', { type: 'button', 'data-act': ruin.on ? 'ruin-' + t.id : 'tab', 'data-tab': t.id, 'aria-label': t.label }, h('span', { html: icon(t.icon) }), h('span.ec-tab-l', { text: t.label }));
       // long-press Orders: Recent, the last Orders tool with its settings (4.4 tap budgets)
-      onTap(b, () => (ruin.on ? ruinTab(t.id) : t.id === 'colony' ? openColony(ctx, 'People') : togglePanel(t.id)),
-        !ruin.on && t.id === 'orders' ? { longpress: () => { if (ui.recentOrder) startTool(ui.recentOrder); else togglePanel('orders'); } } : undefined);
+      onTap(b, () => (ruin.on ? ruinTab(t.id) : tabTap(t.id)),
+        !ruin.on && (t.id === 'orders' || t.id === 'mark') ? { longpress: () => { if (ui.recentOrder) startTool(ui.recentOrder); else openPanel(t.id); } } : undefined);
       tabs.append(b);
     }
+  }
+  /** A bar slot: panels toggle; People, Hold and World open their sheet (a second tap on the lit slot closes it). */
+  function tabTap(id) {
+    if (id === 'colony') { openColony(ctx, 'People'); return; }
+    const lit = SHELL2_ON && ui.sheet && sheetSlot() === id;
+    if (id === 'people') { if (lit) closeSheet(); else openPeople(ctx); return; }
+    if (id === 'hold') { if (lit) closeSheet(); else openColony(ctx, 'Overview'); return; }
+    if (id === 'world') { if (lit) closeSheet(); else openWorld(ctx); return; }
+    togglePanel(id);
+  }
+  /** The slot of the open sheet (its first breadcrumb), or null. */
+  const sheetSlot = () => { let c = []; try { c = sheets.isOpen() ? sheets.crumbs() : []; } catch (_) { c = []; } return c.length ? SHEET_TAB[c[0]] || null : null; };
+  function litTabs() {
+    const on = ui.panel ? ui.panel : SHELL2_ON && ui.sheet ? sheetSlot() : null;
+    for (const b of tabs.children) b.classList.toggle('on', !!on && b.dataset.tab === on);
   }
   // the ruin (1.3): set before the first render, so a fallen hold never shows its tools
   const ruin = { on: isFallen(s), prep: null, toldAt: 0 };
@@ -472,39 +521,53 @@ export function mountShell(root, api) {
   function panelHead(title) {
     const x = h('button.ec-ibtn.ec-close', { type: 'button', 'data-act': 'close', 'aria-label': 'Close', html: icon('x') });
     onTap(x, () => closePanel());
-    return h('div.ec-panel-head', null, h('h2', { text: title }), h('span.ec-head-r', null, helpButton(ctx, PANEL_TITLE[ui.panel] || title), x));
+    const key = ui.panel === 'mark' ? PANEL_TITLE[ui.markSeg] : PANEL_TITLE[ui.panel] || title;
+    return h('div.ec-panel-head', null, h('h2', { text: title }), h('span.ec-head-r', null, helpButton(ctx, key), x));
   }
   function renderPanel() {
     const id = ui.panel;
     clear(panel);
     panel.dataset.panel = id;
-    panel.append(panelHead(id === 'zones' && ui.zonesState.pick ? 'Stockpile' : PANEL_TITLE[id]));
-    if (id === 'build') buildPanel(panel, ctx, ui.buildState);
+    const zones = id === 'zones' || (id === 'mark' && ui.markSeg === 'zones');
+    panel.append(panelHead(zones && ui.zonesState.pick ? 'Stockpile' : PANEL_TITLE[id]));
+    if (id === 'mark') {
+      // Mark (8.1): Orders and Zones, two segments of one panel; both are drag tools that stay armed until Done
+      const seg = h('div.ec-seg', { role: 'radiogroup', 'aria-label': 'Mark' });
+      for (const [v, label] of MARK_SEGS) {
+        const b = h('button.ec-seg-b' + (ui.markSeg === v ? '.on' : ''), { type: 'button', role: 'radio', 'aria-checked': ui.markSeg === v ? 'true' : 'false', 'data-act': 'mark-' + v, text: label });
+        onTap(b, () => { if (ui.markSeg === v) return; ui.markSeg = v; ui.zonesState.pick = false; renderPanel(); updateSelOverlay(); });
+        seg.append(b);
+      }
+      panel.append(seg);
+      if (ui.markSeg === 'zones') zonesPanel(panel, ctx, ui.zonesState); else ordersPanel(panel, ctx);
+    }
+    else if (id === 'build') buildPanel(panel, ctx, ui.buildState);
     else if (id === 'orders') ordersPanel(panel, ctx);
     else if (id === 'zones') zonesPanel(panel, ctx, ui.zonesState);
   }
   function togglePanel(id) {
-    if (ui.panel === id) { closePanel(); return; }
+    if (ui.panel === id || (SHELL2_ON && ui.panel === 'mark' && (id === 'orders' || id === 'zones'))) { closePanel(); return; }
     openPanel(id);
   }
   function openPanel(id) {
+    if (SHELL2_ON && (id === 'orders' || id === 'zones')) { ui.markSeg = id; id = 'mark'; }   // old links land on Mark
     if (ui.tool) endTool();
     closePeek(false); closeSheet(false);
     ui.panel = id;
-    if (id === 'zones') ui.zonesState.pick = false;
-    for (const b of tabs.children) b.classList.toggle('on', b.dataset.tab === id);
+    if (id === 'zones' || id === 'mark') ui.zonesState.pick = false;
+    litTabs();
     renderPanel();
     panel.hidden = false;
     panel.scrollTop = 0;
     syncChrome();
   }
-  function closePanel(sync = true) { if (!ui.panel) return; ui.panel = null; panel.hidden = true; for (const b of tabs.children) b.classList.remove('on'); if (sync) syncChrome(); }
+  function closePanel(sync = true) { if (!ui.panel) return; ui.panel = null; panel.hidden = true; litTabs(); if (sync) syncChrome(); }
 
   // ---- sheets (W1.2: sheet.js createSheets; one sheet, sub-screens push with a breadcrumb, two detents) ----
   const sheets = createSheets(sheet, {
     before: () => { closePanel(false); hideCtx(); },
-    shown: (title) => { ui.sheet = title; peek.hidden = true; syncChrome(); },
-    hidden: (sync) => { ui.sheet = null; if (ui.sel && sync) renderPeek(); if (sync) syncChrome(); },
+    shown: (title) => { ui.sheet = title; peek.hidden = true; litTabs(); syncChrome(); },
+    hidden: (sync) => { ui.sheet = null; litTabs(); if (ui.sel && sync) renderPeek(); if (sync) syncChrome(); },
     help: (key) => helpButton(ctx, key),
     land: () => ui.landscape,
     cover: (rect) => {
@@ -547,7 +610,7 @@ export function mountShell(root, api) {
       r.setOverlay('preview', { rect: { x0, y0, x1, y1 }, ok: true });
     }
     else r.setOverlay('preview', null);
-    r.setOverlay('zones', ui.panel === 'zones' || (ui.tool && ui.tool.overlay === 'zones') ? true : sel && sel.kind === 'zone' ? sel.id : false);
+    r.setOverlay('zones', ui.panel === 'zones' || (ui.panel === 'mark' && ui.markSeg === 'zones') || (ui.tool && ui.tool.overlay === 'zones') ? true : sel && sel.kind === 'zone' ? sel.id : false);
     // room outlines (Stage 2, by role): every room while building; the selected room, brighter, otherwise
     const selRoom = sel && sel.tile !== undefined ? roomAt(s, sel.tile) : sel && sel.kind === 'building' && s.bld[sel.id] ? roomAt(s, s.bld[sel.id].y * W + s.bld[sel.id].x) : 0;
     const building = ui.panel === 'build' || (ui.tool && (ui.tool.kind === 'stamp' || ui.tool.kind === 'paste' || ui.tool.kind === 'place'));
@@ -660,7 +723,8 @@ export function mountShell(root, api) {
   let drawHook = null;
   const GHOST_KIND = (sp) => (sp.kind === 'carve' ? 'carve' : sp.kind === 'vert' ? sp.id : sp.kind === 'rect' && sp.id === 'mine' ? 'mine' : null);
   function startTool(spec) {
-    if (ui.panel === 'orders' || (ui.recentOrder && ui.recentOrder === spec)) ui.recentOrder = spec;
+    // the last Orders tool (and on Mark the last Zones tool too) is re-armed by a long-press on its slot (8.1)
+    if (ui.panel === 'orders' || ui.panel === 'mark' || (ui.recentOrder && ui.recentOrder === spec)) ui.recentOrder = spec;
     if (ui.tool) endTool();
     if (levels) levels.closeRuler();
     closePanel(false); closePeek(false); closeSheet(false);
@@ -880,6 +944,7 @@ export function mountShell(root, api) {
     quit: () => { shell.destroy(); api.quit(); },
     get prevColonist() { return ui.prevColonist; },
     openColony: (tab) => openColony(ctx, tab),
+    openPeople: (o) => openPeople(ctx, o), openWorld: () => openWorld(ctx),
     draftAll: () => draftAll(ctx),
     orderLine: (ids, target) => { orderLines = { ids: ids.slice(), target, t0: performance.now() }; loop.poke(); },
     get speed() { return ui.speed; },
@@ -1086,7 +1151,7 @@ export function mountShell(root, api) {
     /** Screen point (page px) of the centre of tile (x, y). */
     tileToScreen: (x, y) => { const rc = canvas.getBoundingClientRect(), p = cam.worldToScreen((x + 0.5) * TILE, (y + 0.5) * TILE); return { x: rc.left + p.x, y: rc.top + p.y }; },
     destroy() {
-      loop.stop(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
+      loop.stop(); if (railRO) railRO.disconnect(); clearInterval(autosave); clearInterval(guideT); guide.destroy(); clearTimeout(stockT); r.dispose(); input.reset();
       letters.destroy(); offDowned(); window.removeEventListener('ec2:settings', onSettings);
       amb.stop(); for (const ev of ['pointerdown', 'touchend', 'click']) window.removeEventListener(ev, unlockAudio, { capture: true }); document.removeEventListener('visibilitychange', onVis);
       if (levels) levels.destroy();

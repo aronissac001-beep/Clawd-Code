@@ -3,7 +3,7 @@
 // Colonies lists every saved colony (up to 8, A's colonyRoom) with Continue for each.
 // Stage 2.9 (EMBERCROWN-FORTRESS.md 1.3, F8): a fallen colony is a Ruin. Continue never opens one; its
 // Fallen card (ruin.js) offers Annals, View the ruin, Export and Delete, and no backup. Settings >
-// Storage holds Recover from a device problem (A's mountRecoverPanel) and, for one release, the
+// Storage holds Recover from a device problem (settingsui.js mountRecoverPanel) and, for one release, the
 // "Old roguelite saves" row (export, then remove the embercrown.* keys; 1.1).
 //
 // Contract with js/main.js (owner A):  mountTitle(root, api)
@@ -26,7 +26,8 @@ import { settingsList } from './sheet.js';
 import { randomSeedText } from '../engine/rng.js';
 import { deleteColony, classicSaves } from '../game/save/slots.js';
 import { installSim } from '../game/core/setup.js';
-import { mountRecoverPanel, exportClassicSaves, clearClassicSaves } from '../main.js';
+import { exportClassicSaves, clearClassicSaves } from '../main.js';
+import { mountRecoverPanel } from './settingsui.js';
 import { fallenCard, annalsView, loadRuinState, prepareRuinExport, shareRuinExport, exportedText, RUIN_TEXT } from './ruin.js';
 import { STAGE } from './stage.js';
 
