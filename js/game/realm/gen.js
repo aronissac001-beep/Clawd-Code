@@ -10,6 +10,8 @@ import { riversStep, riverFaults } from './rivers.js';
 import { biomesStep } from './biomes.js';
 import { hash32, isEmbarkable, startFits } from './query.js';
 import { REALM_BIOMES } from '../../data/realm/biomes.js';
+import { historyGen, checkHistory } from './history.js';
+import { HISTORY } from '../core/flags.js';
 
 export const REALM_V = 1;
 /** The layers of 1.1 in their fixed record order (9.2). */
@@ -68,7 +70,7 @@ export function checkRealm(realm) {
  * plates and elevation streams with re-roll index r) up to GEN.guarantee.rerolls times, then is accepted with
  * a warning row.
  */
-export function* createRealm(params = {}) {
+export function* createRealm(params = {}, { history = HISTORY } = {}) {
   const P = normalizeParams(params), n = SIZES[P.size], of = PHASES.length;
   const rx = { n, sc: n / 64, seed: P.seed, params: P, sides: seaSides(P), f: null };
   let realm = null, fails = [], r = 0;
@@ -95,12 +97,17 @@ export function* createRealm(params = {}) {
     r++;
   }
   for (const fl of fails) realm.warnings.push({ rule: fl.rule, detail: fl.detail });
+  if (history) {   // 2.3 (W3.1a): the years of history, re-rolled as 1.4 says; dark until the HISTORY flag
+    let hr = 0, hf;
+    for (;;) { yield* historyGen(realm, hr); hf = checkHistory(realm); if (!hf.length || hr >= GEN.guarantee.rerolls) break; hr++; }
+    for (const fl of hf) realm.warnings.push({ rule: 'history.' + fl.rule, detail: fl.detail });
+  }
   return realm;
 }
 
 /** createRealm run to the end. */
-export function buildRealm(params = {}) {
-  const it = createRealm(params);
+export function buildRealm(params = {}, opts) {
+  const it = createRealm(params, opts);
   for (;;) { const s = it.next(); if (s.done) return s.value; }
 }
 

@@ -79,7 +79,7 @@ export function glyphSheet() {
 }
 
 // ---- site icons: 16 x 16 one-bit, by size class (hex rows, 4 digits a row) ---------------------------
-export const SITE_KINDS = Object.freeze(['camp', 'hamlet', 'village', 'town', 'city', 'hold', 'tower', 'ruin', 'lair', 'pin']);
+export const SITE_KINDS = Object.freeze(['camp', 'hamlet', 'village', 'town', 'city', 'hold', 'tower', 'ruin', 'lair', 'grove', 'battlefield', 'pin']);
 const ICON_BITS = Object.freeze({
   camp: '0000000000000100038007c00ee01c703c787c7cffff00000000000000000000',
   hamlet: '000000000000018003c007e00ff01ff80ff00db00db00f300f30000000000000',
@@ -90,6 +90,8 @@ const ICON_BITS = Object.freeze({
   tower: '0000000002a003e003e001c0014001c001c0014003e003e007f0000000000000',
   ruin: '00000000000010001800190019801588154c155c3ffc64c60000000000000000',
   lair: '000000000000000003c00ff01ff83c3c381c781e718e724effff000000000000',
+  grove: '0000018003c037ec7bde7bdefdbf7bde33cc1188118811880000000000000000',
+  battlefield: '00004002200410080810042002400180018002402c3418182424400200000000',
   pin: '000003c007e00c300c300c3007e003c003c00180018001800000000000000000',
 });
 const ICONS = new Map();

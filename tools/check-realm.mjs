@@ -4,8 +4,10 @@
 // 2. Timing: the fields (steps 1-8 and 11) of a Standard realm, median of 15 builds after warm-up, < 60 ms.
 // 3. Engines: the realm hash of the 3 fixture seeds is equal in Node and in the browser (WebKit is the iPhone
 //    engine; when its Playwright build is not installed this says UNAVAILABLE and --browser=chromium stands in).
+//    The history hash (W3.1a, js/game/realm/history.js settleHistory) of the same fixtures is compared too.
 // Exit 0 when every part passes; 2 when the browser is unavailable (and the Node parts passed).
 import { buildRealm, realmHash, checkRealm } from '../js/game/realm/gen.js';
+import { settleHistory, historyHash } from '../js/game/realm/history.js';
 
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
 const json = process.argv.includes('--json');
@@ -34,6 +36,9 @@ check('fields, Standard, median ms', med < 60, `${med.toFixed(1)} ms (budget 60)
 // 3. fixture hashes, Node and browser
 const node = FIXTURES.map((p) => realmHash(buildRealm(p)));
 out.node = node;
+const histOf = (p) => { const r = buildRealm(p); settleHistory(r); return historyHash(r); };
+const nodeHist = FIXTURES.map(histOf);
+out.nodeHistory = nodeHist;
 const which = arg('browser', 'webkit');
 let exit = 0;
 if (which !== 'none') {
@@ -51,12 +56,14 @@ if (which !== 'none') {
     try {
       await page.goto(srv.url + 'tools/check-realm.mjs');   // any same-origin document; the modules load by import()
       const res = await page.evaluate(async (fx) => {
-        const m = await import('/js/game/realm/gen.js');
+        const m = await import('/js/game/realm/gen.js'), h = await import('/js/game/realm/history.js');
         const t0 = performance.now(), hashes = fx.map((p) => m.realmHash(m.buildRealm(p)));
-        return { hashes, ms: performance.now() - t0, ua: navigator.userAgent };
+        const history = fx.map((p) => { const r = m.buildRealm(p); h.settleHistory(r); return h.historyHash(r); });
+        return { hashes, history, ms: performance.now() - t0, ua: navigator.userAgent };
       }, FIXTURES);
       out.browser = { which, ...res };
       for (let k = 0; k < FIXTURES.length; k++) check(`hash ${JSON.stringify(FIXTURES[k].seed)} ${FIXTURES[k].size}: Node = ${which}`, res.hashes[k] === node[k], `${node[k]} / ${res.hashes[k]}`);
+      for (let k = 0; k < FIXTURES.length; k++) check(`history ${JSON.stringify(FIXTURES[k].seed)} ${FIXTURES[k].size}: Node = ${which}`, res.history[k] === nodeHist[k], `${nodeHist[k]} / ${res.history[k]}`);
     } catch (e) { check(`${which} run`, false, String(e)); }
     if (errors.length) check(`${which} page errors`, false, errors.join('; '));
     await browser.close(); await srv.close();
@@ -66,6 +73,6 @@ if (which !== 'none') {
 if (json) console.log(JSON.stringify(out));
 else {
   for (const c of out.checks) console.log(`${c.ok ? 'ok  ' : 'FAIL'} ${c.name}${c.detail ? '  (' + c.detail + ')' : ''}`);
-  console.log(`check-realm: ${out.ok ? (exit ? 'NODE OK, BROWSER UNAVAILABLE' : 'PASS') : 'FAIL'}  hashes ${node.join(' ')}`);
+  console.log(`check-realm: ${out.ok ? (exit ? 'NODE OK, BROWSER UNAVAILABLE' : 'PASS') : 'FAIL'}  hashes ${node.join(' ')}  history ${nodeHist.join(' ')}`);
 }
 process.exit(out.ok ? exit : 1);

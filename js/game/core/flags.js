@@ -23,3 +23,7 @@ export const SHELL2 = true;
 // (setup.js foundColony({ realm, rx, ry })). Never read by the sim: a hold that carries s.realm is read from its save,
 // whatever this says (G31). On since W2.9 (the w2 gate); before it the debug URL ?realm=1 turned it on.
 export const REALM = true;
+
+// HISTORY: the years of world history (EMBERCROWN-WORLD.md 2.3, Stage W3): js/game/realm/gen.js createRealm runs
+// js/game/realm/history.js after the land. Off until W3's last step; tools pass createRealm(p, { history: true }).
+export const HISTORY = false;
