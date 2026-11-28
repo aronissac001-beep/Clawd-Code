@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|all] [--a11y] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|worldmap|all] [--a11y] [--json]
 // W1.10 (EMBERCROWN-WORLD.md 12.3): the new shell is on (flags.js SHELL2). --flows=w1 runs every W1 group (the gate's
 // w1 row); the W1 groups and the Stage 1a/1b flows run at the eight W1 viewports (W1_VPS: the six below plus
 // landscape-left and -right, ?safe=); in the new shell the 1a/1b flows tap Build, Mark (Orders, Zones), People, Hold, World.
@@ -77,6 +77,11 @@ if (flowsArg === 'w1') {
   const st = res.some((r) => r.status === UNAVAILABLE) ? UNAVAILABLE : nbad ? 1 : 0;
   console.log(`ui-phone --flows=w1 [${which}${which === 'chromium' ? ', stand-in for WebKit' : ''}]: ${st === 0 ? `all ${res.length} groups green at ${W1_VPS.length} viewports` : st === UNAVAILABLE ? 'browser unavailable' : `${nbad} of ${res.length} groups failing`}`);
   process.exit(st);
+}
+// --flows=worldmap (W2.6): the world map component at the six viewports (tools/ui-phone-worldmap.mjs)
+if (flowsArg === 'worldmap') {
+  const { runWorldmapFlows } = await import('./ui-phone-worldmap.mjs');
+  process.exit(await runWorldmapFlows({ which, only, viewports: VIEWPORTS }));
 }
 const browser = await launch(which);
 if (!browser) { console.log(`ui-phone [${which}]: UNAVAILABLE - Playwright ${which} is not installed; try --browser=chromium`); process.exit(UNAVAILABLE); }

@@ -155,7 +155,7 @@ export function migrateWorld(s, opts = {}) {
   const meta = { dormant: below.rows, amendments: [], baseMask: toBase64(baseMask), migrated: { tick: s.tick, w, h } };
   const players = {};
   for (const name of PRISTINE_LAYERS) players[name] = L[name].slice();
-  const p = makePristine({ w, h, d, zS: zs, genVersion: GEN3.version, worldKind: WORLD_KIND.MIGRATED, layers: players, meta });
+  const p = makePristine({ w, h, d, zS: zs, genVersion: GEN3.legacyVersion, worldKind: WORLD_KIND.MIGRATED, layers: players, meta });
   // 7. entities at zS
   s.L = L; s.d = d; s.zS = zs;
   for (const key of ['col', 'items', 'bld', 'anim', 'foes']) for (const e of s[key]) if (e) e.z = zs;

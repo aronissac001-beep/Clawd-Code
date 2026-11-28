@@ -106,6 +106,8 @@ const CHECKS = [
   { name: 'Phone UI (W1 shell flows, 8 viewports)', starts: 'w1', file: 'tools/ui-phone.mjs', args: ['--flows=w1', `--browser=${browser}`], browser: true, timeout: 3600000 },
   { name: 'Realm (200 seeds, timing, engines)', starts: 'w2', file: 'tools/check-realm.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render (world atlas, biome ground sets, W2.5)', starts: 'w2', file: 'tools/render-check.mjs', args: ['--scene=atlas,biomes', `--browser=${browser}`], browser: true },
+  { name: 'Mapgen3 region inputs (12 biomes x 20 seeds, W2.3)', starts: 'w2', node: ['--test', 'tools/tests/mapgen3-region.test.mjs'] },
+  { name: 'Phone UI (world map, W2.6)', starts: 'w2', file: 'tools/ui-phone.mjs', args: ['--flows=worldmap', `--browser=${browser}`], browser: true },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },

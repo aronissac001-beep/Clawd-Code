@@ -231,4 +231,17 @@ export const EN = Object.freeze({
   'front.annalsReading': 'Reading the Annals...',
   'front.annalsNone': 'No hold chosen.',
   'front.annalsFailed': 'The Annals could not be read: {why}',
+  // ---- worldmap.js: the world map component (W2.6) ----
+  'worldmap.label': 'World map', 'worldmap.layers': 'Map layers',
+  'worldmap.zoomIn': 'Zoom in', 'worldmap.zoomOut': 'Zoom out', 'worldmap.fit': 'Fit', 'worldmap.fitLabel': 'Show the whole world',
+  'worldmap.hint.loupe': 'Tap a region in the loupe', 'worldmap.region': 'Region {x}, {y}: {biome}',
+  'worldmap.layer.atlas': 'Atlas', 'worldmap.layer.elev': 'Elevation', 'worldmap.layer.temp': 'Temperature',
+  'worldmap.layer.rain': 'Rain', 'worldmap.layer.drain': 'Drainage', 'worldmap.layer.ember': 'Ember',
+  'worldmap.layer.hollow': 'Hollowing', 'worldmap.layer.wild': 'Wildness', 'worldmap.layer.peoples': 'Peoples', 'worldmap.layer.rock': 'Rock',
+  'worldmap.legend.biomes': 'Biomes', 'worldmap.legend.deg': '{n} C',
+  'worldmap.legend.elev.lo': 'Low', 'worldmap.legend.elev.hi': 'High', 'worldmap.legend.rain.lo': 'Dry', 'worldmap.legend.rain.hi': 'Wet',
+  'worldmap.legend.drain.lo': 'Boggy', 'worldmap.legend.drain.hi': 'Well drained', 'worldmap.legend.ember.lo': 'Cold', 'worldmap.legend.ember.hi': 'Hot',
+  'worldmap.legend.hollow.lo': 'Faint', 'worldmap.legend.hollow.hi': 'Strong', 'worldmap.legend.wild.lo': 'Tame', 'worldmap.legend.wild.hi': 'Wild',
+  'worldmap.legend.unclaimed': 'Unclaimed',
+  'worldmap.rock.0': 'Soft stone', 'worldmap.rock.1': 'Old granite', 'worldmap.rock.2': 'Basalt', 'worldmap.rock.3': 'Folded rock', 'worldmap.rock.4': 'Ash field',
 });
