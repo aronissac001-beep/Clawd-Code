@@ -4,10 +4,12 @@
 // check idbAvailable() and use the localStorage fallback in slots.js.
 // Version 2 (EMBERCROWN-FORTRESS.md 5.5, Stage Z1 step E8) adds the store `pristine` (key: colony id): the
 // upgrade only creates missing stores, so a version 1 database keeps every slot and card.
+// Version 3 (EMBERCROWN-WORLD.md 9.2, step W2.2) adds the store `realm` (key: world id, the realm records); the
+// world index rows live in `meta` under `world:<wid>`. The same upgrade: only the missing store is created.
 
 export const DB_NAME = 'ec2';
-export const DB_VERSION = 2;
-export const STORES = Object.freeze(['slots', 'meta', 'pristine']);
+export const DB_VERSION = 3;
+export const STORES = Object.freeze(['slots', 'meta', 'pristine', 'realm']);
 
 let dbPromise = null;
 let factory = null;   // injectable for tests (an IDBFactory)

@@ -56,10 +56,19 @@
 //   exportBlob embeds the pristine record into an EC3 slot that lacks it; importBlob stores an EC3 file's
 //   embedded record (and refuses an EC3 file without one when no matching record is stored); deleteColony
 //   deletes the record; quickSave embeds it while the store has not confirmed it.
+// Stage W2 step W2.2 (EMBERCROWN-WORLD.md 9.2): the realm record (store `realm`, save/realmstore.js) rides in
+// every dawn backup and export after the pristine block (EC3 flags bit 1). A card of a hold in a world carries
+// `wid`, `rx`, `ry` (cardOf, from s.realm). writeDawn and exportBlob embed the stored record when the blob lacks
+// it; importBlob stores a file's embedded record when the store has no copy that fits, and notes the hold in the
+// world index (`meta` world:<wid>, never listed as a colony); deleteColony takes the hold out of its world row.
+// A missing record never refuses a hold: the blob is written or exported without it.
+//   embedRealm(bytes, rec)         -> bytes            an EC3 blob with the record embedded (flags bit 1)
 // Real-time stamps (savedAt, lastPlayed) are fine here: saving never changes sim state (11.4).
 
 import { openDb, idbAvailable, idbGet, idbKeys, idbPutMany, idbDelete } from './idb.js';
-import { readAnyHeader as readHeader, headerBytesOf, blobToText, textToBlob, encodeBlobSync, crc32, COMP, toBase64, fromBase64, blobKind, decodeAny, unframePayload3, framePayload3, encodeBlob, FLAG_PRISTINE, LAYERS3 } from './codec.js';
+import { readAnyHeader as readHeader, headerBytesOf, blobToText, textToBlob, encodeBlobSync, crc32, COMP, toBase64, fromBase64, blobKind, decodeAny, unframePayload3, framePayload3, encodeBlob, FLAG_PRISTINE, FLAG_REALM, LAYERS3 } from './codec.js';
+import { readRealmBytes, writeRealm, realmStored, embeddedRealmOf, noteHold, dropHold, forgetRealms, isWorldKey } from './realmstore.js';
+import { readRecordHeader, decodeRecord, recordFits } from '../realm/record.js';
 import { snapshot, peekEntities, isDeep } from './colonysave.js';
 import { encodePristine, decodePristine, pristineMatches, pristineOf, regeneratePristine, readPristineHeader, MISSING_TEXT } from './pristine.js';
 import { STATE_VERSION, normDifficulty } from '../core/schema.js';
@@ -85,9 +94,11 @@ let idbState = null;   // null untested, true usable, false unusable (open faile
 export function setBackends({ localStorage: ls, clock, resetIdb } = {}) {
   if (ls !== undefined) local = ls;
   if (clock) now = clock;
-  if (resetIdb || ls !== undefined) { idbState = null; storedPristine.clear(); }
+  if (resetIdb || ls !== undefined) { idbState = null; storedPristine.clear(); forgetRealms(); }
 }
 const ls = () => { if (local) return local; try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch (_) { return null; } };
+/** The storage backends for save/realmstore.js (one choice of IndexedDB or localStorage for both modules). */
+export const storeBackend = Object.freeze({ useIdb: () => useIdb(), ls: () => ls(), now: () => now(), isQuota: (e) => isQuota(e), alert: (k) => alert(k) });
 
 /** Can IndexedDB be used? Opens the database once; a failed open switches to the localStorage fallback. */
 async function useIdb() {
@@ -145,7 +156,7 @@ export async function refreshColonies() {
   const idb = await useIdb();
   if (idb) {
     try {
-      const ids = (await idbKeys('meta')).filter((k) => typeof k === 'string').sort();
+      const ids = (await idbKeys('meta')).filter((k) => typeof k === 'string' && !isWorldKey(k)).sort();
       for (const id of ids) if (!cards.some((c) => c.id === id)) { const m = await idbGet('meta', id); if (m) cards.push({ ...m, id }); }
     } catch (_) { /* keep the index as it is */ }
   }
@@ -169,6 +180,7 @@ export function cardOf(s, extra = {}) {
     tier: s.colony.tier, pop: s.col.length, storyteller: s.colony.storyteller, difficulty: normDifficulty(s.colony.difficulty, s.colony.iron),
     fallen: s.colony.fallen === true, fallenAt: s.colony.fallen === true && Number.isInteger(s.colony.fallenAt) ? s.colony.fallenAt : null,
     d: s.d || 1, deepest: deepestOf(s),
+    ...(s.realm && Number.isInteger(s.realm.wid) ? { wid: s.realm.wid >>> 0, rx: s.realm.rx | 0, ry: s.realm.ry | 0 } : {}),
     lastPlayed: now(), ...extra,
   };
 }
@@ -274,6 +286,7 @@ export function writeSlot(colonyId, bytes, card) {
 export function writeDawn(colonyId, bytes) {
   return serial(async () => {
     if (!(await useIdb())) return null;
+    bytes = await withRealm(colonyId, bytes).catch(() => bytes);   // 9.2: the dawn blob carries the world record
     const { header } = readHeader(bytes);
     const rec = { bytes, tick: header.tick, day: dayOf(header.tick), savedAt: now(), crc: header.crc };
     const prev = cardById(colonyId);
@@ -336,7 +349,7 @@ export async function exportBlob(colonyId, which) {
   const slot = which === 'dawn' ? await readDawn(colonyId) : await readSlot(colonyId, which);
   if (!slot) throw new Error('No save found for this colony.');
   const card = cardById(colonyId) || { name: 'hold' };
-  const bytes = await withPristine(colonyId, slot.bytes);
+  const bytes = await withRealm(colonyId, await withPristine(colonyId, slot.bytes), true);
   return { bytes, text: blobToText(bytes), filename: `${safeName(card.name)}-y${yearOf(slot.tick) + 1}d${dayOfSeason(slot.tick) + 1}.ecsave` };
 }
 
@@ -351,7 +364,8 @@ export async function peekBlob(input) {
   const fallen = c.fallen === true;
   return { bytes, header, embedded, d: header.d || 1, id: m.id || null, name: m.name || 'Imported hold', tick: header.tick, day: dayOf(header.tick), pop: Array.isArray(ent.col) ? ent.col.length : 0,
     stateVersion: header.stateVersion, difficulty: normDifficulty(c.difficulty, c.iron), tier: c.tier | 0,
-    fallen, fallenAt: fallen && Number.isInteger(c.fallenAt) ? c.fallenAt : null };
+    fallen, fallenAt: fallen && Number.isInteger(c.fallenAt) ? c.fallenAt : null,
+    realm: ent.realm && Number.isInteger(ent.realm.wid) ? ent.realm : null };
 }
 
 /** Import a blob or its text form. Throws a player-readable error on a bad file. */
@@ -368,8 +382,15 @@ export async function importBlob(input, card = {}) {
     if (p.embedded) { try { pr = await decodePristine(p.embedded); } catch (_) { pr = null; } }
     if (!pr || !pristineMatches(pr, p.header)) throw new Error('This save has no usable world record. Export it again from the game to include it.');
     await writePristine(id, pr);
+    // the file's world record restores the store when it has no copy that fits (9.5); a bad one never refuses the hold
+    try {
+      const rec = await embeddedRealmOf(p.bytes);
+      if (rec) { const h = readRecordHeader(rec); if (!(await realmStored({ wid: h.wid, crc: h.crc }))) await writeRealm(rec); }
+    } catch (_) { /* the hold loads without it */ }
   }
-  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, difficulty: p.difficulty, fallen: p.fallen, fallenAt: p.fallenAt, ...card, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now() });
+  await writeSlot(id, p.bytes, { name: p.name, pop: p.pop, tier: p.tier, difficulty: p.difficulty, fallen: p.fallen, fallenAt: p.fallenAt, ...card, id, day: p.day, year: yearOf(p.tick), dayOfSeason: dayOfSeason(p.tick), lastPlayed: now(),
+    ...(p.realm ? { wid: p.realm.wid >>> 0, rx: p.realm.rx | 0, ry: p.realm.ry | 0 } : {}) });
+  if (p.realm) { try { await noteHold(p.realm.wid, id, p.realm.rx, p.realm.ry, p.realm.params && p.realm.params.name ? { name: p.realm.params.name } : {}); } catch (_) { /* rebuilt later */ } }
   return id;
 }
 
@@ -409,6 +430,7 @@ export async function deleteColony(colonyId) {
     const q = peekQuick(); if (q && q.colonyId === colonyId) l.removeItem(KEY_QUICK);
   }
   writeIndex(readIndex().filter((c) => c.id !== colonyId));
+  try { await dropHold(colonyId); } catch (_) { /* the world index is rebuilt from the slots */ }
 }
 
 /** Update fields of a colony card (e.g. lastBackupAt, a2hsShown) in the index and in IndexedDB meta. */
@@ -573,8 +595,36 @@ async function withPristine(colonyId, bytes) {
   let ok = false;
   try { ok = !!rec && pristineMatches(await decodePristine(rec), header); } catch (_) { ok = false; }
   if (!ok) { const dawn = await readDawn(colonyId).catch(() => null); if (dawn && dawn.tick === header.tick) return dawn.bytes; throw new Error(MISSING_TEXT); }
-  const sec = unframePayload3(payload, false);
-  const ordered = LAYERS3.map((l) => ({ id: l.id, enc: sec.layers[l.name].enc, bytes: sec.layers[l.name].bytes }));
-  const body = framePayload3(rec, ordered, sec.entities, sec.runtimeBytes);
+  const sec = unframePayload3(payload, false, (header.flags & FLAG_REALM) !== 0);
+  const body = framePayload3(rec, orderedLayers(sec), sec.entities, sec.runtimeBytes, sec.realm);
   return encodeBlob({ ...header, flags: header.flags | FLAG_PRISTINE }, body, header.comp);
+}
+const orderedLayers = (sec) => LAYERS3.map((l) => ({ id: l.id, enc: sec.layers[l.name].enc, bytes: sec.layers[l.name].bytes }));
+
+// ---- The realm record in dawn backups and exports (EMBERCROWN-WORLD.md 9.2; step W2.2) ----------------------
+/** An EC3 blob with `rec` (realm record bytes) embedded after the pristine block: flags bit 1. */
+export async function embedRealm(bytes, rec) {
+  if (blobKind(bytes) !== 'EC3') return bytes;
+  const { header, payload } = await decodeAny(bytes);
+  if (header.flags & FLAG_REALM) return bytes;
+  const sec = unframePayload3(payload, (header.flags & FLAG_PRISTINE) !== 0, false);
+  const body = framePayload3(sec.pristine, orderedLayers(sec), sec.entities, sec.runtimeBytes, rec);
+  return encodeBlob({ ...header, flags: header.flags | FLAG_REALM }, body, header.comp);
+}
+/** The realm reference of a colony's blob: the card's wid, else (exports) the blob's ENTITIES `realm`. */
+async function realmRefFor(colonyId, bytes, peek) {
+  const c = cardById(colonyId);
+  if (c && Number.isInteger(c.wid)) return { wid: c.wid >>> 0 };
+  if (!peek) return null;
+  try { const { ent } = await peekEntities(bytes); const r = ent && ent.realm; return r && Number.isInteger(r.wid) ? r : null; } catch (_) { return null; }
+}
+/** A blob of a hold in a world with its world record embedded (the store's, else the dawn blob's copy); unchanged otherwise. */
+async function withRealm(colonyId, bytes, peek = false) {
+  if (blobKind(bytes) !== 'EC3') return bytes;
+  const ref = await realmRefFor(colonyId, bytes, peek);
+  if (!ref) return bytes;
+  const fits = async (b) => { if (!b) return false; try { return recordFits(readRecordHeader(b), ref) && !!(await decodeRecord(b)); } catch (_) { return false; } };
+  let rec = await readRealmBytes(ref.wid);
+  if (!(await fits(rec))) { const d = await readDawn(colonyId).catch(() => null); rec = d ? await embeddedRealmOf(d.bytes).catch(() => null) : null; if (!(await fits(rec))) return bytes; }
+  return embedRealm(bytes, rec);
 }

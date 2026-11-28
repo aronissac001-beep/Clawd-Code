@@ -54,3 +54,14 @@ export const MOVE_STEPS = Object.freeze([
   'Tap "Paste a colony from Safari".',
 ]);
 export const MOVED_TEXT = 'Moved. You can delete the Safari copy.';
+
+/**
+ * The realm record's player text (EMBERCROWN-WORLD.md 9.2, step W2.2): the World tab line when no copy of a hold's
+ * world record works (the hold still loads), the letter wording while it is lost, and the store's own errors.
+ */
+export const REALM_TEXT = Object.freeze({
+  missing: "This hold's world record is missing. Import a backup file to restore it.",
+  lost: 'Word from the wider world is lost.',
+  unverified: 'The world record could not be verified.',
+  inUse: (names) => `This world is the home of ${names.join(', ')}. Deleting it removes their world record.`,
+});

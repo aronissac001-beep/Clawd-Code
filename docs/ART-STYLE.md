@@ -26,7 +26,8 @@ after any art change (it must report 0 errors and 0 keys not drawn).
 
 ## 2. Palette (`js/engine/art/palette.js`)
 
-33 named colours. **Every art function takes its colours from `PAL`, `RAMP`, `STONE_RAMP` or `ORE_PX`;
+37 named colours (33 until W2.5, which added `rose`, `frost` and `leaf`; G19 caps the palette at 38).
+**Every art function takes its colours from `PAL`, `RAMP`, `STONE_RAMP` or `ORE_PX`;
 no other hex values in art code.** (The light texture's darkness tints are derived from the palette
 and documented in `render/light.js`.)
 
@@ -40,10 +41,11 @@ and documented in `render/light.js`.)
 | Water | `deep water shallow` | rivers and lakes |
 | Cloth, duskstone | `plum0 plum1` | clothes, duskstone, blight |
 | Signals | `danger teal violet` | danger and foes, magic, Hollow eyes and rims |
+| Biomes (W2.5) | `rose frost leaf` | heather (moor), rime and salt crust (tundra, saltflat), blue-green conifers and sea glass |
 
 - **Ramps** (`RAMP`) are 3-4 shades dark to light: `wood`, `granite`, `slate`, `cold`, `pale`,
   `sandy`, `skin`, `fire`, `ember`, `grass`, `water`, `plum`, `copper`, `tin`, `iron`, `steel`,
-  `gold`, `hollow`, `teal`, `red`. A **material tint** maps to a ramp with `rampOf(materialId, family)`
+  `gold`, `hollow`, `teal`, `red`, and (W2.5) `heather`, `rime`, `pine`, `rust`, `peat`. A **material tint** maps to a ramp with `rampOf(materialId, family)`
   (`js/data/materials.js` ids; unknown ids fall back to the family: wood, granite, iron).
 - Stones (`STONE_RAMP`) carry a ramp, a fleck colour and a motif (strata, fossil, speckle, cleave,
   column, vein, glint). Ores (`ORE_PX`) are `[dark, body, sparkle]`.
@@ -167,7 +169,35 @@ and documented in `render/light.js`.)
 |---|---|---|---|
 | FX sheet | `fx.js` (`fxSheet`, `fxText`, `fxTint`) | 65 on 80 x 65: puffs (3 sizes), squares, star, chip, drop, splash x3, ripple x6 and a fade, leaf x4, petal x2, flake, mote, puddle (2 sizes), footprints L/R | Fades step through dithered alphas 16, 11 and 6 of 16, never canvas alpha; every tint snaps to 3 palette colours; drawn 1:1 at a whole art pixel; floating numbers use our own 5 x 7 glyphs (`0-9 + - % x . ! ? /`) with an ink outline, the only text in art besides the raid count |
 
-## 12. Rules of thumb
+## 12. Stage W2 additions (the world map and the biome ground sets, W2.5)
+
+- **Biome ground sets** (`ground.js`): a hold founded in a world region paints its surface with the set of
+  its biome (`s.realm.embark.biome`, an id or a realm biome index; `groundSetOf(s)`). The 8 new biomes each
+  repaint 3-5 soft terrains: fen (reedy wet grass, sedge, peat, reed beds), moor (heather tufts, heather in
+  bloom, stony peat), taiga (needle floor, moss and bilberry, pine litter), tundra (lichen on slate, frozen
+  soil with rime crystals, frost gravel), saltflat (salt crust with crack lines, ochre ground, dry scrub),
+  redscar (banded rust, rust sand, scrub on rust), shore (beach with sea glass, dune grass, salt marsh) and
+  highcrag (alpine turf, alpine flowers, scree). Greenvale, elderwood, ruins, ashlands and holds with no
+  world keep the default set: same tiles, same cache keys. Fringe priorities never change with the set.
+- **World map atlas** (`art/atlas.js` colours, glyphs and icons; `render/atlas.js` bakes and draws): 8 px a
+  region up to 64 x 64 (a 512 x 512 canvas, 1 MB), 5 px at 96 x 96. Each biome has a 4-step map ramp
+  walked by a hillshade lit from the top left; the step between two shades is a steep Bayer dither, so
+  only a narrow band is dithered. Region edges are ragged (a hashed 2 px warp). Sea depth walks the water
+  ramp; coasts get a foam line (`mist`) and a dithered shallow pixel; lakes are `water` with a level-2
+  shallow dither. Rivers are 1, 2 or 3 px by class (`shallow` with a `water` core), centre to a hashed bend
+  to the downstream centre. 17 glyphs of 8 x 8 (tree, tree2, pine, pine2, peak, peak2, hill, dune, reed,
+  wave, ruin, cinder, heather, crack, rime, mesa, crag), placed by a hash at each biome's density. Roads
+  are dotted `umber3`; civ borders are dotted tinctures (`TINCTURES`) inside the owner's edge.
+- **Site icons**: 16 x 16 one-bit by size class (camp, hamlet, village, town, city, hold, tower, ruin,
+  lair, pin) in the civ's tincture with a 1 px `ink` outline, drawn per frame at a whole-pixel scale.
+- **Layers**: the 10 layers of the map (Atlas, Elevation, Temperature, Rain, Drainage, Ember, Hollowing,
+  Wildness, Peoples, Rock) are palette ramps in `ATLAS_LAYERS`: temperature blue-orange, drainage
+  purple-green, the rest single-hue with a steady lightness change; Peoples and Rock are categorical.
+- **Cloud shadows**: a 64 x 64 tile of solid `ink` blobs drawn at 2 map px a cloud px with one low alpha
+  (`CLOUD_ALPHA` 0.16), drifting east by whole cloud px; static under Reduce motion, off under Battery
+  saver. This is the one map effect drawn with canvas alpha: a single even shade step, never a gradient.
+
+## 13. Rules of thumb
 
 - Text is never drawn into art (the raid count and the FX floating numbers are the only numbers; UI text stays HTML, >= 14 px).
 - No emoji, no image files, no external art; original designs only.

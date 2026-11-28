@@ -98,10 +98,10 @@ test('the pristine record: round-trips with all 13 CRCs; a damaged byte is refus
 test('IndexedDB version 2: a version 1 database gains the pristine store and keeps its slots and cards', async () => {
   // a Stage 2.9 database (version 1: slots, meta)
   idb._dbs.set('ec2', { version: 1, stores: new Map([['slots', new Map([['old:a', { bytes: new Uint8Array([1, 2, 3]), tick: 5 }]])], ['meta', new Map([['old', { id: 'old', name: 'Old' }]])]]) });
-  assert.equal(DB_VERSION, 2); assert.deepEqual([...STORES], ['slots', 'meta', 'pristine']);
+  assert.ok(DB_VERSION >= 2); assert.deepEqual([...STORES].slice(0, 3), ['slots', 'meta', 'pristine']);
   assert.deepEqual((await idbGet('slots', 'old:a')).bytes, new Uint8Array([1, 2, 3]));
   assert.equal((await idbGet('meta', 'old')).name, 'Old');
-  assert.equal(idb._dbs.get('ec2').version, 2);
+  assert.equal(idb._dbs.get('ec2').version, DB_VERSION);
   assert.ok(idb._dbs.get('ec2').stores.has('pristine'));
   await idbPut('pristine', 'old', { bytes: new Uint8Array([9]) });
   assert.deepEqual((await idbGet('pristine', 'old')).bytes, new Uint8Array([9]));

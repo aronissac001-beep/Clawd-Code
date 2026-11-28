@@ -179,11 +179,14 @@ export const textToBlob = (text) => textToBlobAny(text);
 // Contract C10 v3 (owner A; EMBERCROWN-FORTRESS.md 5.1, frozen at the end of Stage Z1 step E8): EC3.
 //
 //   EC3 blob = MAGIC 'EC3\0' | u16 formatVersion (3) | u16 stateVersion | u16 w | u16 h | u16 d | u16 zS
-//              | u16 genVersion | u8 worldKind (3 native, 2 migrated) | u8 flags (bit 0: PRISTINE embedded)
+//              | u16 genVersion | u8 worldKind (3 native, 2 migrated) | u8 flags (bit 0: PRISTINE embedded,
+//                bit 1: REALM embedded, EMBERCROWN-WORLD.md 9.2)
 //              | u32 tick | u32 pristineId | u32[13] pristineCrc (one per layer, LAYERS3 order)
 //              | u32 crc32(payload) | u8 compression | payload                       (85-byte header)
-//   payload  = compress( [PRISTINE] | LAYERS | ENTITIES | RUNTIME )
+//   payload  = compress( [PRISTINE] | [REALM] | LAYERS | ENTITIES | RUNTIME )
 //   PRISTINE = only when flags bit 0: u32 length + the pristine record (save/pristine.js), already deflated
+//   REALM    = only when flags bit 1: u32 length + the realm record (realm/record.js, 'ECR\0', already compressed).
+//              A reader not told the flag finds it by its magic (a layer frame there would need a 1 GB layer).
 //   LAYERS   = per layer in LAYERS3 order: u8 layerId, u8 encoding, u32 byteLength, bytes
 //              encoding 3 (chunk XOR): u8[ceil(CW*CH*D/8)] changed-chunk bitmap, then for each set bit in
 //              index order the chunk's bytes XOR the pristine chunk (16 x 16 bytes; bitsets: 16 rows x 2 bytes)
@@ -199,6 +202,8 @@ export const HEADER3_BYTES = 85;
 export const TEXT_PREFIX3 = 'EC3:';
 export const WORLD_KIND = Object.freeze({ MIGRATED: 2, NATIVE: 3 });
 export const FLAG_PRISTINE = 1;
+export const FLAG_REALM = 2;
+const REALM_MAGIC = [0x45, 0x43, 0x52, 0x00];
 export const ENC = Object.freeze({ RAW: 0, BITSET: 1, XOR: 3 });
 /** The 13 saved layers of EC3, in blob order (5.1): the twelve of C1 plus `fluid` (id 13) before the bitsets. */
 export const LAYERS3 = Object.freeze([
@@ -306,27 +311,33 @@ export function xorApply(g, target, enc, bitset) {
 
 // ---- EC3 payload framing ----------------------------------------------------------------------
 /**
- * [PRISTINE] | LAYERS | ENTITIES | RUNTIME. `layers` is [{ id, enc, bytes }] in LAYERS3 order (already
- * encoded); `pristine` is the record bytes or null.
+ * [PRISTINE] | [REALM] | LAYERS | ENTITIES | RUNTIME. `layers` is [{ id, enc, bytes }] in LAYERS3 order (already
+ * encoded); `pristine` and `realm` are record bytes or null (the header's flags bits 0 and 1 must say so).
  */
-export function framePayload3(pristine, layers, entitiesJson, runtime) {
+export function framePayload3(pristine, layers, entitiesJson, runtime, realm = null) {
   const ent = te.encode(entitiesJson), rtb = typeof runtime === 'string' ? te.encode(runtime) : runtime;
-  let len = (pristine ? 4 + pristine.length : 0) + 8 + ent.length + rtb.length;
+  let len = (pristine ? 4 + pristine.length : 0) + (realm ? 4 + realm.length : 0) + 8 + ent.length + rtb.length;
   for (const l of layers) len += 6 + l.bytes.length;
   const out = new Uint8Array(len), dv = new DataView(out.buffer);
   let o = 0;
   if (pristine) { dv.setUint32(0, pristine.length, true); out.set(pristine, 4); o = 4 + pristine.length; }
+  if (realm) { dv.setUint32(o, realm.length, true); out.set(realm, o + 4); o += 4 + realm.length; }
   for (const l of layers) { out[o] = l.id; out[o + 1] = l.enc; dv.setUint32(o + 2, l.bytes.length, true); out.set(l.bytes, o + 6); o += 6 + l.bytes.length; }
   dv.setUint32(o, ent.length, true); out.set(ent, o + 4); o += 4 + ent.length;
   dv.setUint32(o, rtb.length, true); out.set(rtb, o + 4);
   return out;
 }
-/** -> { pristine (bytes | null), layers: { name: { enc, bytes } }, entities, runtimeBytes } */
-export function unframePayload3(p, hasPristine) {
+/**
+ * -> { pristine (bytes | null), realm (bytes | null), layers: { name: { enc, bytes } }, entities, runtimeBytes }.
+ * hasRealm: the header's flags bit 1; left out, the block is found by its magic.
+ */
+export function unframePayload3(p, hasPristine, hasRealm) {
   const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
-  let o = 0, pristine = null;
+  let o = 0, pristine = null, realm = null;
   const need = (n) => { if (o + n > p.length) throw new Error('This save is damaged (it is cut short).'); };
   if (hasPristine) { need(4); const n = dv.getUint32(0, true); o = 4; need(n); pristine = p.slice(4, 4 + n); o += n; }
+  if (hasRealm === undefined) hasRealm = o + 8 <= p.length && REALM_MAGIC.every((v, k) => p[o + 4 + k] === v);
+  if (hasRealm) { need(4); const n = dv.getUint32(o, true); o += 4; need(n); realm = p.slice(o, o + n); o += n; }
   const layers = {};
   for (const l of LAYERS3) {
     need(6);
@@ -337,7 +348,7 @@ export function unframePayload3(p, hasPristine) {
   need(4); const el = dv.getUint32(o, true); o += 4; need(el);
   const entities = td.decode(p.subarray(o, o + el)); o += el;
   need(4); const rl = dv.getUint32(o, true); o += 4; need(rl);
-  return { pristine, layers, entities, runtimeBytes: p.subarray(o, o + rl) };
+  return { pristine, realm, layers, entities, runtimeBytes: p.subarray(o, o + rl) };
 }
 
 // ---- EC3 header -------------------------------------------------------------------------------

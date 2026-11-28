@@ -1,7 +1,8 @@
 // Gate check "Render memory and battery" (doc 14.4, enforced from Stage 1a). Owner J; written by
 // C, who owns what it measures.
-//   node tools/render-check.mjs [--browser=webkit|chromium] [--vp=430x740] [--quick] [--scene=bot|slice|art]
-// (--scene=art runs tools/render-check-art.mjs: the contact sheet and the UI frames' integer scaling, W1.5)
+//   node tools/render-check.mjs [--browser=webkit|chromium] [--vp=430x740] [--quick] [--scene=bot|slice|art|atlas,biomes]
+// (--scene=art runs tools/render-check-art.mjs: the contact sheet and the UI frames' integer scaling, W1.5;
+// --scene=atlas,biomes runs tools/render-check-atlas.mjs: the world map atlas and the biome ground sets, W2.5)
 // On the real game page (index.html?debug=1) with a day-5 colony: by default the colony bot's (tools/lib/
 // bot.mjs botColony(1, 5): the real founding and five days of a scripted player); --scene=slice uses
 // A's stand-in (tools/tests/slice-scene.mjs day5Colony):
@@ -19,6 +20,7 @@ import { serve, ROOT } from './lib/static-server.mjs';
 import { launch, browserArg, UNAVAILABLE } from './lib/browsers.mjs';
 if (process.argv.includes('--fortress')) { await import('./render-check-fortress.mjs'); }
 if (process.argv.includes('--scene=art')) { await import('./render-check-art.mjs'); } // W1.5 visual kit (exits there)
+if (process.argv.some((a) => /^--scene=(atlas|biomes)/.test(a))) { await import('./render-check-atlas.mjs'); } // W2.5 world map atlas, biome ground sets (exits there)
 
 const OUT = join(ROOT, 'tools', 'out', 'render');
 mkdirSync(OUT, { recursive: true });
