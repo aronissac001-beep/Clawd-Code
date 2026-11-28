@@ -197,3 +197,119 @@ test('a realm hold trades deterministically and its state survives a JSON round 
   assert.deepEqual(JSON.parse(JSON.stringify(b.colony.trade)), JSON.parse(JSON.stringify(a.colony.trade)));
   assert.deepEqual(b.realm, a.realm);
 });
+
+// ---- W3.3b visitors, envoys, nobles (2.7 visitors and offices rows) ----------------------------------------------
+// Oracle: realm-less holds (and record-lost ones) take the legacy visitor and Lord draw for draw; every visitor figure
+// is alive in the realm on arrival (and a figure dead since embark never comes); the Lord is a younger kin of the
+// liege's ruler with a world key.
+import * as VI from '../../js/game/colony/visitors.js';
+import * as OF from '../../js/game/colony/offices.js';
+import { legendOf } from '../../js/game/colony/legends.js';
+import { figureName } from '../../js/data/text/realm.js';
+import { idx as vox } from '../../js/game/core/grid.js';
+
+const KINDS = ['traveller', 'bard', 'mercenary', 'pilgrim', 'priest', 'scholar', 'smith'];
+const HALL = { traveller: 'tavern', bard: 'tavern', mercenary: 'tavern', smith: 'tavern', pilgrim: 'temple', priest: 'temple', scholar: 'library' };
+const rngOf = (s) => JSON.stringify(s.rng);
+const lettersOf = (s) => ((s.rt && s.rt.events) || []).filter((e) => e.name === 'letter').map((e) => e.data);
+
+test('W3.3b: realm-less and record-lost holds take the legacy visitors and Lord draw for draw', () => {
+  for (const { R, rx, ry } of [...holds()].slice(0, 4)) {
+    const a = hold(R, rx, ry, { realm: false }), b = hold(R, rx, ry, { record: false });
+    for (const s of [a, b]) for (const k of KINDS) VI.arrive(s, HALL[k], vox(10, 10, s.zS | 0), k);
+    assert.equal(JSON.stringify(a.colony.visitors), JSON.stringify(b.colony.visitors));
+    assert.ok(a.colony.visitors.every((v) => !('fig' in v)));
+    assert.equal(rngOf(a), rngOf(b));
+    for (const s of [a, b]) OF.lordArrive(s);
+    assert.equal(JSON.stringify(a.colony.officeRec), JSON.stringify(b.colony.officeRec));
+    assert.ok(!('fig' in a.colony.officeRec.lord) && !('wlords' in a.colony.officeRec));
+    assert.equal(rngOf(a), rngOf(b));
+    assert.equal(a.legend, b.legend);
+  }
+});
+
+test('W3.3b: every visitor figure is alive in the realm on arrival, within 12 days, never twice at once', () => {
+  let came = 0, world = 0, hunts = 0, tales = 0, marks = 0;
+  for (const { R, rx, ry } of holds()) {
+    const s = hold(R, rx, ry);
+    F.bindRoles(s);
+    const tf = CV.travelField(R, rx, ry, 12);
+    for (let round = 0; round < 3; round++) for (const k of KINDS) {
+      const pool = VI.worldVisitors(s, k);
+      for (const f of pool) {
+        assert.ok(OF.figGrown(s, f), `figure ${f.id} alive and grown`);
+        const h = R.tables.sites[f.home] || R.tables.sites[R.tables.civs[f.civ].cap];
+        assert.ok(tf[h.y * R.n + h.x] <= 12);
+        assert.ok(!CV.atWarWithLiege(s, R, f.civ));
+      }
+      const v = VI.arrive(s, HALL[k], vox(10 + round, 10, s.zS | 0), k);
+      came++;
+      if (!pool.length) { assert.ok(!('fig' in v)); continue; }
+      world++;
+      const f = R.tables.figures[v.fig];
+      assert.ok(pool.includes(f) && f.died === null && OF.figAlive(s, f));
+      assert.equal(v.name, figureName(f));
+      assert.equal(v.civ, f.civ);
+      assert.ok(legendOf(s, 'v' + v.id.toString(36)).links.includes('wf' + f.id));
+      assert.ok(!VI.worldVisitors(s, k).includes(f), 'a visiting figure is not drawn again');
+      if (v.hunt !== undefined) { hunts++; assert.ok(R.tables.beasts[v.hunt].alive); }
+      if (k === 'bard') { VI.singTale(s, R, v); const l = lettersOf(s).at(-1); if (l && /sang the song of/.test(l.text)) { tales++; assert.ok(!/\{\w+\}/.test(l.text) && l.text.length <= 200, l.text); } }
+      if (k === 'scholar') { const m0 = VI.worldMarks(s).length; VI.writeBook(s, v); if (VI.worldMarks(s).length > m0) marks++; }
+    }
+    // a figure dead since embark (the season tick's bitset) never comes
+    const f = VI.worldVisitors(s, 'traveller')[0];
+    if (f) {
+      s.realm.dead = Array.from({ length: (R.tables.figures.length >> 5) + 1 }, () => 0);
+      s.realm.dead[f.id >> 5] |= 1 << (f.id & 31);
+      assert.ok(!VI.worldVisitors(s, 'traveller').includes(f));
+      s.realm.dead = [];
+    }
+    for (const m of VI.worldMarks(s)) assert.ok(R.tables.artifacts[m.art].lost);
+    assert.deepEqual(checkRealmField(s.realm), []);
+    JSON.parse(JSON.stringify(s.colony.visitors));
+  }
+  console.log(`# W3.3b visitors: ${world}/${came} world figures; hunters ${hunts}, tales ${tales}, charts ${marks}`);
+  assert.ok(world > came / 5, 'realm visitors are often world figures');
+  assert.ok(tales > 0 && marks > 0);
+});
+
+test('W3.3b: the Lord is a younger kin of the liege ruler, with a world key; the envoy is alive', () => {
+  let n = 0, kin = 0;
+  const rels = {};
+  for (const { R, rx, ry } of holds()) {
+    const s = hold(R, rx, ry);
+    F.bindRoles(s);
+    const L = F.liegeCiv(s);
+    if (L === null) continue;
+    n++;
+    const k = OF.lordCandidate(s, R, L);
+    const env = OF.envoyOf(s, R, L);
+    if (env) { assert.equal(env.civ, L); assert.equal(env.role, 'envoy'); assert.ok(OF.figGrown(s, env)); }
+    if (!k) continue;
+    kin++; rels[k.rel] = (rels[k.rel] || 0) + 1;
+    assert.equal(k.f.civ, L);
+    assert.ok(k.f.born > k.ruler.born && OF.figGrown(s, k.f));
+    assert.ok(R.tables.civs[L].rulers.includes(k.ruler.id));
+    if (k.rel === 'child') assert.equal(k.f.kin[0], k.ruler.id);
+    if (k.rel === 'sibling') assert.equal(k.f.kin[0], k.ruler.kin[0]);
+    const lord = OF.lordArrive(s);
+    assert.equal(lord.name, figureName(k.f));
+    assert.equal(s.colony.officeRec.lord.fig, k.f.id);
+    assert.equal(s.colony.officeRec.lord.title, k.f.sex ? 'Lord' : 'Lady');
+    assert.deepEqual(s.colony.officeRec.wlords, [k.f.id]);
+    assert.ok(legendOf(s, 'c' + lord.id.toString(36)).links.includes('wf' + k.f.id));
+    assert.equal(OF.lordFigure(s), k.f);
+    assert.ok(!VI.worldVisitors(s, 'traveller').includes(k.f), 'the Lord does not come as a visitor');
+    assert.notEqual(OF.lordCandidate(s, R, L)?.f, k.f, 'a figure is sent once');
+    const l = lettersOf(s).at(-1);
+    assert.ok(l.text.includes(figureName(k.ruler)) && !/\{\w+\}/.test(l.text) && l.text.length < 400, l.text);
+  }
+  console.log(`# W3.3b Lords: ${kin}/${n} holds with a liege have a kin Lord ${JSON.stringify(rels)}`);
+  assert.ok(kin > n / 2);
+});
+
+test('W3.3b: realm visitors and the Lord are deterministic', () => {
+  const { R, rx, ry } = holds().next().value;
+  const run = () => { const s = hold(R, rx, ry); F.bindRoles(s); for (const k of KINDS) VI.arrive(s, HALL[k], vox(10, 10, s.zS | 0), k); OF.lordArrive(s); return JSON.stringify([s.colony.visitors, s.colony.officeRec, s.legend, s.rng]); };
+  assert.equal(run(), run());
+});

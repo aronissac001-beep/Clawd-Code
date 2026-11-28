@@ -36,6 +36,21 @@
 // Determinism: rolls are hash3 of the seed, the day and ids; generateColonist (streams 'main', 'names') draws only
 // when a visitor arrives. No rt key is added.
 //
+// W3.3b (EMBERCROWN-WORLD.md 2.7 visitors row): in a hold with its realm record (factions.js realmRec) a visitor of a
+// kind with REALM_VISIT.roles is a living world figure when one fits (worldVisitors: that role, grown and alive in the
+// realm, of a living civ not at war with the liege, whose home lies within REALM_VISIT.reach travel days, not already
+// in the hold; picked by hash3 of the seed, the day and the count of comers). The colonist reserved for them takes the
+// figure's name and people; the visitor carries fig and civ, its legend record links 'wf<id>'. Their errands:
+//   - a bard sings a world tale (taleOf: a war, a fall or a slaying of the bard's civ, else of the world) on day
+//     REALM_VISIT.taleDay of the stay: a letter, and the 'world_tale' thought for those in the hall that day;
+//   - a hero (a mercenary) who comes while a world beast with a history entry is alive within reach is a monster
+//     hunter on its trail (v.hunt, a letter);
+//   - a scholar charts a lost artifact (the nearest not yet charted) on the World map on the day they write
+//     (visitRec.marks, created on the first chart; worldMarks(s) for the map);
+//   - one who stays links their colonist record to the figure (visitRec.joined, created on the first).
+// The envoys of the liege ride with its Lord and tribute (offices.js envoyOf); a neighbour's demands are W4.5. With no
+// record the legacy visitor comes, draw for draw.
+//
 // Hooks into other owners' code (requests in the Z2.8 report):
 //   colony/index.js (K)  reg('colony', 'visitors', visitorsSystem, 137) and installVisitors() under `verbs`
 //   commands.js (A)      `petition { visitorId: int, accept: bool }`; installVisitors registers the applier
@@ -64,6 +79,10 @@ import { sendLetter, onChoice, answer, fillText } from '../threat/letters.js';
 import { CAPS } from '../../data/balance.js';
 import { HALLS } from '../../data/rooms.js';
 import { VISITOR_KINDS, VISITS, POWERS, SKILL_DOMAIN, WORDS } from '../../data/visitors.js';
+import { realmRec } from './factions.js';
+import { travelField, atWarWithLiege } from './caravans.js';
+import { figGrown, figsInHold } from './offices.js';
+import { figureName, civText, artifactName, artifactDesc, yearText } from '../../data/text/realm.js';
 
 export { HALLS, VISITOR_KINDS };
 const V = VISITS;
@@ -171,23 +190,137 @@ function pickKind(s, hall, u32) {
 }
 const tileOf = (v) => [v % W, ((v % PLANE) / W) | 0, (v / PLANE) | 0];
 
+// ---- world figures (W3.3b) -------------------------------------------------------------------------------------
+/** Realm visitors: reach (travel days); roles: the figure roles a visitor kind is drawn from; taleDay: the day of the
+ *  stay a bard sings; thought: the hearers' thought (a data row; none: no thought). */
+export const REALM_VISIT = Object.freeze({
+  reach: 12, taleDay: 1, thought: 'world_tale',
+  roles: Object.freeze({ traveller: ['envoy', 'hero', 'bard', 'smith', 'scholar', 'priest'], bard: ['bard'], mercenary: ['hero'], pilgrim: ['priest'], priest: ['priest'], scholar: ['scholar'], smith: ['smith'] }),
+});
+/** The realm words of the visitors (original wording; a request moves them into js/data/visitors.js WORDS). */
+export const REALM_WORDS = Object.freeze({
+  of: '{kind} of {civ}',
+  taleTitle: 'A song of the world',
+  taleText: '{name} sang the song of {tale} in the {hall}.',
+  huntTitle: 'A monster hunter',
+  huntText: '{name}, a hero of {civ}, has come to the {hall} on the trail of {beast}, whose lair lies {days} days from the hold.',
+  markTitle: 'A lost thing charted',
+  markText: '{name}, a scholar of {civ}, has marked on your World map where {art}, {desc}, was last known, in {year}.',
+});
+const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+/** Where a figure lives: its home site, else its civ's capital (a site row), or null. */
+function homeOf(R, f) {
+  const S = R.tables.sites || [], c = R.tables.civs[f.civ];
+  return S[f.home] || (c ? S[c.cap] : null) || null;
+}
+/**
+ * The world figures who may come as a visitor of `kindId` now (pure, id order): REALM_VISIT.roles[kind], grown and
+ * alive in the realm, of a living civ not at war with the liege, home within REALM_VISIT.reach travel days, not in
+ * the hold. [] with no record or for a kind with no roles.
+ */
+export function worldVisitors(s, kindId, R = realmRec(s)) {
+  const roles = REALM_VISIT.roles[kindId];
+  if (!R || !roles || !s.realm) return [];
+  const tf = travelField(R, s.realm.rx, s.realm.ry, REALM_VISIT.reach), busy = figsInHold(s), war = new Map(), out = [];
+  for (const f of R.tables.figures || []) {
+    if (!f || !roles.includes(f.role) || busy.has(f.id) || !figGrown(s, f)) continue;
+    const c = R.tables.civs[f.civ];
+    if (!c || c.fell !== null) continue;
+    if (!war.has(f.civ)) war.set(f.civ, atWarWithLiege(s, R, f.civ));
+    if (war.get(f.civ)) continue;
+    const h = homeOf(R, f);
+    if (!h || !(tf[h.y * R.n + h.x] <= REALM_VISIT.reach)) continue;
+    out.push(f);
+  }
+  return out;
+}
+/** The world figure of a visitor (or a visitor id), or null. */
+export function visitorFigure(s, v, R = realmRec(s)) {
+  const x = typeof v === 'number' ? visitorById(s, v) : v;
+  return R && x && Number.isInteger(x.fig) ? R.tables.figures[x.fig] || null : null;
+}
+/** The tale a bard of civ `civ` sings (pure): a war, a fall or a slaying of that civ, else of the world; { title, year } or null. */
+export function taleOf(s, R, civ, h) {
+  const C = R.tables.civs, tales = [], all = [];
+  const put = (mine, t) => { all.push(t); if (mine) tales.push(t); };
+  for (const w of R.tables.wars || []) if (C[w.a] && C[w.b]) put(w.a === civ || w.b === civ, { title: `the war between ${civText(C[w.a])} and ${civText(C[w.b])}`, year: w.began });
+  for (const x of R.tables.sites || []) if (x && x.razed !== null && x.razed !== undefined && x.name) put(x.by === civ, { title: `the fall of ${x.name}`, year: x.razed });
+  for (const b of R.tables.beasts || []) if (b && b.slain !== null && b.slain !== undefined && b.name) { const k = R.tables.figures[b.by]; put(!!k && k.civ === civ, { title: `the slaying of ${b.name}`, year: b.slain }); }
+  const list = tales.length ? tales : all;
+  return list.length ? list[(h >>> 0) % list.length] : null;
+}
+/** The nearest living world beast within reach of the hold (travel days, then id): { beast, days } or null. */
+export function huntedBeast(s, R = realmRec(s)) {
+  if (!R || !s.realm) return null;
+  const tf = travelField(R, s.realm.rx, s.realm.ry, REALM_VISIT.reach);
+  let best = null;
+  for (const b of R.tables.beasts || []) {
+    if (!b || !b.alive) continue;
+    const d = tf[b.y * R.n + b.x];
+    if (!(d <= REALM_VISIT.reach)) continue;
+    if (!best || d < best.days || (d === best.days && b.id < best.beast.id)) best = { beast: b, days: d };
+  }
+  return best;
+}
+/** The lost artifacts charted on the World map (2.7 cartographer): [{ art, key, x, y, name, year }] in chart order. */
+export function worldMarks(s, R = realmRec(s)) {
+  const ids = (s.colony && s.colony.visitRec && s.colony.visitRec.marks) || [];
+  if (!R) return [];
+  return ids.map((id) => R.tables.artifacts[id]).filter(Boolean).map((a) => ({ art: a.id, key: 'wa' + a.id, x: a.x, y: a.y, name: artifactName(a), year: a.lost ? a.lost[0] : null }));
+}
+const civOfV = (R, v) => civText(R.tables.civs[v.civ]) || 'the far roads';
+function vLetter(s, title, text, vars, v) {
+  if (!s.st) return;
+  sendLetter(s, 'minor', { title: fillText(title, vars), text: fillText(text, vars), data: { k: 'visitor', visitorId: v.id, fig: v.fig } });
+}
+/** A scholar charts the nearest lost artifact not yet charted (sim). True when one was. */
+function chartLost(s, R, v) {
+  const rec = s.colony.visitRec, have = new Set(rec.marks || []);
+  let best = null, bd = 0;
+  for (const a of R.tables.artifacts || []) {
+    if (!a || !a.lost || have.has(a.id) || !Number.isInteger(a.x)) continue;
+    const d = cheb(a.x, a.y, s.realm.rx, s.realm.ry);
+    if (!best || d < bd || (d === bd && a.id < best.id)) { best = a; bd = d; }
+  }
+  if (!best) return false;
+  rec.marks = [...have, best.id];
+  vLetter(s, REALM_WORDS.markTitle, REALM_WORDS.markText, { name: v.name, civ: civOfV(R, v), art: artifactName(best), desc: artifactDesc(best), year: yearText(best.lost[0]) }, v);
+  return true;
+}
+/** A bard sings the tale (sim: the daily step on taleDay; tests call it): the letter; the hearers take the thought in hallJoy. */
+export function singTale(s, R, v) {
+  const t = taleOf(s, R, v.civ, hash3(seedOf(s), v.id, 0x7a1e));
+  v.tale = dayOf(s.tick);
+  if (t) vLetter(s, REALM_WORDS.taleTitle, REALM_WORDS.taleText, { name: v.name, tale: `${t.title}, in ${yearText(t.year)}`, hall: WORDS.halls[v.hall] || v.hall }, v);
+}
+
 // ---- arrivals and stays ----------------------------------------------------------------------------------------
 /** A visitor of `kindId` comes to the hall (sim; tests call it). Returns the visitor. */
 export function arrive(s, hallId, first, kindId) {
   ensureVisits(s);
   const kd = kindDef(kindId), day = dayOf(s.tick);
-  const c = generateColonist(s, { req: { skill: kd.skill, min: V.minSkill } });
+  const R = realmRec(s), pool = R ? worldVisitors(s, kd.id, R) : [];
+  const fig = pool.length ? pool[hash3(seedOf(s), day, 0x5f1 + (s.colony.visitRec.came | 0)) % pool.length] : null;
+  const gopt = { req: { skill: kd.skill, min: V.minSkill } };
+  if (fig) { gopt.name = figureName(fig); if (def('ancestry', fig.people)) gopt.anc = fig.people; }
+  const c = generateColonist(s, gopt);
   const h = hash3(seedOf(s), c.id, 0x71517);
   const deep = cavern2Open(s);
   const entry = kd.passage || (deep && h % 100 < V.passagePct) ? 'passage' : 'edge';
   const stay = V.stayDays[0] + ((h >>> 8) % (V.stayDays[1] - V.stayDays[0] + 1));
   const v = { id: c.id, kind: kd.id, hall: hallId, at: first, name: c.name, plain: toPlain('col', c), day, leave: day + stay, entry, asked: -1, book: false, paid: 0 };
+  if (fig) { v.fig = fig.id; v.civ = fig.civ; }
   s.colony.visitors.push(v);
   s.colony.visitors.sort((a, b) => a.id - b.id);
   s.colony.visitRec.came++;
-  const key = addLegend(s, 'v', c.id, { text: c.name });
+  const key = addLegend(s, 'v', c.id, fig ? { text: c.name, links: ['wf' + fig.id] } : { text: c.name });
   legendEvent(s, 'arrived', [key]);
-  addChron(s, 'visitor', 'chron_visitor', { kind: kd.name, name: c.name, entry: WORDS.entry[entry], hall: WORDS.halls[hallId] || hallId });
+  const kindName = fig ? fillText(REALM_WORDS.of, { kind: kd.name, civ: civOfV(R, v) }) : kd.name;
+  addChron(s, 'visitor', 'chron_visitor', { kind: kindName, name: c.name, entry: WORDS.entry[entry], hall: WORDS.halls[hallId] || hallId });
+  if (fig && kd.id === 'mercenary') {
+    const hb = huntedBeast(s, R);
+    if (hb) { v.hunt = hb.beast.id; vLetter(s, REALM_WORDS.huntTitle, REALM_WORDS.huntText, { name: c.name, civ: civOfV(R, v), hall: WORDS.halls[hallId] || hallId, beast: hb.beast.name, days: hb.days }, v); }
+  }
   return v;
 }
 function leave(s, v) {
@@ -211,13 +344,16 @@ function bookTitle(s, v) {
   const who = figs.length ? figs[h % figs.length].name : v.name;
   return { name: fillText(WORDS.bookName, { who }), fig: figs.length ? figs[h % figs.length].key : null };
 }
-function writeBook(s, v) {
+/** A scholar writes their book (sim; the daily step on scholarBookDay; tests call it): a world scholar charts a lost thing. */
+export function writeBook(s, v) {
   const [x, y, z] = tileOf(v.at), t = bookTitle(s, v);
   if (def('item', 'book')) spawn(s, 'book', null, 2, 1, x, y, { z, name: t.name });
   s.colony.visitRec.books++;
   addChron(s, 'visitor', 'chron_book', { name: v.name, book: t.name });
   discoveredByScholar(s);
   v.book = true;
+  const R = Number.isInteger(v.fig) ? realmRec(s) : null;
+  if (R) chartLost(s, R, v);
 }
 function historyOf(s, v) {
   let places = [];
@@ -254,7 +390,8 @@ export function answerPetition(s, visitorId, yes) {
   const [x, y, z] = tileOf(v.at);
   spawnColonist(s, c, x, y, z);
   addThought(s, c, 'new_arrival');
-  const key = addLegend(s, 'c', c.id, { links: ['v' + b36(v.id)], text: historyOf(s, v) });
+  const key = addLegend(s, 'c', c.id, { links: Number.isInteger(v.fig) ? ['v' + b36(v.id), 'wf' + v.fig] : ['v' + b36(v.id)], text: historyOf(s, v) });
+  if (Number.isInteger(v.fig)) { const r = s.colony.visitRec; r.joined = [...(Array.isArray(r.joined) ? r.joined : []), v.fig]; }
   legendEvent(s, 'petition', [key]);
   addChron(s, 'people', 'chron_petition', { name: v.name, kind: (kindDef(v.kind) || {}).name || v.kind, colId: c.id });
   const list = s.colony.visitors;
@@ -277,6 +414,7 @@ export function visitorsDay(s) {
     const n = kd.pay[0] + (hash3(seedOf(s), v.id, day) % (kd.pay[1] - kd.pay[0] + 1));
     if (n > 0 && def('item', 'coins')) { spawn(s, 'coins', null, 0, n, x, y, { z }); v.paid += n; }
     if (v.kind === 'scholar' && !v.book && day - v.day >= V.scholarBookDay) writeBook(s, v);
+    if (v.kind === 'bard' && Number.isInteger(v.fig) && v.tale === undefined && day - v.day >= REALM_VISIT.taleDay) { const R = realmRec(s); if (R) singTale(s, R, v); }
     if (canPetition(s, v)) { askToStay(s, v); continue; }
     if (day >= v.leave && v.asked < 0) leave(s, v);
   }
@@ -298,13 +436,15 @@ export function visitorsDay(s) {
 export function hallJoy(s) {
   const hs = visitRec(s).halls;
   if (!hs.length) return;
-  const byRoom = new Map();
+  const byRoom = new Map(), tales = new Set(), day = dayOf(s.tick);
   for (const [id, first] of hs) { const r = s.rt.room[first]; if (r) byRoom.set(r, id); }
+  for (const v of visitorsOf(s)) if (v.tale === day) { const r = s.rt.room[v.at]; if (r) tales.add(r); }
   for (const c of s.col) {
     if (!c || c.hp.dead) continue;
     const i = idx(Math.min(W - 1, Math.max(0, Math.floor(c.x / 32))), Math.floor(c.y / 32), c.z | 0);
-    const h = byRoom.get(s.rt.room[i]);
+    const room = s.rt.room[i], h = byRoom.get(room);
     if (h && JOY[h]) addThought(s, c, JOY[h]);
+    if (tales.size && room && tales.has(room)) addThought(s, c, REALM_VISIT.thought);
   }
 }
 /** The 'colony' slot system. */

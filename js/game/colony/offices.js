@@ -16,6 +16,15 @@
 // from s.rng except the Lord's arrival, which generates three colonists with generateColonist (the 'main' and
 // 'names' streams, at a fixed hour). No rt key is added: needs and plans are recomputed from the state.
 //
+// W3.3b (EMBERCROWN-WORLD.md 2.7 offices row): in a hold with its realm record (factions.js realmRec) the Lord or Lady
+// of the Hold is a younger kin of the liege civ's ruler (lordCandidate: a child, sibling, sibling's child, grandchild,
+// then any younger kin of the civ's ruling house), grown, alive in the realm and not already in the hold. The colonist
+// takes the figure's name and people; officeRec.lord.fig keeps the figure id, officeRec.wlords (created on the first
+// such Lord) every figure sent, and the Lord's legend record links the world key 'wf<id>'. The liege's envoy (envoyOf,
+// a living envoy of the liege civ) rides in with the Lord and carries the yearly tribute; the letters name the civ,
+// the ruler and the envoy. With no record, or no such kin, the legacy Lord comes (same draws, same letter).
+// The world-figure helpers (figAlive, figGrown, figsInHold, envoyOf) are shared with visitors.js.
+//
 // Hooks into other owners' code (requests in the Z2.2 report):
 //   commands.js (A)     `office { id, colId | null }` and `stockTarget { k, m?, n }`; installOffices registers
 //                       their appliers once the specs exist
@@ -46,6 +55,10 @@ import { peopleRec } from '../people/peoplerec.js';
 import { generateColonist, spawnColonist } from '../people/colonists.js';
 import { sendLetter } from '../threat/letters.js';
 import { OFFICES, NEEDS, RULES, MANDATE, KEEP_KINDS, DOMAIN_OF, RENOWN_DOMAINS, TEXT, BED_DEFS } from '../../data/offices.js';
+import { realmRec, liegeCiv } from './factions.js';
+import { addLegend } from './legends.js';
+import { HISTORY_PEOPLES } from '../../data/realm/civkinds.js';
+import { figureName, civText } from '../../data/text/realm.js';
 
 export { OFFICES, NEEDS };
 export const OFFICE_IDS = Object.freeze(OFFICES.map((o) => o.id));
@@ -309,8 +322,9 @@ export function lordDue(s) {
 }
 export function lordArrive(s) {
   const r = ensureOffices(s), [x, y, z] = hearthSpot(s);
-  const title = hashString(`lord:${s.seed}:${dayOf(s.tick)}`) & 1 ? 'Lady' : 'Lord';
-  const lord = generateColonist(s);
+  const R = realmRec(s), L = R ? liegeCiv(s) : null, kin = R && L !== null ? lordCandidate(s, R, L) : null;
+  const title = kin ? (kin.f.sex ? 'Lord' : 'Lady') : hashString(`lord:${s.seed}:${dayOf(s.tick)}`) & 1 ? 'Lady' : 'Lord';
+  const lord = generateColonist(s, kin ? { name: figureName(kin.f), ...(def('ancestry', kin.f.people) ? { anc: kin.f.people } : {}) } : {});
   spawnColonist(s, lord, x, y, z);
   addThought(s, lord, 'new_arrival');
   const ret = [];
@@ -325,8 +339,92 @@ export function lordArrive(s) {
   r.lord = { title, id: lord.id, arrived: s.tick, retainers: ret };
   r.lordDay = dayOf(s.tick);
   const names = ret.map((id) => colBy(s, id).name);
-  letter(s, 'incident', TEXT.lordArrives, TEXT.lordArrivesText, { title, name: lord.name, retainers: names.length ? `two retainers, ${names.join(' and ')}` : 'no retainers' });
+  const retainers = names.length ? `two retainers, ${names.join(' and ')}` : 'no retainers';
+  if (!kin) { letter(s, 'incident', TEXT.lordArrives, TEXT.lordArrivesText, { title, name: lord.name, retainers }); return lord; }
+  r.lord.fig = kin.f.id;
+  r.wlords = [...(Array.isArray(r.wlords) ? r.wlords : []), kin.f.id];
+  addLegend(s, 'c', lord.id, { links: ['wf' + kin.f.id], text: lord.name });
+  const env = envoyOf(s, R, L), civ = R.tables.civs[L];
+  letter(s, 'incident', TEXT.lordArrives, REALM_TEXT.lordArrivesText + (env ? REALM_TEXT.lordEnvoy : ''), {
+    title, name: lord.name, retainers, civ: civText(civ), Civ: capF(civText(civ)), kin: kinWord(kin), ruler: figureName(kin.ruler), envoy: env ? figureName(env) : '' });
   return lord;
+}
+
+// ---- world figures (W3.3b; visitors.js reads these too) -------------------------------------------------------
+/** The realm words of the offices (original wording; a request moves them into js/data/offices.js TEXT). */
+export const REALM_TEXT = Object.freeze({
+  lordArrivesText: '{Civ} has sent {title} {name}, {kin} of {ruler}, to take the seat of the hold, with {retainers}. The Thane keeps the title, but the Lord takes precedence.',
+  lordEnvoy: ' {envoy}, an envoy of {civ}, rode in with them.',
+  tribute: 'Tribute from {civ}',
+  tributeText: 'Pleased with how {name} is kept, {civ} sends {what}.',
+  tributeEnvoy: 'Pleased with how {name} is kept, {civ} sends {what}, carried by its envoy {envoy}.',
+});
+const KIN_WORDS = Object.freeze({ child: ['daughter', 'son'], sibling: ['sister', 'brother'], nephew: ['niece', 'nephew'], grandchild: ['granddaughter', 'grandson'], kin: ['kinswoman', 'kinsman'] });
+/** The kin degrees of lordCandidate, nearest first. */
+export const LORD_KIN = Object.freeze(['child', 'sibling', 'nephew', 'grandchild', 'kin']);
+const capF = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const kinWord = (k) => KIN_WORDS[k.rel][k.f.sex ? 1 : 0];
+/** The age a people's figure is grown at (HISTORY_PEOPLES lifespan[0]). */
+export const adultAt = (p) => ((HISTORY_PEOPLES[p] || HISTORY_PEOPLES.human).lifespan || [18])[0];
+const deadBit = (s, id) => { const d = (s.realm && s.realm.dead) || []; return ((d[id >> 5] | 0) >>> (id & 31)) & 1; };
+/** Is world figure f alive in the realm now: alive at the end of history, not dead since embark (s.realm.dead), born? */
+export const figAlive = (s, f) => !!f && f.died === null && !deadBit(s, f.id) && f.born <= ((s.realm && s.realm.year) | 0);
+/** Alive and grown (their people's lifespan[0]). */
+export const figGrown = (s, f) => figAlive(s, f) && ((s.realm.year | 0) - f.born) >= adultAt(f.people);
+/** The world figures in the hold now or for good: its visitors, those who joined it, its Lords. */
+export function figsInHold(s) {
+  const out = new Set(), c = s.colony || {};
+  for (const v of c.visitors || []) if (Number.isInteger(v.fig)) out.add(v.fig);
+  for (const id of (c.visitRec && c.visitRec.joined) || []) out.add(id);
+  for (const id of officeRec(s).wlords || []) out.add(id);
+  return out;
+}
+/** The ruler of civ L now: the last of its rulers alive in the realm, else its last ruler; null with none. */
+export function civRuler(s, R, L) {
+  const c = R.tables.civs[L], rs = (c && c.rulers) || [];
+  for (let k = rs.length - 1; k >= 0; k--) { const f = R.tables.figures[rs[k]]; if (figAlive(s, f)) return f; }
+  return rs.length ? R.tables.figures[rs[rs.length - 1]] || null : null;
+}
+/**
+ * The Lord's world figure (2.7): a younger kin of the liege civ L's ruler, grown, alive, of civ L, not in the hold.
+ * Degrees in LORD_KIN order (kin: a younger descendant, to 3 generations, of one of the civ's rulers, or one of the
+ * ruler's people bearing the ruler's family name); within one, the eldest, then the lower id. Returns { f, rel, ruler } or null (pure).
+ */
+export function lordCandidate(s, R = realmRec(s), L = R ? liegeCiv(s) : null) {
+  if (!R || L === null || !R.tables.civs[L]) return null;
+  const ruler = civRuler(s, R, L);
+  if (!ruler) return null;
+  const F = R.tables.figures, busy = figsInHold(s), par = (f) => (f && f.kin && f.kin[0] >= 0 ? F[f.kin[0]] || null : null);
+  const ok = (f) => f && f.id !== ruler.id && f.civ === L && f.born > ruler.born && !busy.has(f.id) && figGrown(s, f);
+  const house = new Set(R.tables.civs[L].rulers || []);
+  const degree = (f) => {
+    const p = par(f), g = par(p);
+    if (p && p.id === ruler.id) return 0;
+    if (p && ruler.kin && p.id === ruler.kin[0]) return 1;
+    if (g && ruler.kin && g.id === ruler.kin[0]) return 2;
+    if (g && g.id === ruler.id) return 3;
+    for (let a = p, k = 0; a && k < 3; a = par(a), k++) if (house.has(a.id)) return 4;
+    return f.people === ruler.people && f.nm && ruler.nm && f.nm[1] === ruler.nm[1] ? 4 : -1;   // of the ruler's house name
+  };
+  let best = null, bd = 9;
+  for (const f of F) {
+    if (!ok(f)) continue;
+    const d = degree(f);
+    if (d < 0 || d > bd) continue;
+    if (d < bd || f.born < best.born || (f.born === best.born && f.id < best.id)) { best = f; bd = d; }
+  }
+  return best ? { f: best, rel: LORD_KIN[bd], ruler } : null;
+}
+/** The world figure of the hold's Lord (officeRec.lord.fig), or null. */
+export function lordFigure(s, R = realmRec(s)) {
+  const l = officeRec(s).lord;
+  return R && l && Number.isInteger(l.fig) ? R.tables.figures[l.fig] || null : null;
+}
+/** The envoy civ L sends now (2.7): a living grown envoy of L not in the hold, turning by the world year; else null. */
+export function envoyOf(s, R, L) {
+  if (!R || L === null || L === undefined) return null;
+  const busy = figsInHold(s), list = (R.tables.figures || []).filter((f) => f && f.civ === L && f.role === 'envoy' && !busy.has(f.id) && figGrown(s, f));
+  return list.length ? list[((s.realm.year | 0) >>> 0) % list.length] : null;
 }
 
 // ---- mandates --------------------------------------------------------------------------------------------------
@@ -479,7 +577,9 @@ function yearsTurning(s) {
     if (turn === 0 && def('item', 'ingot')) { spawn(s, 'ingot', 'silver', 0, RULES.tributeSilver, x, y, { z }); what = `${RULES.tributeSilver} silver ingots`; }
     else if (turn === 1 && def('item', 'cutgem')) { spawn(s, 'cutgem', null, 0, RULES.tributeGems, x, y, { z }); what = `${RULES.tributeGems} cut gems`; }
     else { const c = generateColonist(s); spawnColonist(s, c, x, y, z); addThought(s, c, 'new_arrival'); what = `${c.name}, who will live and work here`; }
-    letter(s, 'minor', TEXT.tribute, TEXT.tributeText, { name: `${lordTitle(s)} ${lord.name}`, what });
+    const R = lordFigure(s) ? realmRec(s) : null, L = R ? liegeCiv(s) : null, env = R && L !== null ? envoyOf(s, R, L) : null;
+    if (R && L !== null && R.tables.civs[L]) letter(s, 'minor', REALM_TEXT.tribute, env ? REALM_TEXT.tributeEnvoy : REALM_TEXT.tributeText, { name: `${lordTitle(s)} ${lord.name}`, what, civ: civText(R.tables.civs[L]), envoy: env ? figureName(env) : '' });
+    else letter(s, 'minor', TEXT.tribute, TEXT.tributeText, { name: `${lordTitle(s)} ${lord.name}`, what });
   }
   // the Keeper's summary letter
   if (hasOffice(s, 'keeper') && r.year) {

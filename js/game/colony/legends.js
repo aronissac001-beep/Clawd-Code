@@ -34,6 +34,16 @@
 //
 // Reading (the Annals screen and the export): figuresOf, artifactsOf, placesOf, holdYears, recordName,
 // legendLine, parseLegend, legendRecords.
+//
+// W3.3b (EMBERCROWN-WORLD.md 2.1, 2.7 vale pre-history row): in a hold whose world has history (valeWorld: s.realm
+// with embarkYear > 0) the vale's pre-history is the local chapter of the world's history. prehistoryOf(s) then
+// returns it re-dated in world years (vale year k = y - start maps to embarkYear - (VALE_SPAN - k), so every event
+// falls before embarkYear): events (y; the Crown year kept in cy), figures (from, to, the Crown years in their text),
+// artifacts (y), with era 'world'. With the record loaded and a liege bound, a vault may have been raised by a world
+// figure of the liege civ alive and grown at the vault's world year (VALE_BUILDER): place.by = 'wf<id>', the key
+// joins the making event's figs. Names, kinds, keys and voxels never change, so the sim (causes.js, visitors.js)
+// reads the same chapter with or without the record. recordName resolves world keys ('wf12') through the record.
+// valeYearText(s, y) is the year label the Annals use ("Crown year 812", or "Year 41" / "9 years before the Fall").
 
 import { hashString } from '../core/rand.js';
 import { dayOf, TICKS_PER_DAY, TICKS_PER_HOUR } from '../core/time.js';
@@ -44,6 +54,9 @@ import { DATA as FACTIONS } from '../../data/factions.js';
 import { bandOfRel } from '../../data/levels.js';
 import { pristineOf } from '../save/pristine.js';
 import { roomInfo } from '../world/rooms.js';
+import { realmRec, liegeCiv } from './factions.js';
+import { HISTORY_PEOPLES } from '../../data/realm/civkinds.js';
+import { yearText, figureName, civText, recordName as worldRecordName } from '../../data/text/realm.js';
 
 export const LEGEND_CAP = 1500;
 export const PREHISTORY_YEARS = 300;
@@ -226,14 +239,74 @@ export function prehistory(seed, genVersion = 0, rows = [], dims = {}) {
 }
 
 const PRE = new WeakMap();
-/** The state's pre-history through its pristine meta (pure memo; a D = 1 state uses no rows). */
+/** The state's pre-history through its pristine meta (pure memo; a D = 1 state uses no rows). A hold whose world has
+ *  history gets it re-dated in world years (valeChapter). */
 export function prehistoryOf(s) {
   const p = pristineOf(s), rows = (p && p.meta && p.meta.dormant) || [], gv = p ? p.genVersion | 0 : 0;
+  const world = valeWorld(s), ey = world ? s.realm.embarkYear : 0, R = world ? realmRec(s) : null, L = R ? liegeCiv(s) : null;
   const hit = PRE.get(s);
-  if (hit && hit.p === p && hit.seed === s.seed) return hit.v;
-  const v = prehistory(s.seed, gv, rows, { w: s.w, h: s.h, zS: s.zS === undefined ? gridZS : s.zS });
-  PRE.set(s, { p, seed: s.seed, v });
+  if (hit && hit.p === p && hit.seed === s.seed && hit.ey === ey && hit.R === R && hit.L === L) return hit.v;
+  const base = hit && hit.p === p && hit.seed === s.seed ? hit.base : prehistory(s.seed, gv, rows, { w: s.w, h: s.h, zS: s.zS === undefined ? gridZS : s.zS });
+  const v = world ? valeChapter(base, ey, R, L, s.seed) : base;
+  PRE.set(s, { p, seed: s.seed, ey, R, L, base, v });
   return v;
+}
+
+// ---- the vale's chapter in world years (W3.3b) -------------------------------------------------------------
+/** The span of the vale's pre-history in years (2.1 valeSpan). */
+export const VALE_SPAN = PREHISTORY_YEARS;
+/** A vault's builder is a world figure with this chance (percent, from the seed and the vault), when one fits. */
+export const VALE_BUILDER = Object.freeze({ pct: 60, rank: Object.freeze({ smith: 0, ruler: 1 }) });
+/** Does this hold date its vale in world years (a world with history: s.realm with embarkYear > 0)? */
+export const valeWorld = (s) => !!(s && s.realm && Number.isInteger(s.realm.embarkYear) && s.realm.embarkYear > 0);
+/** The world year of vale year y of a pre-history whose founding Crown year is crownYear (2.1). */
+export const valeToWorld = (embarkYear, crownYear, y) => embarkYear - (VALE_SPAN - (y - (crownYear - VALE_SPAN)));
+/** The year label of a pre-history year as prehistoryOf(s) gives it: world years in a world hold, else Crown years. */
+export const valeYearText = (s, y) => (valeWorld(s) ? yearText(y) : `Crown year ${y}`);
+const inYear = (y) => (y < 0 ? `${-y} ${y === -1 ? 'year' : 'years'} before the Fall` : `in Year ${y}`);
+/**
+ * The pre-history `pre` re-dated in world years (pure): a copy with events' y (cy: the Crown year), figures' from/to
+ * and the Crown years in their text, artifacts' y, start; era 'world'. R and L (the record and the liege civ, or
+ * null) add the vault builders.
+ */
+export function valeChapter(pre, embarkYear, R = null, L = null, seed = 0) {
+  const d = valeToWorld(embarkYear, pre.crownYear, 0);
+  const wy = (y) => (y === null || y === undefined ? y : y + d);
+  const fix = (t) => String(t || '')
+    .replace(/from Crown year (\d+) to (\d+)/g, (m, a, b) => `from ${yearText(+a + d)} to ${yearText(+b + d)}`)
+    .replace(/in Crown year (\d+)/g, (m, a) => inYear(+a + d))
+    .replace(/Crown year (\d+)/g, (m, a) => yearText(+a + d));
+  const events = pre.events.map((e) => ({ ...e, y: e.y + d, cy: e.y, figs: e.figs.slice() }));
+  const figures = pre.figures.map((f) => ({ ...f, from: wy(f.from), to: wy(f.to), text: fix(f.text) }));
+  const places = pre.places.map((p) => ({ ...p }));
+  const artifacts = pre.artifacts.map((a) => ({ ...a, y: wy(a.y) }));
+  const civ = R && Number.isInteger(L) ? R.tables.civs[L] : null;
+  if (civ) {
+    for (const p of places) {
+      if (p.kind !== 'vault') continue;
+      const e = events.find((x) => x.id === 'leg_vault_made' && x.place === p.voxel);
+      const h = hashString(`valebuilder:${seed >>> 0}:${p.voxel}`);
+      if (!e || h % 100 >= VALE_BUILDER.pct) continue;
+      const f = valeBuilder(R, L, e.y, h >>> 8);
+      if (!f) continue;
+      p.by = 'wf' + f.id;
+      p.text = `${p.text} Raised by ${figureName(f)} of ${civText(civ)}.`;
+      e.figs.push(p.by);
+    }
+  }
+  return { ...pre, start: pre.start + d, events, figures, places, artifacts, era: 'world', embarkYear };
+}
+/** A world figure of civ L grown and alive at world year y, the smiths first, then rulers (h picks in the group). */
+export function valeBuilder(R, L, y, h) {
+  let best = [], rank = 9;
+  for (const f of R.tables.figures || []) {
+    if (!f || f.civ !== L) continue;
+    const ad = ((HISTORY_PEOPLES[f.people] || HISTORY_PEOPLES.human).lifespan || [16])[0];
+    if (f.born + ad > y || (f.died !== null && f.died < y)) continue;
+    const r = VALE_BUILDER.rank[f.role] !== undefined ? VALE_BUILDER.rank[f.role] : 2;
+    if (r < rank) { rank = r; best = [f]; } else if (r === rank) best.push(f);
+  }
+  return best.length ? best[(h >>> 0) % best.length] : null;
 }
 
 // ---- the hold's legend records ----------------------------------------------------------------------------
@@ -367,6 +440,7 @@ export function recordName(s, key) {
     const n = parseInt(key.slice(1), 10), x = list[n];
     return x ? x.name : '';
   }
+  if (k === 'w') { const R = realmRec(s); return (R && worldRecordName(R, key)) || ''; }
   const r = legendOf(s, key);
   if (k === 'c' || k === 'v') { const c = colById(s, id); return c ? c.name : (r && r.text) || 'someone'; }
   if (k === 'm') { const n = nemById(s, id); return n ? `${n.name}${n.epithet ? ' ' + n.epithet : ''}` : (r && r.text) || 'a nemesis'; }
@@ -431,7 +505,7 @@ export function artifactsOf(s) {
     out.push({ key: null, name: e[3].item || 'an artifact', sub: e[3].maker ? `Made by ${e[3].maker}` : '', group: 'hold', day: dayOf(e[0]) });
   }
   const pre = prehistoryOf(s);
-  for (const a of pre.artifacts) out.push({ key: a.key, name: a.name, sub: `Forged by ${pre.figures[+a.maker.slice(1)].name}, Crown year ${a.y}`, group: 'old', maker: a.maker });
+  for (const a of pre.artifacts) out.push({ key: a.key, name: a.name, sub: `Forged by ${pre.figures[+a.maker.slice(1)].name}, ${valeYearText(s, a.y)}`, group: 'old', maker: a.maker });
   return out;
 }
 /** True when the hold has found voxel v (the fog bit). */

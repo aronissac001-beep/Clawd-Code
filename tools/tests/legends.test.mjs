@@ -147,3 +147,69 @@ test('a Z1 save and a v2 fixture load and read their Annals; the pre-history sur
   assert.ok(figuresOf(old).length >= 20 && artifactsOf(old).length >= 1);
   assert.equal(holdYears(old).length, 0);
 });
+
+// ---- W3.3b: the vale's chapter in world years (EMBERCROWN-WORLD.md 2.1, 2.7 vale pre-history row) ---------------
+// Oracle: every re-dated vale event falls before embarkYear (vale year k -> embarkYear - (valeSpan - k)); names, kinds,
+// keys and voxels are the legacy chapter's; a vault's world builder is a figure of the liege civ alive and grown at the
+// vault's world year; a hold with no world keeps Crown years.
+import { buildRealm } from '../../js/game/realm/gen.js';
+import { idx as ridx, isEmbarkable } from '../../js/game/realm/query.js';
+import { realmField } from '../../js/game/core/setup.js';
+import { bindRoles, liegeCiv } from '../../js/game/colony/factions.js';
+import { valeWorld, valeToWorld, valeYearText, VALE_SPAN, VALE_BUILDER } from '../../js/game/colony/legends.js';
+import { HISTORY_PEOPLES } from '../../js/data/realm/civkinds.js';
+import { figureName } from '../../js/data/text/realm.js';
+
+test('W3.3b: the vale pre-history is re-dated in world years, every event before embarkYear; vault builders are world figures', () => {
+  const R = buildRealm({ seed: 7 }, { history: true });
+  const regs = [];
+  for (let i = 0; i < R.n * R.n; i++) if (isEmbarkable(R, i)) regs.push(i);
+  let builders = 0, vaults = 0, events = 0;
+  for (let k = 0; k < W5.length; k++) {
+    const { s } = W5[k], base = prehistory(s.seed, pristineOf(s).genVersion | 0, pristineOf(s).meta.dormant || [], { w: s.w, h: s.h, zS: s.zS });
+    assert.equal(valeWorld(s), false);
+    assert.deepEqual(prehistoryOf(s), base, 'no world: the legacy chapter');
+    assert.equal(valeYearText(s, 812), 'Crown year 812');
+    const i = regs[Math.floor(((k + 0.5) * regs.length) / W5.length)];
+    s.realm = realmField(R, i % R.n, (i / R.n) | 0);
+    try {
+      assert.equal(prehistoryOf(s).era, 'world', 'no record: re-dated, no builders');
+      s.rt.realm = R;
+      bindRoles(s, R);
+      const L = liegeCiv(s), ey = s.realm.embarkYear, v = prehistoryOf(s);
+      assert.ok(valeWorld(s) && ey === R.years && ey > 0);
+      assert.equal(v.events.length, base.events.length);
+      for (let j = 0; j < v.events.length; j++) {
+        const e = v.events[j], b = base.events[j];
+        assert.equal(e.y, valeToWorld(ey, base.crownYear, b.y));
+        assert.equal(e.y, ey - (VALE_SPAN - (b.y - base.start)));
+        assert.ok(e.y < ey, `vale event ${e.id} at ${e.y} before embark ${ey}`);
+        assert.equal(e.cy, b.y);
+        assert.deepEqual([e.id, e.text, e.place, e.kind], [b.id, b.text, b.place, b.kind]);
+        events++;
+      }
+      assert.deepEqual(v.figures.map((f) => [f.key, f.name, f.kind, f.title, f.place]), base.figures.map((f) => [f.key, f.name, f.kind, f.title, f.place]));
+      assert.deepEqual(v.places.map((p) => [p.key, p.name, p.kind, p.voxel]), base.places.map((p) => [p.key, p.name, p.kind, p.voxel]));
+      for (const f of v.figures) { assert.ok(!/Crown year/.test(f.text), f.text); if (f.to !== null && f.to !== undefined) assert.ok(f.to < ey); }
+      for (const p of v.places) {
+        if (p.kind !== 'vault') continue;
+        vaults++;
+        if (!p.by) continue;
+        builders++;
+        const f = R.tables.figures[+p.by.slice(2)], made = v.events.find((e) => e.id === 'leg_vault_made' && e.place === p.voxel);
+        assert.equal(f.civ, L);
+        assert.ok(f.born + HISTORY_PEOPLES[f.people].lifespan[0] <= made.y && (f.died === null || f.died >= made.y));
+        assert.ok(made.figs.includes(p.by) && p.text.includes(figureName(f)));
+        assert.equal(recordName(s, p.by), figureName(f));
+      }
+      assert.match(valeYearText(s, -12), /12 years before the Fall/);
+      assert.equal(valeYearText(s, 40), 'Year 40');
+      // the sim reads the same chapter with the record lost
+      s.rt.realm = null;
+      assert.deepEqual(prehistoryOf(s).places.map((p) => p.name), base.places.map((p) => p.name));
+    } finally { delete s.realm; delete s.rt.realm; }
+    assert.deepEqual(prehistoryOf(s), base, 'the memo follows the state');
+  }
+  console.log(`# W3.3b vale: ${events} events re-dated; ${builders}/${vaults} vaults raised by world figures (${VALE_BUILDER.pct} % when one fits)`);
+  assert.ok(vaults > 0);
+});
