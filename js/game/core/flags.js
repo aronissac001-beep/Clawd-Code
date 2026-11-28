@@ -26,4 +26,4 @@ export const REALM = true;
 
 // HISTORY: the years of world history (EMBERCROWN-WORLD.md 2.3, Stage W3): js/game/realm/gen.js createRealm runs
 // js/game/realm/history.js after the land. Off until W3's last step; tools pass createRealm(p, { history: true }).
-export const HISTORY = false;
+export const HISTORY = true;

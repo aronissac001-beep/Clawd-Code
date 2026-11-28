@@ -17,7 +17,7 @@ import { pristineOf } from '../../js/game/save/pristine.js';
 
 const HOUR = 600;
 installSim({ stage: '2' });
-const realm = buildRealm({ seed: 11 });
+const realm = buildRealm({ seed: 11 }, { history: false });
 /** The first embarkable regions (row order) of a few biomes, at least 3 apart. */
 function picks(k) {
   const out = [], seen = new Set();

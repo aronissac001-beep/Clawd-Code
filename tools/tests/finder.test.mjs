@@ -11,7 +11,7 @@ import { REALM_BIOMES } from '../../js/data/realm/biomes.js';
 import * as F from '../../js/game/realm/finder.js';
 
 const WORLDS = [{ seed: 'finder-1', size: 'standard' }, { seed: 'finder-2', size: 'small' }, { seed: 'finder-3', size: 'standard', sea: 2 }];
-const realms = WORLDS.map((p) => buildRealm(p));
+const realms = WORLDS.map((p) => buildRealm(p, { history: false }));
 
 /** The brute force: every region straight from regionOpts / regionFacts with the rules of 3.4 written out again. */
 function brute(realm, Fl, used = []) {
@@ -107,7 +107,7 @@ test('filters: unknown keys and values are dropped; storage form round-trips', (
 });
 
 test('Settle blocks (3.2): sea, peak, site, used; the W2 world is unsettled and open', () => {
-  const realm = buildRealm({ seed: 'finder-block', size: 'small' });
+  const realm = buildRealm({ seed: 'finder-block', size: 'small' }, { history: false });
   const n = realm.n;
   let sea = null, land = null, peak = null;
   for (let i = 0; i < n * n; i++) {

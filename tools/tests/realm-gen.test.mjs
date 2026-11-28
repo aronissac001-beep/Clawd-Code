@@ -145,7 +145,7 @@ test('classification follows the 1.3 order', () => {
 });
 
 test('query: travel days, start fit and empty history tables', () => {
-  const r = buildRealm({ seed: 3 }), n = r.n;
+  const r = buildRealm({ seed: 3 }, { history: false }), n = r.n;
   const land = [];
   for (let i = 0; i < n * n; i++) if (Q.isEmbarkable(r, i) && Q.band(r, i) === BAND.LOW) land.push(i);
   const a = land[0], b = land[1];

@@ -71,7 +71,8 @@ import { installSim, foundColony, FORTRESS_D } from './game/core/setup.js';
 import { fortressRequested, FORTRESS } from './game/core/flags.js';
 import { migrateWorld } from './game/core/migrate4.js';
 import { saveBlob, loadBlob, snapshot, isDeep } from './game/save/colonysave.js';
-import { upgradeHold } from './game/save/realmstore.js';
+import { needsWorld, migrateHold } from './game/core/migrate5.js';
+import { upgradeHold, writeRealm, noteHold } from './game/save/realmstore.js';
 import { buildPristine, attachPristine, pristineOf } from './game/save/pristine.js';
 import {
   listColonies, refreshColonies, readSlots, writeSlot, quickSave, promoteQuick, cardOf, persistState,
@@ -134,11 +135,13 @@ export async function continueColony(id) {
       const s = await loadBlob(slot.bytes, { pristine: pristineResolver(id) });
       s.id = id;  // the slot names the colony (an import under a new id keeps the blob's bytes)
       const deepened = await upgradeWorld(s);
+      let charted = false;
+      if (needsWorld(s)) { try { const { realm } = await migrateHold(s, { write: (r) => writeRealm(r), frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); await noteHold(realm.wid, id, realm.pin.rx, realm.pin.ry, { name: realm.params.name, size: realm.n, year: s.realm.year }).catch(() => null); charted = true; } catch (_) { /* the hold loads as it was (9.4) */ } }
     try { await upgradeHold(s, { colonyId: id, frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); } catch (_) { /* the hold loads as it was (9.4) */ }
       setOpen(s);
       // the migrated hold is saved as EC3 at once, into the older slot: the newer one keeps the EC2 blob until
       // this write is verified (writeSlot reads it back), so a failed migration loses nothing (5.3)
-      if (deepened) await writeNow(s, 'migrate').catch(() => null);   // a failed write: both old slots stand, the next save retries
+      if (deepened || charted) await writeNow(s, 'migrate').catch(() => null);   // a failed write: both old slots stand, the next save retries
       return s;
     } catch (e) { err = e; }
   }
@@ -240,6 +243,7 @@ export async function recoverCopy(id, which) {
   const s = await loadBlob(copy.bytes, { pristine: pristineResolver(id) });
   s.id = id;
   await upgradeWorld(s);   // an EC2 copy (made before the switch) gets its depth first (5.3)
+  if (needsWorld(s)) { try { const { realm } = await migrateHold(s, { write: (r) => writeRealm(r), frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); await noteHold(realm.wid, id, realm.pin.rx, realm.pin.ry, { name: realm.params.name, size: realm.n, year: s.realm.year }).catch(() => null); } catch (_) { /* the copy loads as it was (9.4) */ } }   // a v4 copy gets its world (9.4 part 2)
   try { await upgradeHold(s, { colonyId: id, frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); } catch (_) { /* the hold loads as it was (9.4) */ }
   if (!isFallen(s)) {
     const card = listColonies().find((c) => c.id === id) || {};

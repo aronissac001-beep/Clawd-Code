@@ -22,7 +22,7 @@ import { regionOpts } from '../../js/game/realm/region.js';
 
 const FIXTURES = [{ seed: 1, size: 'standard' }, { seed: 'Ashmark', size: 'small', sea: 2 }, { seed: 90210, size: 'large', hollowing: 'high', wildness: 'low' }];
 const BASE = new Map();
-const realmOf = (p) => { const r = buildRealm(p); settleHistory(r); return r; };
+const realmOf = (p) => { const r = buildRealm(p, { history: false }); settleHistory(r); return r; };
 
 test('G data: civ kinds, peoples, ethics and event types are well formed', () => {
   assert.equal(CIVKINDS.length, 12);
@@ -47,7 +47,7 @@ test('G data: civ kinds, peoples, ethics and event types are well formed', () =>
 test('100 Standard seeds: the W3.1a oracle', () => {
   const tally = { warned: 0, rerolls: 0, civs: 0, alive: 0, sites: 0, ruins: 0, wars: 0, roads: 0, events: 0, pacts: 0 };
   for (let seed = 1; seed <= 100; seed++) {
-    const r = buildRealm({ seed });
+    const r = buildRealm({ seed }, { history: false });
     const before = realmHash(r);
     tally.rerolls += settleHistory(r);
     if (r.warnings.length) tally.warned++;
