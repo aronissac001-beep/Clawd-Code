@@ -9,5 +9,6 @@ export const DATA = {
     { id: 'chron_fell', text: 'The Hearth of {hold} went cold. No one was left to tend it. {date}.', vars: ['hold', 'date'] },
     { id: 'chron_recovered', text: 'Recovered from a copy of {date}. The hold had fallen on {fell}.', vars: ['date', 'fell'] },
     { id: 'chron_depth', text: 'The hold learned the depth of the world: the old mountain is real rock above, and there is a world below.', vars: [] },
+    { id: 'chron_world', text: 'Year {year}: the hold learned of the wider world.', vars: ['year'] },
   ],
 };

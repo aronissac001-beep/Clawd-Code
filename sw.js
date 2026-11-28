@@ -357,6 +357,7 @@ const FILES = [
   './js/ui/military.js',
   './js/ui/officesui.js',
   './js/ui/peek.js',
+  './js/ui/peoplesui.js',
   './js/ui/peopleui.js',
   './js/ui/regioncard.js',
   './js/ui/rolesui.js',

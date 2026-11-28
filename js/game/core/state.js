@@ -66,7 +66,9 @@ export function v3to4(ent) {
   return ent;
 }
 if (STATE_VERSION >= 4 && migrations.length === 2) migrations.push(v3to4);
-/** migrations[3], v4 -> v5 (EMBERCROWN-WORLD.md 9.4 part 1, W2.8): core/migrate5.js (realm = null; shape only). */
+/** migrations[3], v4 -> v5 (EMBERCROWN-WORLD.md 9.4 part 1, W2.8): core/migrate5.js (realm = null; shape only). Part 2
+ *  (W3.6: a world around the old hold) needs the layers and the pristine world, so, like v3to4, it is not an ENTITIES
+ *  migration: the loader runs migrate5.js migrateHold(s) on the built state when needsWorld(s) (HISTORY on). */
 if (STATE_VERSION >= 5 && migrations.length === 3) migrations.push(v4to5);
 
 // ---- v2 -> v3 helpers: they read the ENTITIES rows by name (format 2 writes the field lists in `fl`; a format 1
@@ -183,8 +185,12 @@ export function initRuntime(s) {
   const d = s.d || 1, zs = s.zS || 0;
   if (s.w !== W || s.h !== H || d !== D || zs !== zS) setMapSize(s.w, s.h, d, zs);
   const prevSaved = s.rt ? Object.fromEntries(savedKeys(true).map((k) => [k, s.rt[k]])) : null;
+  // the decoded realm record (9.3 step 5: class "input", immutable, set by the load path or the 9.4 part 2
+  // migration) survives a rebuild while it is the hold's own world (wid-checked); nothing else reads or hashes it here
+  const realmRec = s.rt && s.rt.realm && s.realm && (s.rt.realm.wid >>> 0) === (s.realm.wid >>> 0) ? s.rt.realm : null;
   s.rt = allocRt();
   if (prevSaved) for (const k of Object.keys(prevSaved)) s.rt[k] = prevSaved[k];
+  if (realmRec) s.rt.realm = realmRec;
   for (const k of Object.keys(RT_KEYS)) {
     const cls = RT_KEYS[k].cls;
     if (cls === RT.SAVED || cls === RT.RAID_SAVED || cls === RT.OUTPUT || cls === RT.RENDER || cls === RT.TRANSIENT) continue;

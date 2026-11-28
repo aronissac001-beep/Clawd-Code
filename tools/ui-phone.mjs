@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|worldmap|worlds|embark|annals|all] [--a11y] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|worldmap|worlds|embark|annals|world|all] [--a11y] [--json]
 // W1.10 (EMBERCROWN-WORLD.md 12.3): the new shell is on (flags.js SHELL2). --flows=w1 runs every W1 group (the gate's
 // w1 row); the W1 groups and the Stage 1a/1b flows run at the eight W1 viewports (W1_VPS: the six below plus
 // landscape-left and -right, ?safe=); in the new shell the 1a/1b flows tap Build, Mark (Orders, Zones), People, Hold, World.
@@ -98,6 +98,11 @@ if (flowsArg === 'embark') {
 if (flowsArg === 'annals') {
   const { runAnnalsFlows } = await import('./ui-phone-annals.mjs');
   process.exit(await runAnnalsFlows({ which, only, viewports: VIEWPORTS }));
+}
+// --flows=world (W3.9): the World tab: pins, routes, wars, Neighbours in 2 taps, Peoples (tools/ui-phone-world.mjs)
+if (flowsArg === 'world') {
+  const { runWorldFlows } = await import('./ui-phone-world.mjs');
+  process.exit(await runWorldFlows({ which, only, viewports: VIEWPORTS }));
 }
 const browser = await launch(which);
 if (!browser) { console.log(`ui-phone [${which}]: UNAVAILABLE - Playwright ${which} is not installed; try --browser=chromium`); process.exit(UNAVAILABLE); }
@@ -1693,7 +1698,8 @@ async function runIa(vp) {
     annals: [[WORLD, tab('Annals')], sheetIs('World', '.ec-sheet .ec-annals')],
     'annals-entry': [[WORLD, tab('Annals'), '[data-act=annals-figures]', '[data-act=annals-entry]'], subIs('World')],
     letters: [[WORLD, tab('Letters')], sheetIs('World', '.ec-sheet [data-world=letters]')],
-    factions: [[WORLD, tab('Factions')], sheetIs('World', '.ec-sheet .ec-thought')],
+    // W3.9: a hold in a world shows Peoples (civ cards and nemeses) where a realm-less hold shows Factions
+    factions: [[WORLD, `${tab('Peoples')}, ${tab('Factions')}`], sheetIs('World', '.ec-sheet [data-world=peoples], .ec-sheet [data-world=factions] .ec-thought')],
     dead: [[WORLD, tab('The dead')], sheetIs('World', '.ec-sheet [data-world=dead] p')],
     menu: [['[data-act=menu]'], sheetIs('Menu', '.ec-sheet [data-act=menu-settings]')],
     settings: [['[data-act=menu]', '[data-act=menu-settings]'], async () => (await sheetNow()).count === 1 && (await has('.ec-sheet .ec-swrow, .ec-sheet [role=switch]'))],

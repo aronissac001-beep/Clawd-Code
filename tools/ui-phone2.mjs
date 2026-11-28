@@ -219,7 +219,7 @@ for (const vp of VPS) {
           if (t === 'Research') { const before = await ev(() => window.__ecUI.shell.state.colony.research.cur); const tk = await page.locator('.ec-tech:not(.on):not(.locked)').first(); if (await tk.count()) { await tk.scrollIntoViewIfNeeded(); const bb = await tk.boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(150); } flows.research = [before, await ev(() => window.__ecUI.shell.state.colony.research.cur)]; }
         }
         await ev(() => { const sh = window.__ecUI.shell; sh.ctx.closeSheet(); sh.ctx.openWorld(); });
-        for (const t of ['Annals', 'Letters', 'Factions', 'The dead']) { await tapSel(`.ec-sheet [data-tab="${t}"]`); await shot('world-' + t.split(' ').pop().toLowerCase()); }
+        for (const t of ['Annals', 'Letters', 'Factions', 'Peoples', 'The dead']) { if (!(await page.locator(`.ec-sheet [data-tab="${t}"]`).count())) continue; await tapSel(`.ec-sheet [data-tab="${t}"]`); await shot('world-' + t.split(' ').pop().toLowerCase()); }
       }
       // the Colony sheet (the old shell): every tab, the grid and the schedule editor
       if (!shell2) await ev(() => window.__ecUI.shell.openColony('People'));

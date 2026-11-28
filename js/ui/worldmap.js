@@ -15,6 +15,9 @@
 //   map.setInset({ t, r, b, l })     the part of the map a sheet covers (G22): pan limits and reveal respect it
 //   map.setView({ ox, oy, scale })   set the camera (a fly-to; the bench sweep)
 //   map.setMatches(list)             regions to mark (the site finder's matches): [{ rx, ry }]
+//   map.setMarks({ pins, routes, wars })  the World tab's marks (W3.9): pins [{ rx, ry, kind: 'home' | 'liege' |
+//                                    'near' }], routes [[region index, ...]] (dotted, under the pins), wars
+//                                    [{ rx, ry }] (crossed blades at a front); map.marks() returns a copy
 //   map.state() / map.stats()        camera, level, loupe, selection / frame times (p95), bake and layer ms
 //   map.destroy()                    stop drawing and release the atlas canvases (the screen closed)
 // Zoom levels: fit (the whole world), 4x and 8x of a unit that is the fit scale but never under 5.5 pt, so an
@@ -53,6 +56,11 @@ export function nearestLevel(scales, s) {
   for (let i = 0; i < scales.length; i++) { const d = Math.abs(Math.log(s / scales[i])); if (d < bd) { bd = d; best = i; } }
   return best;
 }
+
+/** The World tab's glyphs (W3.9; our own marks): a map pin (f fill, w its eye) and crossed blades (x the blades, h the hilts). */
+const PIN = ['.fffff.', 'fffffff', 'ffwwwff', 'ffwwwff', 'fffffff', '.fffff.', '..fff..', '...f...'];
+const BLADES = ['hh.....hh', 'hxx...xxh', '.xxx.xxx.', '..xxxxx..', '...xxx...', '..xxxxx..', '.xxx.xxx.', 'hxx...xxh', 'hh.....hh'];
+const PIN_COL = Object.freeze({ home: { f: PAL.flame, w: PAL.ember1 }, liege: { f: PAL.gold, w: PAL.umber1 }, near: { f: PAL.bone, w: PAL.slate1 } });
 
 function prefersReduced() { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } }
 
@@ -114,6 +122,7 @@ export function createWorldMap(host, realm, opts = {}) {
   let sel = opts.selected ? { rx: opts.selected.rx, ry: opts.selected.ry } : null;
   const home = opts.home ? { rx: opts.home.rx, ry: opts.home.ry } : null;
   if (readOnly && home && !sel) sel = { ...home };
+  let marks = { pins: [], routes: [], wars: [] };
   let loupe = null, matches = [], snap = null, raf = 0, idle = 0, dead = false;
   const times = [], counts = { draws: 0, layer: 0 };
 
@@ -211,6 +220,7 @@ export function createWorldMap(host, realm, opts = {}) {
         g.fillStyle = PAL.gold; g.fillRect(cx - (pip >> 1), cy - (pip >> 1), pip, pip);
       }
     }
+    if (marks.routes.length || marks.wars.length || marks.pins.length) drawMarks();
     if (home && readOnly) drawFrame(g, at, view, home.rx, home.ry, 0);
     else if (sel) drawFrame(g, at, view, sel.rx, sel.ry, tPulse);
     if (loupe) {
@@ -223,6 +233,44 @@ export function createWorldMap(host, realm, opts = {}) {
     counts.draws++;
     const total = now() - t0;
     times.push(Math.max(ms, total)); if (times.length > 240) times.shift();
+  }
+
+  // ---- the World tab's marks (W3.9): baked bitmaps drawn with whole-pixel rects, no paths --------------------
+  function drawMarks() {
+    const u = Math.max(1, Math.round(d)), px = Math.max(1, Math.min(2 * u, Math.round(d * Math.max(1, view.scale / 12))));
+    const cxOf = (rx) => Math.round((view.ox + (rx + 0.5) * view.scale) * d), cyOf = (ry) => Math.round((view.oy + (ry + 0.5) * view.scale) * d);
+    const off = (x, y, m) => x < -m || y < -m || x > W * d + m || y > H * d + m;
+    // routes: an ink-edged sand dot every 5 device px along region centres
+    const step = 5 * u, dot = 2 * u;
+    for (const path of marks.routes) {
+      let carry = 0;
+      for (let k = 1; k < path.length; k++) {
+        const a = path[k - 1], b = path[k], ax = cxOf(a % n), ay = cyOf((a - (a % n)) / n), bx = cxOf(b % n), by = cyOf((b - (b % n)) / n);
+        const len = Math.hypot(bx - ax, by - ay);
+        if (off(ax, ay, len + 8) && off(bx, by, len + 8)) { carry = 0; continue; }
+        for (let t = carry; t < len; t += step) {
+          const x = Math.round(ax + (bx - ax) * t / len) - u, y = Math.round(ay + (by - ay) * t / len) - u;
+          g.fillStyle = PAL.ink; g.fillRect(x - u, y - u, dot + 2 * u, dot + 2 * u);
+          g.fillStyle = PAL.sand; g.fillRect(x, y, dot, dot);
+          carry = t + step - len;
+        }
+      }
+    }
+    for (const w of marks.wars) { const x = cxOf(w.rx), y = cyOf(w.ry); if (!off(x, y, 40)) glyph(BLADES, x, y, px, { x: PAL.danger, h: PAL.flame }, 0.5); }
+    // pins: the neighbours, then the liege, then the hold on top
+    const order = { near: 0, liege: 1, home: 2 };
+    for (const p of marks.pins.slice().sort((a, b) => (order[a.kind] | 0) - (order[b.kind] | 0))) {
+      const x = cxOf(p.rx), y = cyOf(p.ry);
+      if (off(x, y, 40)) continue;
+      glyph(PIN, x, y, p.kind === 'home' ? px + u : px, PIN_COL[p.kind] || PIN_COL.near, 1);
+    }
+  }
+  /** A bitmap glyph with an ink edge, its anchor (fx of the width, the bottom row when ay = 1, else the middle) at (x, y). */
+  function glyph(rows, x, y, p, col, ay) {
+    const gw = rows[0].length, gh = rows.length, x0 = Math.round(x - (gw * p) / 2), y0 = ay === 1 ? y - gh * p : Math.round(y - (gh * p) / 2);
+    g.fillStyle = PAL.ink;
+    for (let r = 0; r < gh; r++) for (let c = 0; c < gw; c++) if (rows[r][c] !== '.') g.fillRect(x0 + c * p - p, y0 + r * p - p, 3 * p, 3 * p);
+    for (let r = 0; r < gh; r++) for (let c = 0; c < gw; c++) { const k = rows[r][c]; if (k !== '.' && col[k]) { g.fillStyle = col[k]; g.fillRect(x0 + c * p, y0 + r * p, p, p); } }
   }
 
   // ---- the loupe and choosing -----------------------------------------------------------------------
@@ -405,6 +453,12 @@ export function createWorldMap(host, realm, opts = {}) {
     zoomIn() { api.zoomTo(nearestLevel(scales, view.scale) + 1); },
     zoomOut() { api.zoomTo(nearestLevel(scales, view.scale) - 1); },
     setInset(o = {}) { inset.t = o.t || 0; inset.r = o.r || 0; inset.b = o.b || 0; inset.l = o.l || 0; clampView(); if (sel) reveal(sel.rx, sel.ry); loupe = null; hint.hidden = true; changed(); },
+    setMarks(m = {}) {
+      const reg = (q) => ({ rx: clamp(q.rx | 0, 0, n - 1), ry: clamp(q.ry | 0, 0, n - 1) });
+      marks = { pins: (m.pins || []).map((p) => ({ ...reg(p), kind: p.kind || 'near' })), routes: (m.routes || []).filter((r) => Array.isArray(r) && r.length > 1).map((r) => r.slice()), wars: (m.wars || []).map(reg) };
+      request();
+    },
+    marks: () => ({ pins: marks.pins.map((p) => ({ ...p })), routes: marks.routes.map((r) => r.slice()), wars: marks.wars.map((w) => ({ ...w })) }),
     setMatches(list) { matches = (list || []).map((m) => (typeof m === 'number' ? { rx: m % n, ry: Math.floor(m / n) } : { rx: m.rx, ry: m.ry })); request(); },
     reveal(rx, ry) { reveal(rx, ry); request(); },
     /** Set the camera ({ ox, oy, scale } CSS px; scale clamped to fit..8x); the level becomes the nearest one. */
@@ -418,7 +472,8 @@ export function createWorldMap(host, realm, opts = {}) {
     resize,
     redraw: () => request(),
     state: () => ({ view: { ...view }, level, levels: scales.slice(), layer: at.layer, selected: sel && { ...sel }, home: home && { ...home }, readOnly,
-      loupe: loupe && { ...loupe, ...lpGeom(loupe) }, inset: { ...inset }, matches: matches.length, snapping: !!snap }),
+      loupe: loupe && { ...loupe, ...lpGeom(loupe) }, inset: { ...inset }, matches: matches.length, snapping: !!snap,
+      marks: { pins: marks.pins.length, routes: marks.routes.length, wars: marks.wars.length } }),
     stats() {
       const s = times.slice().sort((a, b) => a - b), q = (p) => (s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0);
       return { frames: times.length, draws: counts.draws, p95: +q(0.95).toFixed(3), max: +q(1).toFixed(3), bake: at.ms && at.ms.bake, layer: counts.layer };

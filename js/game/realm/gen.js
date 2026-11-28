@@ -2,14 +2,20 @@
 //   for (const p of createRealm(params)) ...   // a generator: yields { phase, k, of } per phase, returns the realm
 //   const realm = buildRealm(params);          // the same, run to the end
 // History (step 9) and roads (step 10) are W3: until then the tables are empty and the world is "unsettled".
+// The pin (9.4 part 2 step 2, W3.6): params.pin (a legacy hold's profile) adds one rule after step 8: pinRegion picks
+// the region the old hold stands in, forcePin gives it the profile, and history treats it as settled and empty.
 // Deterministic on every engine (tools/check-realm.mjs compares Node with the browsers); never reads s.rng.
 import { hashString, seedOf } from '../core/rand.js';
 import { REALM_GEN, SIZES, PARAM_ROWS, NAME_PARTS, GEN, START_FIT } from '../../data/realm/params.js';
 import { allocFields, platesStep, elevationStep, temperatureStep, rainStep, drainageStep, drainLakes, geologyStep, stream, gen, ri } from './fields.js';
 import { riversStep, riverFaults } from './rivers.js';
 import { biomesStep } from './biomes.js';
-import { hash32, isEmbarkable, startFits } from './query.js';
-import { REALM_BIOMES } from '../../data/realm/biomes.js';
+import { hash32, isEmbarkable, startFits, idx as ridx, isCoast, isLake, riverClass } from './query.js';
+import { REALM_BIOMES, BIOME_INDEX } from '../../data/realm/biomes.js';
+import { FLOW } from './rivers.js';
+import { CIVKINDS } from '../../data/realm/civkinds.js';
+import { BAND, bandOf } from './biomes.js';
+import { regionOpts } from './region.js';
 import { historyGen, checkHistory } from './history.js';
 import { HISTORY } from '../core/flags.js';
 
@@ -34,7 +40,84 @@ export function normalizeParams(p = {}) {
   out.seed = p.seed === undefined || p.seed === null || p.seed === '' ? 1 : seedOf(p.seed);
   const name = typeof p.name === 'string' ? p.name.trim().slice(0, 24) : '';
   out.name = name || worldName(out.seed);
+  const pin = normalizePin(p.pin);
+  if (pin) out.pin = pin;   // only when set: a world without a pin normalizes (and hashes) as before
   return out;
+}
+
+// ---- the pin (9.4 part 2 step 2; W3.6) ---------------------------------------------------------------------
+const SIDES = Object.freeze(['n', 'e', 's', 'w']);
+/** The pin rule's numbers: the search radius around the centre and the human-civ reach, in Standard regions. */
+export const PIN = Object.freeze({ radius: 12, humanReach: 8 });
+/** A legacy hold's profile { side, river, lake, aquiferPct, biome } with bad values dropped, or null. */
+export function normalizePin(p) {
+  if (!p || typeof p !== 'object' || !SIDES.includes(p.side)) return null;
+  const aq = Number.isInteger(p.aquiferPct) ? Math.max(0, Math.min(100, p.aquiferPct)) : 0;
+  const bio = typeof p.biome === 'string' && BIOME_INDEX[p.biome] !== undefined && REALM_BIOMES[BIOME_INDEX[p.biome]].embark ? p.biome : 'greenvale';
+  return { side: p.side, river: p.river === true, lake: p.lake === true, aquiferPct: aq, biome: bio };
+}
+const kindId = (c) => (typeof c.kind === 'number' ? (CIVKINDS[c.kind] || {}).id : c.kind);
+const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+/**
+ * The region a pinned hold stands in: among embarkable, temperate, moist lowland or upland regions off the coast
+ * within PIN.radius of the centre whose massif side (regionOpts: the side of the highest neighbour) is the hold's,
+ * the best by river match (100), lake match (30), biome match (20), aquifer closeness and nearness to the centre;
+ * ties by the lower index. Widens to the whole map, then drops the climate and side terms, when none qualifies.
+ * Returns { rx, ry, i, tier } (tier 0 is the rule as written).
+ */
+export function pinRegion(realm, pin) {
+  const { n, fields: f } = realm, C = GEN.classify, c = (n - 1) >> 1, rad = Math.round(PIN.radius * n / 64);
+  const tiers = [{ r: rad, clim: true, side: true }, { r: n, clim: true, side: true }, { r: n, clim: false, side: true }, { r: n, clim: false, side: false }];
+  for (let t = 0; t < tiers.length; t++) {
+    const T = tiers[t];
+    let best = null, bs = -Infinity;
+    for (let ry = 0; ry < n; ry++) for (let rx = 0; rx < n; rx++) {
+      const d = cheb(rx, ry, c, c);
+      if (d > T.r) continue;
+      const i = ridx(realm, rx, ry);
+      if (!isEmbarkable(realm, i)) continue;
+      const b = bandOf(f.elev[i], realm.bands);
+      if (T.clim && (b !== BAND.LOW && b !== BAND.UP || f.temp[i] < C.cold || f.temp[i] >= C.warm || f.rain[i] < C.dry || isCoast(realm, i))) continue;
+      const o = regionOpts(realm, rx, ry);
+      if (T.side && (o.side !== pin.side || o.sea)) continue;
+      const sc = ((riverClass(realm, i) > 0) === pin.river ? 100 : 0) + (isLake(realm, i) === pin.lake ? 30 : 0) + (o.biome === pin.biome ? 20 : 0)
+        - Math.abs(o.aquiferPct - pin.aquiferPct) / 4 - d / 2;
+      if (sc > bs) { bs = sc; best = { rx, ry, i, tier: t }; }
+    }
+    if (best) return best;
+  }
+  throw new Error('pinRegion: the world has no embarkable region');
+}
+/** Force region i to the profile: its biome, its lake flag, and a river (class 1, out along the drainage) when the hold has one and it has none. */
+export function forcePin(realm, i, pin) {
+  const f = realm.fields;
+  f.biome[i] = BIOME_INDEX[pin.biome];
+  f.flow[i] = pin.lake ? f.flow[i] | FLOW.LAKE : f.flow[i] & ~FLOW.LAKE;
+  if (pin.river && !(f.flow[i] & FLOW.CLS)) f.flow[i] = (f.flow[i] & ~FLOW.CLS) | (1 << FLOW.CLS_SHIFT);
+  if (!pin.river && (f.flow[i] & FLOW.CLS)) f.flow[i] &= ~FLOW.CLS;
+}
+/**
+ * History over a realm with regions `settled` (indices) held settled and empty (9.4 part 2 step 2; W3.7 marks its
+ * embarked holds' regions the same way): while it runs their elevation reads as sea, so no capital, town, battlefield
+ * or lair is placed there and no road crosses them; the land is restored before the generator returns.
+ */
+export function* historyAround(realm, settled, reroll = 0) {
+  const f = realm.fields, keep = settled.map((i) => f.elev[i]), below = realm.seaLevel > 0 ? realm.seaLevel - 1 : 0;
+  for (const i of settled) f.elev[i] = below;
+  try { yield* historyGen(realm, reroll); } finally { settled.forEach((i, k) => { f.elev[i] = keep[k]; }); }
+}
+/**
+ * The pin's own history guarantees: a living human kingdom (kind 'realm', the liege of 9.4 step 4; with `kingdom`
+ * false, a human civ of any kind) with a site within PIN.humanReach (scaled), and no site in the region. createRealm
+ * re-rolls history for the kingdom; when no re-roll gives one it takes the first that gives a human civ.
+ */
+export function pinFaults(realm, kingdom = true) {
+  if (!realm.pin) return [];
+  const T = realm.tables, reach = Math.max(3, Math.round(PIN.humanReach * realm.n / 64)), { rx, ry } = realm.pin, fails = [];
+  const ok = T.sites.some((s) => s.razed === null && s.civ !== null && T.civs[s.civ] && T.civs[s.civ].fell === null && T.civs[s.civ].people === 'human' && (!kingdom || kindId(T.civs[s.civ]) === 'realm') && cheb(s.x, s.y, rx, ry) <= reach);
+  if (!ok) fails.push({ rule: 'pin', detail: `no human ${kingdom ? 'kingdom' : 'civ'} within ${reach} regions of the pinned region` });
+  if (realm.fields.site[ridx(realm, rx, ry)]) fails.push({ rule: 'pin', detail: 'a site stands in the pinned region' });
+  return fails;
 }
 
 /** The sea sides (1-3 of 'n', 'e', 's', 'w') for the params, from the 'sea' stream. */
@@ -70,7 +153,7 @@ export function checkRealm(realm) {
  * plates and elevation streams with re-roll index r) up to GEN.guarantee.rerolls times, then is accepted with
  * a warning row.
  */
-export function* createRealm(params = {}, { history = HISTORY } = {}) {
+export function* createRealm(params = {}, { history = HISTORY, settled = [] } = {}) {
   const P = normalizeParams(params), n = SIZES[P.size], of = PHASES.length;
   const rx = { n, sc: n / 64, seed: P.seed, params: P, sides: seaSides(P), f: null };
   let realm = null, fails = [], r = 0;
@@ -97,9 +180,30 @@ export function* createRealm(params = {}, { history = HISTORY } = {}) {
     r++;
   }
   for (const fl of fails) realm.warnings.push({ rule: fl.rule, detail: fl.detail });
+  const held = settled.filter((i) => Number.isInteger(i) && i >= 0 && i < n * n);
+  if (P.pin) {   // 9.4 part 2 step 2 (W3.6): the rule after step 8; a pinned world has its own id (never an unpinned world's)
+    const at = pinRegion(realm, P.pin);
+    forcePin(realm, at.i, P.pin);
+    realm.pin = { rx: at.rx, ry: at.ry, tier: at.tier };
+    realm.wid = hash32(P.seed, REALM_GEN.version, n, 'pin');
+    if (!held.includes(at.i)) held.push(at.i);
+  }
   if (history) {   // 2.3 (W3.1a): the years of history, re-rolled as 1.4 says; dark until the HISTORY flag
     let hr = 0, hf;
-    for (;;) { yield* historyGen(realm, hr); hf = checkHistory(realm); if (!hf.length || hr >= GEN.guarantee.rerolls) break; hr++; }
+    const run = (r) => (held.length ? historyAround(realm, held, r) : historyGen(realm, r));
+    let soft = -1;   // the first re-roll whose only fault is a pin without a human kingdom near (a human civ of another kind is)
+    for (;;) {
+      yield* run(hr);
+      const base = checkHistory(realm);
+      hf = base.concat(pinFaults(realm));
+      if (!hf.length) break;
+      if (soft < 0 && !base.length && !pinFaults(realm, false).length) soft = hr;
+      if (hr >= GEN.guarantee.rerolls) {
+        if (soft >= 0) { if (soft !== hr) yield* run(soft); hf = checkHistory(realm).concat(pinFaults(realm, false)); }
+        break;
+      }
+      hr++;
+    }
     for (const fl of hf) realm.warnings.push({ rule: 'history.' + fl.rule, detail: fl.detail });
   }
   return realm;

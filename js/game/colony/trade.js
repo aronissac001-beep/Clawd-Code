@@ -177,7 +177,7 @@ function realmArrivals(s, rec, R) {
   const ts = tradersFrom(s, due);
   if (!ts.length) { row[1] = s.tick + due.cadence * D; return; }
   arrive(s, ts[nextU32(s, 'main') % ts.length].id, due);
-  row[1] = s.tick + due.cadence * D;
+  row[1] = s.tick + due.cadence * D; row[2] = s.tick;   // [site, next due, last arrival] (the Peoples card reads [2])
 }
 
 // ---- Colony goods ------------------------------------------------------------------------------------------
