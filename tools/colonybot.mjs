@@ -237,28 +237,31 @@ export const W2_HARSH = Object.freeze(['tundra', 'saltflat', 'ashlands', 'ruins'
 export const W2_ROWS = Object.freeze({ mild: 0.9, harsh: 0.7, days: 60, seeds: 5 });
 const W2_CHECK_DAYS = [1, 2, 5, 10, 20, 30, 60, 90, 120];
 let realmCache = null;
-async function realmOf(wseed) {
-  if (realmCache && realmCache.seed === wseed) return realmCache.realm;
+async function realmOf(wseed, history = false) {
+  if (realmCache && realmCache.seed === wseed && realmCache.history === history) return realmCache.realm;
   const { buildRealm } = await import('../js/game/realm/gen.js');
-  realmCache = { seed: wseed, realm: buildRealm({ seed: wseed }) };
+  realmCache = { seed: wseed, history, realm: buildRealm({ seed: wseed }, history ? { history: true } : undefined) };
   return realmCache.realm;
 }
-/** The founding of a realm hold for the bot: foundColony in the region, then the bot's two speed rows (bot3 foundFortress). */
-async function realmFounder(wseed, rx, ry) {
+/** The founding of a realm hold for the bot: foundColony in the region, then the bot's two speed rows (bot3 foundFortress).
+ *  `record` (W3.3a): the world is built with history and its decoded record sits in s.rt.realm (9.3 step 5). */
+async function realmFounder(wseed, rx, ry, record = false) {
   const [{ installSim, foundColony }, { coverRebuild, skyZRebuild }] = await Promise.all([import('../js/game/core/setup.js'), import('../js/game/world/vertical.js')]);
-  const realm = await realmOf(wseed);
+  const realm = await realmOf(wseed, record);
   return (_sd, { storyteller = null, difficulty = null } = {}) => {
     installSim({ stage: '2' });
     const s = foundColony({ name: `Bot Hold ${wseed}:${rx},${ry}`, realm, rx, ry, d: 20, storyteller, difficulty });
     if (!s.rt.cover) s.rt.cover = coverRebuild(s);
     if (!s.rt.skyZ) s.rt.skyZ = skyZRebuild(s);
+    if (record) s.rt.realm = realm;
     return s;
   };
 }
 /** bot v4 (tools/lib/bot4.mjs runBot4) on a realm hold: the same composition, founded by realmFounder. */
-async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null } = {}) {
+async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null, record = false, onTick = null } = {}) {
   const [{ runBot2 }, b3, b4, { setBotLevel }] = await Promise.all([import('./lib/bot2.mjs'), import('./lib/bot3.mjs'), import('./lib/bot4.mjs'), import('./lib/bot.mjs')]);
-  const found = await realmFounder(wseed, rx, ry);
+  const found = await realmFounder(wseed, rx, ry, record);
+  const R = record ? await realmOf(wseed, true) : null;
   let deep = null, X3 = null, z2 = null;
   const X4 = b4.makeMeter4();
   const r = await runBot2({
@@ -266,7 +269,7 @@ async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null }
     onDay: (s, d, row) => { X4.onDay(s, d); if (onDay) onDay(s, d, row); },
     found,
     wrap: (s, base) => { deep = b3.makeDeep(s, base); X3 = b3.makeMeter3(s); z2 = b4.makeZ2(s, deep, base); return z2; },
-    onTick: (s) => { X3.onTick(s); },
+    onTick: (s) => { if (R && s.rt.realm !== R) s.rt.realm = R; X3.onTick(s); if (onTick) onTick(s); },
   });
   r.z1 = b3.evaluate3(r.s, r, X3.X, deep, days);
   r.z2 = b4.evaluate4(r.s, r, X4, z2, days);
@@ -282,8 +285,11 @@ async function w2Run(spec, days) {
   const hashes = {};
   const onDay = (s, d) => { if (marks.has(d)) hashes[d] = stateHash(s); };
   let r;
+  // W3.3a (spec.record): the realm caravans seen, by visit id: [tick, site, fac, barge]
+  const arrivals = [], seenV = new Set();
+  const onTick = spec.record ? (s) => { const t = s.colony.trade; if (t && t.visits.length) for (const v of t.visits) if (!seenV.has(v.id)) { seenV.add(v.id); arrivals.push([s.tick, Number.isInteger(v.site) ? v.site : null, v.fac || null, v.barge === true]); } } : null;
   if (spec.legacy !== undefined) { const { runBot4 } = await import('./lib/bot4.mjs'); r = await runBot4({ seed: spec.legacy, days, onDay }); }
-  else r = await runBot4Realm({ ...spec, days, onDay });
+  else r = await runBot4Realm({ ...spec, days, onDay, onTick });
   const m = r.metrics;
   const errors = m.checks.filter((c) => !c.ok && !c.info && !c.na && /exception|state valid/.test(c.name)).map((c) => `${c.name}: ${c.detail}`);
   const s = r.s;
@@ -291,7 +297,34 @@ async function w2Run(spec, days) {
     ...spec, days, hash: r.hash, hashes, ms: r.ms, errors, holdSeed: s.seed >>> 0, realm: s.realm ? { wid: s.realm.wid, rx: s.realm.rx, ry: s.realm.ry, biome: s.realm.embark && s.realm.embark.biome } : null,
     alive: m.colonists.alive, total: m.colonists.total, peak: m.colonists.peak, fallen: s.colony.fallen === true, deathCauses: m.deathCauses,
     hamletDay: m.hamletDay ?? null, tickP95: Math.max(0, ...(m.series || []).map((x) => x.tickP95 || 0)), commands: r.log.length, refused: r.refused.length,
+    ...(spec.record ? { w3: await w3Caravans(s, arrivals, spec.wseed) } : {}),
   };
+}
+/**
+ * W3.3a: a realm hold's caravans against travel days. Every arrival must come from a town in reach (a row of
+ * trade.sites); for each site, the gap between two arrivals must be its cadence (caravans.js cadenceDays of its travel
+ * days) +-1 day, unless the site stopped being a source in between (a gap longer by more than a day while the site was
+ * out: counted as `paused`, never early). The first arrival of a site that was a source from the start: max(4, days) +-1.
+ */
+async function w3Caravans(s, arrivals, wseed) {
+  const [{ travelField, cadenceDays, REALM_CARAVAN }, { TICKS_PER_DAY: D, START_TICK }] = await Promise.all([import('../js/game/colony/caravans.js'), import('../js/game/core/time.js')]);
+  const R = await realmOf(wseed, true), tf = travelField(R, s.realm.rx, s.realm.ry, REALM_CARAVAN.reach);
+  const bySite = new Map(), bad = [];
+  let legacy = 0, ok = 0, early = 0, late = 0, firstOk = 0, firsts = 0;
+  for (const [tick, site] of arrivals) { if (site === null) { legacy++; continue; } (bySite.get(site) || bySite.set(site, []).get(site)).push(tick); }
+  for (const [site, ticks] of bySite) {
+    const x = R.tables.sites[site], days = tf[x.y * R.n + x.x], cad = cadenceDays(days);
+    if (!(days <= REALM_CARAVAN.reach)) { bad.push(`site ${site} at ${days} days`); continue; }
+    firsts++;
+    const f0 = (ticks[0] - START_TICK) / D, want = Math.max(REALM_CARAVAN.first, Math.ceil(days));
+    if (Math.abs(f0 - want) <= 1) firstOk++;
+    for (let k = 1; k < ticks.length; k++) {
+      const g = (ticks[k] - ticks[k - 1]) / D;
+      if (g < cad - 1) { early++; bad.push(`site ${site} gap ${g.toFixed(2)} < cadence ${cad}`); } else if (g <= cad + 1) ok++; else late++;
+    }
+  }
+  const b = s.realm.bind || {};
+  return { arrivals: arrivals.length - legacy, legacy, sites: bySite.size, gapsOk: ok, early, paused: late, firstOk, firsts, bound: ['hearthwatch', 'league', 'gutterkin', 'ashfang', 'pilgrims'].filter((k) => Number.isInteger(b[k])).length, bind: b, stand: (s.realm.stand || []).length, bad: bad.slice(0, 4) };
 }
 /** The 5 holds of each biome (see the header). */
 async function w2Picks(biomes, per) {
@@ -364,8 +397,58 @@ async function w2Biomes() {
   console.log(`colonybot w2 [${biomes.length} biomes x ${per} holds x ${days} days, ${((Date.now() - t0) / 60000).toFixed(1)} min]: ${rows.filter((x) => x.ok).length}/${rows.length} biome rows hold${pass ? ' - PASS' : ' - FAIL'}`);
   process.exit(pass ? 0 : 1);
 }
+/**
+ * --realm=<worldSeed>:auto [--seeds=1-5] [--days=120] [--jobs=3] [--out=FILE] (W3.3a, EMBERCROWN-WORLD.md 12.5): bot v4
+ * on hold k of each --seeds k in that world, built with history and its record loaded: the embarkable regions with a
+ * caravan source in hash32(seed, rx, ry, 'w3bot') order, the k-th. Beside them, the W0 reference (realm-less seeds,
+ * the same days) whose checkpoint hashes must equal baseline-w0.json. Oracle: the reference hashes are identical; every
+ * hold binds the 5 roles; every caravan comes from a town within 12 travel days, no gap is early and the gaps and first
+ * arrivals match the travel days +-1 (a gap is allowed to run long only while its site stopped being a source).
+ */
+async function w3Auto(wseed) {
+  const days = +arg('days', 120), jobs = +arg('jobs', 3), t0 = Date.now();
+  const seeds = parseSeeds(arg('seeds', '1-5'));
+  const [{ idx, isEmbarkable }, { hash32 }, { realmField }, CV, { bindRoles }] = await Promise.all([import('../js/game/realm/query.js'), import('../js/game/core/rand.js'), import('../js/game/core/setup.js'), import('../js/game/colony/caravans.js'), import('../js/game/colony/factions.js')]);
+  const realm = await realmOf(wseed, true), regions = [];
+  for (let ry = 0; ry < realm.n; ry++) for (let rx = 0; rx < realm.n; rx++) if (isEmbarkable(realm, idx(realm, rx, ry))) regions.push({ rx, ry, k: hash32(wseed, rx, ry, 'w3bot') >>> 0 });
+  regions.sort((a, b) => a.k - b.k || a.rx - b.rx || a.ry - b.ry);
+  const picks = [];
+  for (const g of regions) {
+    if (picks.length >= Math.max(...seeds)) break;
+    const probe = { realm: realmField(realm, g.rx, g.ry), rt: { realm }, colony: { factions: { league: 0, hearthwatch: 10, gutterkin: -20 } } };
+    bindRoles(probe, realm);
+    if (CV.caravanSources(probe, realm).length) picks.push(g);
+  }
+  const specs = seeds.map((k) => ({ legacy: k }));
+  for (const k of seeds) if (picks[k - 1]) specs.push({ wseed, rx: picks[k - 1].rx, ry: picks[k - 1].ry, record: true, k });
+  const res = await w2Pool(specs, days, jobs);
+  let base = null; try { base = JSON.parse(readFileSync(join(HERE, 'out', 'baseline-w0.json'), 'utf8')); } catch (_) { base = null; }
+  const refBad = [];
+  let refChecked = 0;
+  for (const r of res.filter((x) => x.legacy !== undefined)) {
+    if (r.failed) { refBad.push(`seed ${r.legacy}: ${r.failed}`); continue; }
+    for (const [d, h] of Object.entries(r.hashes)) { const want = base && base.bot && base.bot[r.legacy] && base.bot[r.legacy][d]; if (want === undefined) continue; refChecked++; if (want !== h) refBad.push(`seed ${r.legacy} day ${d}: ${h} (baseline-w0 ${want})`); }
+  }
+  const holds = res.filter((x) => x.legacy === undefined), rows = [];
+  for (const r of holds) {
+    const w = r.w3 || {};
+    const okRow = !r.failed && !r.errors.length && w.bound === 5 && !w.early && !(w.bad || []).length && w.arrivals > 0 && w.firstOk === w.firsts;
+    rows.push({ ok: okRow, r });
+  }
+  if (!refChecked) refBad.push('no baseline-w0.json checkpoint compared');
+  const pass = !refBad.length && holds.length === seeds.length && rows.every((x) => x.ok);
+  console.log(`W0 reference (bot v4, realm-less seeds ${seeds.join(',')}, ${days} days): alive ${res.filter((x) => x.legacy !== undefined).map((x) => x.alive).join(', ')}; hashes ${refBad.length ? 'DIFFER from baseline-w0.json: ' + refBad.slice(0, 3).join('; ') : 'identical to baseline-w0.json at ' + refChecked + ' seed-day checkpoints'}`);
+  for (const { ok, r } of rows) {
+    const w = r.w3 || {};
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} hold ${r.k} ${wseed}:${r.rx},${r.ry} (${r.realm && r.realm.biome}): ${r.alive}/${r.total} alive${r.fallen ? ', FALLEN' : ''}; roles bound ${w.bound}/5 ${JSON.stringify(w.bind)}, ${w.stand} c<n> rows; ${w.arrivals} caravans from ${w.sites} towns (${w.legacy} legacy), gaps on cadence +-1 ${w.gapsOk}, early ${w.early}, paused ${w.paused}, first arrivals on time ${w.firstOk}/${w.firsts}${r.failed ? ', ' + r.failed : ''}${(w.bad || []).length ? ', ' + w.bad.join('; ') : ''}${r.errors.length ? ', ' + r.errors.join('; ') : ''}`);
+  }
+  if (arg('out', null)) save(arg('out', null), { what: 'W3.3a: realm caravans and roles (EMBERCROWN-WORLD.md 12.5)', wseed, days, pass, refBad, results: res });
+  console.log(`colonybot w3 realm ${wseed}:auto [${seeds.length} holds x ${days} days, ${((Date.now() - t0) / 60000).toFixed(1)} min]${pass ? ' - PASS' : ' - FAIL'}`);
+  process.exit(pass ? 0 : 1);
+}
 /** --realm=<seed>:<rx>,<ry>: one realm hold. */
 async function w2One() {
+  if (/^\d+:auto$/.test(String(arg('realm', '')))) await w3Auto(+String(arg('realm', '')).split(':')[0]);
   const m = String(arg('realm', '')).match(/^(\d+):(\d+),(\d+)$/);
   if (!m) { console.error('colonybot: --realm=<worldSeed>:<rx>,<ry>'); process.exit(2); }
   const spec = { wseed: +m[1], rx: +m[2], ry: +m[3] }, days = +arg('days', W2_ROWS.days);

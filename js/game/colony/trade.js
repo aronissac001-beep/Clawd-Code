@@ -18,6 +18,16 @@
 //   and a coin reward), else the faction is let down (-5). The letter and the Chronicle tell it.
 //   Gutterkin (9.8): payGutterkin(s) takes 200 coins and halves their raids for a season
 //   (gutterkinRaidPct, for H's storyteller weights).
+//
+// W3.3a (EMBERCROWN-WORLD.md 2.7 caravans row, G6, G7). In a hold whose realm record with history is loaded
+// (factions.js realmRec), the roles are bound once (ensureBound) and caravans come from real towns: caravans.js
+// caravanSources (friendly towns and cities within 12 travel days). Each source site keeps a row [site, next tick] in
+// rec.sites (only realm holds have the key): its first caravan arrives after max(4, its travel days) days, the next
+// one its cadence (travel days x 2 + 5, at least a season) after the last arrival; one arrival an hour, one visit
+// per site at a time. The trader type is one of the tier's (a river barge only from a site on a great river) that the site's
+// role deals through when it has one; its stock leans to the goods of the site's people and biome, x1.5 by barge.
+// The visit records { site, fac, barge }: prices and goodwill go to `fac` (the bound role key, or the civ's 'c<n>').
+// A realm-less hold (or a lost record, 9.2) runs the legacy schedule above, draw for draw.
 
 import { noteTradeOut } from './offices.js';
 import { registerApplier } from '../core/commands.js';
@@ -27,7 +37,8 @@ import { nextId, bldById } from '../core/state.js';
 import { TICKS_PER_DAY, DAYS_PER_SEASON } from '../core/time.js';
 import { TER_WATER, N } from '../core/grid.js';
 import { def, all } from './defs.js';
-import { goodwillPricePct, addGoodwill, GOODWILL_IDS, seedGoodwill } from './factions.js';
+import { goodwillPricePct, addGoodwill, GOODWILL_IDS, seedGoodwill, ensureBound, realmRec } from './factions.js';
+import { caravanSources, REALM_CARAVAN } from './caravans.js';
 import { atLeast, tierIndex } from './tiers.js';
 import { bump } from './ledger.js';
 import { addChron } from './chronicle.js';
@@ -39,17 +50,30 @@ import { idx } from '../core/grid.js';
 
 export const VISIT = Object.freeze({ campD: 12, hamletD: 8, stayD: 1, firstD: 4, kinds: [5, 8], coins: [300, 900], envoyD: 6, gutterkinCost: 200 });
 
-/** Price in tenths of a coin the colony pays for `n` of an item from a trader. */
-export function buyPrice(s, traderId, k, n) {
+/** Price in tenths of a coin the colony pays for `n` of an item from a trader (`fac`: the visit's faction, visitFaction). */
+export function buyPrice(s, traderId, k, n, fac = null) {
   const t = def('trader', traderId), d = def('item', k);
   if (!t || !d) return 0;
-  return Math.ceil((d.value * n * t.buyPct * goodwillPricePct(s, t.faction) * (100 - envoyPct(s))) / 1000000);
+  return Math.ceil((d.value * n * t.buyPct * goodwillPricePct(s, fac || t.faction) * (100 - envoyPct(s))) / 1000000);
 }
 /** Price the colony gets for `n` of an item. */
-export function sellPrice(s, traderId, k, n) {
+export function sellPrice(s, traderId, k, n, fac = null) {
   const t = def('trader', traderId), d = def('item', k);
   if (!t || !d) return 0;
-  return Math.floor((d.value * n * t.sellPct * (200 - goodwillPricePct(s, t.faction)) * (100 + envoyPct(s))) / 1000000);
+  return Math.floor((d.value * n * t.sellPct * (200 - goodwillPricePct(s, fac || t.faction)) * (100 + envoyPct(s))) / 1000000);
+}
+/** The faction a visit trades for: a realm caravan's `fac` (role key or 'c<n>'), else its trader type's faction. */
+export function visitFaction(s, v) {
+  if (v && typeof v.fac === 'string') return v.fac;
+  const t = v ? def('trader', v.trader) : null;
+  return t ? t.faction : null;
+}
+/** Where a realm caravan came from, for its letter and the trade sheet: { site, name, civ, civName, barge } or null. */
+export function visitFrom(s, v) {
+  const R = v && Number.isInteger(v.site) ? realmRec(s) : null, x = R ? R.tables.sites[v.site] : null;
+  if (!x) return null;
+  const c = Number.isInteger(x.civ) ? R.tables.civs[x.civ] : null;
+  return { site: v.site, name: x.name || '', civ: c ? c.id : null, civName: c ? c.name : '', barge: v.barge === true };
 }
 /** The Envoy's Social bonus percent (the best Social of the living colonists): -5 at 0, +15 at 20. */
 export function envoyPct(s) {
@@ -90,29 +114,70 @@ const dealsIn = (cats, k) => catChain(categoryOf(k)).some((c) => cats.includes(c
 export function tradersNow(s) {
   return all('trader').filter((t) => atLeast(s, t.tier) && (!t.river || hasWater(s)) && (tierIndex('hamlet') > s.colony.tier ? t.tier === 'camp' : true));
 }
-/** A trader's goods: kinds from its `sells` categories, a stack's worth each (fewer of the dear ones). */
-function stockFor(s, t) {
-  const kinds = all('item').filter((d) => d.value > 0 && d.cat !== 'coins' && dealsIn(t.sells, d.id) && !(d.tags || []).includes('corpse'));
+/**
+ * A trader's goods: kinds from its `sells` categories, a stack's worth each (fewer of the dear ones). A realm caravan
+ * (`src`, caravans.js caravanSources row) also carries its people's and biome's goods: half its kinds (rounded up) come
+ * from those when it has them, and a barge brings 1.5x of each.
+ */
+function stockFor(s, t, src = null) {
+  const ok = (d, cats) => d.value > 0 && d.cat !== 'coins' && dealsIn(cats, d.id) && !(d.tags || []).includes('corpse');
+  const kinds = all('item').filter((d) => ok(d, t.sells) || (src && ok(d, src.goods)));
   const out = [];
   const n = Math.min(kinds.length, rint(s, VISIT.kinds[0], VISIT.kinds[1]));
   const pool = kinds.slice();
+  const fav = src ? pool.filter((d) => ok(d, src.goods)) : [];
+  const nFav = Math.min(fav.length, Math.ceil(n / 2));
   for (let j = 0; j < n; j++) {
-    const d = pool.splice(nextU32(s, 'main') % pool.length, 1)[0];
+    let d;
+    if (j < nFav) { d = fav.splice(nextU32(s, 'main') % fav.length, 1)[0]; pool.splice(pool.indexOf(d), 1); }
+    else { d = pool.splice(nextU32(s, 'main') % pool.length, 1)[0]; }
     const lim = Math.max(1, d.stack | 0);
-    const cnt = lim === 1 ? rint(s, 1, 2) : Math.max(1, Math.min(lim, Math.floor(3000 / Math.max(1, d.value)) + rint(s, 0, 10)));
+    let cnt = lim === 1 ? rint(s, 1, 2) : Math.max(1, Math.min(lim, Math.floor(3000 / Math.max(1, d.value)) + rint(s, 0, 10)));
+    if (src && src.barge) cnt = Math.floor(cnt * REALM_CARAVAN.barge);
     out.push({ k: d.id, m: null, q: lim === 1 ? 1 : 0, n: cnt });
   }
   return out;
 }
-/** A caravan arrives now (also for tests and incidents). Returns the visit. */
-export function arrive(s, traderId) {
+/** A caravan arrives now (also for tests and incidents). Returns the visit. `src`: a realm source site (caravanSources row). */
+export function arrive(s, traderId, src = null) {
   const t = def('trader', traderId);
   if (!t) return null;
   const rec = tradeRec(s);
-  const v = { id: nextId(s, 'visit'), trader: t.id, until: s.tick + VISIT.stayD * TICKS_PER_DAY, stock: stockFor(s, t), coins: rint(s, VISIT.coins[0], VISIT.coins[1]) };
+  const v = { id: nextId(s, 'visit'), trader: t.id, until: s.tick + VISIT.stayD * TICKS_PER_DAY, stock: stockFor(s, t, src), coins: rint(s, VISIT.coins[0], VISIT.coins[1]) };
+  if (src) { v.site = src.site; v.fac = src.fac; v.barge = src.barge === true; if (src.barge) v.coins = Math.floor(v.coins * REALM_CARAVAN.barge); }
   rec.visits.push(v);
-  emit(s, 'letter', { letterId: nextId(s, 'letter'), kind: 'trader', visitId: v.id, trader: t.id });
+  emit(s, 'letter', src ? { letterId: nextId(s, 'letter'), kind: 'trader', visitId: v.id, trader: t.id, site: src.site, civ: src.civ, barge: v.barge }
+    : { letterId: nextId(s, 'letter'), kind: 'trader', visitId: v.id, trader: t.id });
   return v;
+}
+
+// ---- Realm caravans (W3.3a) ----------------------------------------------------------------------------------
+/** The trader types a realm source may send now: the tier's (a barge only from a great river), its role's when it has any. */
+export function tradersFrom(s, src) {
+  const ts = all('trader').filter((t) => atLeast(s, t.tier) && (!t.river || src.barge) && (tierIndex('hamlet') > s.colony.tier ? t.tier === 'camp' : true));
+  const own = ts.filter((t) => t.faction === src.fac);
+  return own.length ? own : ts;
+}
+/** Hourly, in a realm hold: schedule each source site and let the earliest due caravan arrive (one an hour). */
+function realmArrivals(s, rec, R) {
+  if (!Array.isArray(rec.sites)) rec.sites = [];
+  const srcs = caravanSources(s, R), D = TICKS_PER_DAY;
+  for (const c of srcs) {
+    if (rec.sites.some((r) => r[0] === c.site)) continue;
+    rec.sites.push([c.site, s.tick + Math.max(REALM_CARAVAN.first, Math.ceil(c.days)) * D]);
+    rec.sites.sort((a, b) => a[0] - b[0]);
+  }
+  let due = null, row = null;
+  for (const c of srcs) {
+    const r = rec.sites.find((x) => x[0] === c.site);
+    if (!r || s.tick < r[1] || rec.visits.some((v) => v.site === c.site)) continue;
+    if (!row || r[1] < row[1]) { due = c; row = r; }
+  }
+  if (!due) return;
+  const ts = tradersFrom(s, due);
+  if (!ts.length) { row[1] = s.tick + due.cadence * D; return; }
+  arrive(s, ts[nextU32(s, 'main') % ts.length].id, due);
+  row[1] = s.tick + due.cadence * D;
 }
 
 // ---- Colony goods ------------------------------------------------------------------------------------------
@@ -141,17 +206,17 @@ export const colonyCoins = (s) => haveN(s, { k: 'coins' });
 export function checkTrade(s, c) {
   const v = visitById(s, c.visitId);
   if (!v || s.tick >= v.until) return { why: 'no trader is visiting' };
-  const t = def('trader', v.trader);
+  const t = def('trader', v.trader), fac = visitFaction(s, v);
   let pay = 0, get = 0;
   for (const g of c.buy || []) {
     const have = v.stock.filter((x) => x.k === g.k && (g.m === undefined || g.m === null || x.m === g.m)).reduce((n, x) => n + x.n, 0);
     if (have < g.n) return { why: `the ${t.name} has only ${have} of that` };
-    pay += buyPrice(s, t.id, g.k, g.n);
+    pay += buyPrice(s, t.id, g.k, g.n, fac);
   }
   for (const g of c.sell || []) {
     if (!dealsIn(t.buys, g.k)) return { why: `the ${t.name} does not buy that` };
     if (haveN(s, g) < g.n) return { why: 'not enough of that in the stockpiles' };
-    get += sellPrice(s, t.id, g.k, g.n);
+    get += sellPrice(s, t.id, g.k, g.n, fac);
   }
   const payC = Math.ceil(pay / 10), getC = Math.floor(get / 10);
   if (payC > getC && colonyCoins(s) < payC - getC) return { why: 'not enough coins' };
@@ -174,7 +239,7 @@ export function tradeCmd(s, c) {
   if (net < 0) takeGoods(s, { k: 'coins' }, -net);
   else if (net > 0) spawn(s, 'coins', null, 0, net, x, y);
   v.coins -= net;
-  addGoodwill(s, t.faction, 1);
+  addGoodwill(s, visitFaction(s, v), 1);
   bump(s, 'traded');
   // a bargain worth the name (TRADE_DEED_COINS or more changed hands) is the envoy's deed; a token swap is not
   const envoy = chk.payC + chk.getC >= TRADE_DEED_COINS ? envoyOf(s) : null;
@@ -209,11 +274,14 @@ export const gutterkinRaidPct = (s) => (s.colony.trade && s.colony.trade.paidGut
 /** Tick system (slot 'colony', every hour): caravans come and go, envoys ask and are answered. */
 export function tradeSystem(s) {
   if (s.tick % 600 !== 0) return;
+  ensureBound(s);   // W3.3a: a realm hold's roles are bound once (no-op without a realm record)
   const rec = tradeRec(s);
   // departures
   if (rec.visits.length) rec.visits = rec.visits.filter((v) => v.until > s.tick);
-  // arrivals
-  if (s.tick >= rec.next) {
+  // arrivals: from the realm's towns (W3.3a), else the legacy schedule
+  const R = realmRec(s);
+  if (R) realmArrivals(s, rec, R);
+  else if (s.tick >= rec.next) {
     const ts = tradersNow(s);
     if (ts.length && !rec.visits.length) arrive(s, ts[nextU32(s, 'main') % ts.length].id);
     rec.next = s.tick + (atLeast(s, 'hamlet') ? VISIT.hamletD : VISIT.campD) * TICKS_PER_DAY;

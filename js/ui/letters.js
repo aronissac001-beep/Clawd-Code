@@ -21,7 +21,7 @@ import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../game/core/time.js';
 import { pendingLetters, letterById } from '../game/threat/letters.js';
 import { fullName, nemesisById } from '../game/threat/nemesis.js';
 import { demandCard } from '../game/people/embertouch.js';
-import { buyPrice, sellPrice, colonyCoins } from '../game/colony/trade.js';
+import { buyPrice, sellPrice, colonyCoins, visitFaction } from '../game/colony/trade.js';
 import { nemesisRow } from './worldui.js';
 import { W, PLANE, D, TER, DESIG } from '../game/core/grid.js';
 import { stoneId } from '../game/world/defs.js';
@@ -262,7 +262,7 @@ export function openTrade(ctx, visitId) {
   ctx.openSheet(`Trade: ${tr.name}`, (el) => {
     const coins = colonyCoins(s);
     let cost = 0, gain = 0;
-    const price = (side, g, n) => { try { return side === 'buy' ? buyPrice(s, v.trader, g.k, n) : sellPrice(s, v.trader, g.k, n); } catch (_) { return 0; } };
+    const price = (side, g, n) => { try { return side === 'buy' ? buyPrice(s, v.trader, g.k, n, visitFaction(s, v)) : sellPrice(s, v.trader, g.k, n, visitFaction(s, v)); } catch (_) { return 0; } };
     for (const [, x] of basket.buy) cost += price('buy', x.g, x.n);
     for (const [, x] of basket.sell) gain += price('sell', x.g, x.n);
     const net = Math.floor(gain / 10) - Math.ceil(cost / 10);   // K's prices are tenths of a coin

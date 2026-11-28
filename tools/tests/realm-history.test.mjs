@@ -163,10 +163,10 @@ test('history feeds the region inputs: lost artifacts are relics, living beasts 
   const r = realmOf(FIXTURES[0]), T = r.tables;
   const lost = T.artifacts.find((a) => a.lost && typeof a.x === 'number');
   assert.ok(lost, 'a lost artifact');
-  assert.ok(regionOpts(r, lost.x, lost.y).relics.some((x) => x.key === lost.id));
+  assert.ok(regionOpts(r, lost.x, lost.y).relics.some((x) => x.key === 'wa' + lost.id));
   const b = T.beasts.find((x) => x.alive);
   assert.ok(b, 'a living beast');
-  assert.ok(regionOpts(r, b.x, b.y).lairs.some((x) => x.key === b.id));
+  assert.ok(regionOpts(r, b.x, b.y).lairs.some((x) => x.key === 'wb' + b.id));
   const slain = T.beasts.find((x) => !x.alive);
   if (slain) {
     const tr = T.artifacts.find((a) => a.kind === 'trophy' && a.beast === slain.id);

@@ -38,7 +38,6 @@ import { logicOf, isHostile } from './incidents.js';
 import { fillText } from './letters.js';
 import { fullName, incidentFor, realmRecord, figureName, civLabel } from './nemesis.js';
 import { CIVKINDS } from '../../data/realm/civkinds.js';
-import { REL } from '../../data/realm/ethics.js';
 import { ethicDistance } from '../realm/civs.js';
 import { weatherKind } from '../world/weather.js';
 import { causeLean } from '../colony/renown.js';
@@ -46,6 +45,7 @@ import { prehistoryOf, foundVoxel, legendOf } from '../colony/legends.js';
 import { W, H, D, zS, PLANE } from '../core/grid.js';
 import { GEN3 } from '../../data/worldgen.js';
 import { pristineOf } from '../save/pristine.js';
+import { civGoodwill } from '../colony/factions.js';
 
 export const CAUSE_KINDS = Object.freeze(DATA.cause.map((c) => c.id));
 const ROW = Object.freeze(Object.fromEntries(DATA.cause.map((c) => [c.id, c])));
@@ -181,7 +181,7 @@ export function breachSeeps(s) {
   return w.length ? w : (s.colony.tier | 0) >= 3 ? dormantRows(s, 'seep').map((r) => r[1]) : [];
 }
 /** The lairs the hold has dug near (lair and lair_colossus rows): [voxel]. */
-export const nearLairs = (s) => (D === 1 ? [] : dormantRows(s, ['lair', 'lair_colossus']).filter((r) => nearFound(s, r[1], K.lairR, K.nearDz)).map((r) => r[1]));
+export const nearLairs = (s) => (D === 1 ? [] : dormantRows(s, ['lair', 'lair_colossus', 'world_lair']).filter((r) => nearFound(s, r[1], K.lairR, K.nearDz)).map((r) => r[1]));
 /** A cavern's deep passages (passage rows on its levels): [voxel]. */
 export function passagesOf(s, cav) { const zs = cavernZs()[cav] || []; return dormantRows(s, 'passage').map((r) => r[1]).filter((v) => zs.includes((v / PLANE) | 0)); }
 export const cavernName = (id) => CAVE_NAME[id] || 'the deep';
@@ -263,7 +263,7 @@ export const liegeOf = (s, R, sites = realmSites(s, R)) => (Number.isInteger(s.r
 /** Every faction role's civ now: { role: civ id | null }. */
 export function roleMap(s, R, sites = realmSites(s, R)) { const m = {}; for (const f of FACTIONS.faction || []) m[f.id] = roleCiv(s, R, f.id, sites); return m; }
 /** The hold's relation to civ id: a bound role's goodwill (a role without goodwill: its start), a `c<n>` standing, else the
- *  2.3 relation of that civ to the liege (base - perDist x ethic distance). */
+ *  2.3 relation of that civ to the liege (civGoodwill, shared with trade). */
 export function holdRel(s, R, id, sites = realmSites(s, R), roles_ = roleMap(s, R, sites)) {
   const roles = Object.keys(roles_).filter((k) => roles_[k] === id);
   if (roles.length) {
@@ -271,12 +271,7 @@ export function holdRel(s, R, id, sites = realmSites(s, R), roles_ = roleMap(s, 
     for (const k of roles) { const f = FACTION_ROW[k]; const g = f && f.goodwill ? (s.colony.factions && s.colony.factions[k]) | 0 : f ? f.start | 0 : 0; if (g < r) r = g; }
     return r;
   }
-  const row = Array.isArray(s.realm.stand) ? s.realm.stand.find((x) => Array.isArray(x) && x[0] === id) : null;
-  if (row) return row[1] | 0;
-  const cf = s.colony.factions && s.colony.factions['c' + id];
-  if (typeof cf === 'number') return cf | 0;
-  const L = liegeOf(s, R, sites), lc = L !== null ? R.tables.civs[L] : null, c = R.tables.civs[id];
-  return lc && c && lc.eth && c.eth ? REL.base - REL.perDist * ethicDistance(c.eth, lc.eth) : 0;
+  return civGoodwill(s, id);
 }
 /** The civs that may raid the hold now, heaviest first: [{ id, war, rel, kind }] (at war with the liege, or rel < -40). */
 export function hostileCivs(s, R = realmRecord(s)) {

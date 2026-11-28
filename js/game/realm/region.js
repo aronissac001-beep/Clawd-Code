@@ -8,6 +8,7 @@
 import { GEN3 } from '../../data/worldgen.js';
 import { REALM_BIOMES } from '../../data/realm/biomes.js';
 import { DX, DY } from './fields.js';
+import { artifactName } from '../../data/text/realm.js';
 import { BAND, BAND_NAMES, bandOf } from './biomes.js';
 import { hash32, idx, inside, isSea, riverClass, isLake, isCoast, isEmbarkable, downOf } from './query.js';
 
@@ -97,9 +98,12 @@ export function regionOpts(realm, rx, ry) {
   const seeps = taint >= 160 ? [3, 4] : [2, 3];
   // history (W3): ruins (razed sites, battlefields), lost artifacts and beast lairs at or next to the region
   const T = realm.tables || {}, at = (o, r) => o && typeof o.x === 'number' && Math.max(Math.abs(o.x - rx), Math.abs(o.y - ry)) <= r;
-  const ruins = (T.sites || []).filter((s) => at(s, 0) && (s.razed || s.kind === 'battlefield')).map((s) => ({ kind: s.kind || 'razed' }));
-  const relics = (T.artifacts || []).filter((a) => at(a, 0) && a.lost).map((a) => ({ key: a.key !== undefined ? a.key : a.id }));
-  const lairs = (T.beasts || []).filter((b) => at(b.lair || b, 1) && b.alive !== false).map((b) => ({ key: b.key !== undefined ? b.key : b.id }));
+  const ruins = (T.sites || []).filter((s) => at(s, 0) && ((s.razed !== null && s.razed !== undefined) || s.kind === 'battlefield'))
+    .map((s) => ({ kind: s.kind === 'battlefield' ? 'battlefield' : 'ruin', key: 'ws' + s.id, name: s.name || null }));
+  const relics = (T.artifacts || []).filter((a) => at(a, 0) && a.lost)
+    .map((a) => ({ key: 'wa' + a.id, site: Number.isInteger(a.at) ? a.at : null, name: artifactName(a), kind: a.kind, mat: a.mat }));
+  const lairs = (T.beasts || []).filter((b) => at(b, 1) && b.alive !== false)
+    .map((b) => ({ key: 'wb' + b.id, seed: b.seed >>> 0, dx: b.x - rx, dy: b.y - ry }));
   // spawn edge weights: caravans along land sides (a road doubles it), raids on land sides and from the sea
   const caravan = {}, raid = {};
   for (const s of SIDES) {

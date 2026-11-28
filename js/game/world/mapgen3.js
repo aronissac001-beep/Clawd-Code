@@ -582,12 +582,60 @@ export function resolveRegion(region) {
     ember: { pools: pairOr(r.ember && r.ember.pools, GEN3.ember.pools), rel: emberRel }, springs: pairOr(r.springs, GEN3.springs.count), seeps: pairOr(r.seeps, GEN3.seeps),
     stone, veinRel, ores, blight, blightCalls: Math.round(blight / WORLD.blight.startPct),
     wildPct: 50 + ((clampI(intOr(r.wild, 85), 0, 255) * 150) / 255 | 0), richPct, glowPct: (6 * richPct) / 100,
-    ruins: clampI(intOr(B.ruins, 3) + (Array.isArray(r.ruins) ? r.ruins.length : 0), 0, 8),
-    relics: Array.isArray(r.relics) ? r.relics : [], lairs: Array.isArray(r.lairs) ? r.lairs : [],
+    ...historyOf(r, clampI(intOr(B.ruins, 3), 0, 8)),
     forestPct: intOr(B.forestPct, GEN.forestPct), meadowPct: intOr(B.meadowPct, GEN.meadowPct), richSoilPct: intOr(B.richPct, GEN.richPct),
     pines: !!B.pines, hills: B.hills || null, rocks: B.rocks || null, ravines: B.ravines || null, sandPct: intOr(B.sandPct, 0), marshPct: intOr(B.marshPct, 0),
     bandAt: null, bandNames: Object.keys(stone),
   };
+}
+// ---- W3.5: relics, lairs and ruins from the realm's history (EMBERCROWN-WORLD.md 2.7 Beasts and Artifacts, 3.6) ----
+// opts.region.ruins [{ kind: 'ruin' | 'battlefield', key: 'ws<id>', name? }] (razed sites and battlefields here),
+// .relics [{ key: 'wa<id>', site?, name?, kind?, mat? }] (lost artifacts here) and .lairs [{ key: 'wb<id>', seed?, dx?, dy? }]
+// (living world beasts with a lair here or next door). A bare number is a table id and gets its world key. The base
+// ruins of the biome row come first, unchanged (same stream draws); the history ruins follow. Empty lists change nothing.
+const HIST = Object.freeze({ ruins: 5, relics: 8, lairs: 3 });
+/** Artifact kinds (HISTORY_GEN.artifacts.kinds) -> the item a relic is found as; the material when it is an item material. */
+const RELIC_ITEM = Object.freeze({ blade: 'sword', axe: 'axe', spear: 'spear', hammer: 'hammer', bow: 'longbow', shield: 'ironshield', helm: 'ironhelm',
+  crown: 'circlet', ring: 'ring', amulet: 'amulet', chalice: 'finepottery', tome: 'book', harp: 'figurine', banner: 'banner', trophy: 'bonecraft' });
+const RELIC_MAT = Object.freeze({ iron: 'iron', steel: 'steel', bronze: 'bronze', silver: 'silver', gold: 'gold', oak: 'wood' });
+const wkeyOf = (v, p) => (typeof v === 'number' && v >= 0 && Number.isInteger(v) ? 'w' + p + v : typeof v === 'string' && v ? v : null);
+const keyIn = (o, p) => wkeyOf(o && typeof o === 'object' ? (o.key !== undefined ? o.key : o.id) : o, p);
+const str = (v, n) => (typeof v === 'string' && v ? v.slice(0, n) : null);
+function historyOf(r, base) {
+  const list = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
+  const histRuins = list(r.ruins, HIST.ruins).map((o) => ({ kind: o && o.kind === 'battlefield' ? 'battlefield' : 'ruin', key: keyIn(o, 's'), name: str(o && o.name, 40) }));
+  const relics = list(r.relics, HIST.relics).map((o) => ({ key: keyIn(o, 'a'), site: o && Number.isInteger(o.site) ? 'ws' + o.site : null,
+    name: str(o && o.name, 40), kind: o && RELIC_ITEM[o.kind] ? o.kind : null, mat: o && RELIC_MAT[o.mat] ? o.mat : null })).filter((o) => o.key);
+  const lairs = list(r.lairs, HIST.lairs).map((o) => ({ key: keyIn(o, 'b'), seed: o && Number.isInteger(o.seed) ? o.seed >>> 0 : null,
+    dx: o && Number.isInteger(o.dx) ? Math.sign(o.dx) : 0, dy: o && Number.isInteger(o.dy) ? Math.sign(o.dy) : 0 })).filter((o) => o.key);
+  return { ruins: clampI(base + histRuins.length, 0, 8), ruinsBase: base, histRuins: histRuins.slice(0, Math.max(0, 8 - base)), relics, lairs };
+}
+/**
+ * A history ruin at (cx, cy) (the 7 x 7 box is free buildable ground): a razed settlement is a denser ring of burnt
+ * walls with a fallen hearthstone and coins; a battlefield is a scatter of grave cairns with bones and old spears.
+ */
+function histRuin(L, rr, hr, cx, cy, taken, bld, loot) {
+  if (hr.kind === 'battlefield') {
+    const want = ri(rr, 4, 6);
+    for (let t = 0, made = 0; t < 40 && made < want; t++) {
+      const dx = ri(rr, -3, 3), dy = ri(rr, -3, 3), i = ix(cx + dx, cy + dy);
+      if (taken[i] || (dx >= -1 && dx <= 1 && dy >= 0 && dy <= 1)) continue;   // the loot and relic cells stay clear
+      taken[i] = 1; L.plant[i] = 0; L.growth[i] = 0; made++;
+      bld.push(['wall', cx + dx, cy + dy, 'granite', { hp: 60 + ri(rr, 0, 60), name: 'Grave cairn' }]);
+    }
+    loot.push(['bone', null, 4 + ri(rr, 0, 6), cx, cy, null], ['spear', 'iron', 1 + ri(rr, 0, 1), cx + 1, cy, null]);
+    return;
+  }
+  const name = hr.name ? `Burnt wall of ${hr.name}` : 'Burnt wall';
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue;
+    const i = ix(cx + dx, cy + dy);
+    L.plant[i] = 0; L.growth[i] = 0;
+    if (rf(rr) < 0.2) continue;
+    taken[i] = 1;
+    bld.push(['wall', cx + dx, cy + dy, 'granite', { hp: 80 + ri(rr, 0, 120), name }]);
+  }
+  loot.push(['block', 'granite', 14 + ri(rr, 0, 10), cx, cy, null], ['coins', null, 16 + ri(rr, 0, 20), cx + 1, cy, null]);
 }
 function withRegion(region, fn) {
   const prev = RG;
@@ -854,7 +902,7 @@ function surfacePass(seed, n, opts = {}) {
     ramps = ramps.filter((c) => L.terrain[c] === TER.RAMP || hgt[c] > 0);
   }
   // Stage 2 surface ruins (broken watchtower rings far from the site) and the starting blight
-  const ruins = [], loot = [], bld = [];
+  const ruins = [], ruinKeys = [], loot = [], bld = [];
   const rr = gen(st(seed, 'ruins', n));
   const taken = new Uint8Array(PLANE);
   for (let tries = 0; tries < 200 && ruins.length < (RG ? RG.ruins : 3); tries++) {
@@ -866,6 +914,8 @@ function surfacePass(seed, n, opts = {}) {
       if (!TER_BUILDABLE[L.terrain[i]] || L.terrain[i] === TER.ROCK || TER_WATER[L.terrain[i]] || taken[i]) ok = false;
     }
     if (!ok) continue;
+    const hr = RG && ruins.length >= RG.ruinsBase ? RG.histRuins[ruins.length - RG.ruinsBase] : null;
+    if (hr) { histRuin(L, rr, hr, cx, cy, taken, bld, loot); ruins.push(ix(cx, cy)); ruinKeys.push(hr.key); continue; }
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue;
       const i = ix(cx + dx, cy + dy);
@@ -875,7 +925,7 @@ function surfacePass(seed, n, opts = {}) {
       bld.push(['wall', cx + dx, cy + dy, 'granite', { hp: 120 + ri(rr, 0, 200), name: 'Ruined wall' }]);
     }
     loot.push(['block', 'granite', 10 + ri(rr, 0, 10), cx, cy, null], ['coins', null, 8 + ri(rr, 0, 12), cx + 1, cy, null]);
-    ruins.push(ix(cx, cy));
+    ruins.push(ix(cx, cy)); ruinKeys.push(null);
   }
   const rb = gen(st(seed, 'blight', n));
   let blight = RG && !RG.blightCalls ? 0 : seedBlight(L, hcx, hcy, () => rf(rb));
@@ -887,7 +937,7 @@ function surfacePass(seed, n, opts = {}) {
     if (v < faceMin) faceMin = v;
   }
   return {
-    P, side, depth, hgt, ramps, rerolls, bld, loot, ruins, blight, fixed, trees, berries, planted, edges,
+    P, side, depth, hgt, ramps, rerolls, bld, loot, ruins, ruinKeys, blight, fixed, trees, berries, planted, edges,
     site: { x0: pick.x0, y0: pick.y0, size: site.size, weak: !!pick.weak, faceMin },
     hearth: { x: pick.hx, y: pick.hy, cx: hcx, cy: hcy, w: hw, h: hh },
     lake: lake ? { x: lake.x, y: lake.y } : null, river: { fords: rv.fords.length, width: rv.w }, hills: hills.length,
@@ -1589,24 +1639,52 @@ function surfaceRolled(seed, opts) {
   for (let n = 0; n <= GEN3.guarantee.rerolls; n++) { sf = surfacePass(seed, n, opts); if (siteOk(sf)) break; surfRerolls = n + 1; }
   return { sf, surfRerolls };
 }
-/** GEN3 v2 rows of the pristine meta: the region's lost artifacts (in a vault, else over a crypt) and its world beasts' surface lairs. */
-function regionRows(L, seed, sf, rows) {
-  const spots = rows.filter((r) => r[0] === 'vault' || r[0] === 'crypt').map((r) => r[1]);
+/**
+ * GEN3 v2 rows of the pristine meta from the region's history (W3.5; EMBERCROWN-WORLD.md 2.7, 3.6), and their loot.
+ *   relics: each lost artifact is a named item (its kind's item, its material when that is an item material) on the
+ *           floor of the ruin of the site where it was lost, else of an Old Crown vault, else of any surface ruin, with
+ *           a row ['world_relic', voxel, rowSeed, worldKey] at the item; no ruin or vault: no row (and no item).
+ *   lairs:  each world beast gets a surface lair row ['world_lair', voxel, identitySeed, worldKey] on land at least 30
+ *           tiles from the Hearth, in the edge band toward its region (dx, dy) when that is a neighbour, with a bone
+ *           pile; the identity seed is the realm beast's own (js/game/threat/beasts/gen.js names it as the history
+ *           does), else a row seed. Returns { ruins, relics, lairs } for info.region.history.
+ */
+/** Free floor cells beside a relic's spot (cx, cy + 1): a ruin ring's 3 x 3 inside less its loot; a vault's two rows below the chest. */
+const RUIN_FLOOR = Object.freeze([0, -1, 1, -W - 1, -2 * W - 1, -2 * W, -2 * W + 1]);
+const VAULT_FLOOR = Object.freeze([0, -1, 1, -2, 2, -3, 3, W, W - 1, W + 1, W - 2, W + 2, W - 3, W + 3]);
+function regionRows(L, seed, sf, rows, loot) {
+  const out = { ruins: sf.ruinKeys.filter(Boolean), relics: [], lairs: [] };
+  const vaultsV = rows.filter((r) => r[0] === 'vault').map((r) => r[1]), used = new Map();
+  const ruinAt = (k) => zS * PLANE + sf.ruins[k] + W;   // (cx, cy + 1): inside the ring, beside the ruin's loot
+  const histK = sf.ruinKeys.map((key, k) => (key ? k : -1)).filter((k) => k >= 0), allK = sf.ruins.map((_, k) => k);
   RG.relics.forEach((rl, k) => {
-    if (!spots.length) return;
-    const v = spots[k % spots.length], key = String(rl && rl.key !== undefined ? rl.key : rl);
-    rows.push(['world_relic', v, rowSeed('world_relic', v + k, seed), key]);
+    const site = rl.site ? sf.ruinKeys.indexOf(rl.site) : -1;
+    let v = -1, at = 'ruin';
+    if (site >= 0) v = ruinAt(site);
+    else if (vaultsV.length) { v = vaultsV[k % vaultsV.length] + W; at = 'vault'; }
+    else if (histK.length) v = ruinAt(histK[k % histK.length]);
+    else if (allK.length) v = ruinAt(allK[k % allK.length]);
+    if (v < 0) return;
+    const j = used.get(v) || 0, off = at === 'vault' ? VAULT_FLOOR : RUIN_FLOOR; used.set(v, j + 1);
+    const vv = v + off[j % off.length], z = (vv / PLANE) | 0, c = vv - z * PLANE;
+    rows.push(['world_relic', vv, rowSeed('world_relic', vv + k, seed), rl.key]);
+    loot.push([RELIC_ITEM[rl.kind] || 'amulet', rl.mat ? RELIC_MAT[rl.mat] : null, 1, c % W, (c / W) | 0, rl.name || 'Lost heirloom', z]);
+    out.relics.push({ key: rl.key, v: vv, at });
   });
   const R = gen(st(seed, 'wlairs')), h = sf.hearth;
+  const band = (d, lo, hi, size) => (d > 0 ? [size - 16, hi] : d < 0 ? [lo, 15] : [lo, hi]);
   RG.lairs.forEach((lr, k) => {
-    const key = String(lr && lr.key !== undefined ? lr.key : lr);
+    const [x0, x1] = band(lr.dx, 3, W - 4, W), [y0, y1] = band(lr.dy, 3, H - 4, H);
     for (let t = 0; t < 300; t++) {
-      const x = ri(R, 3, W - 4), y = ri(R, 3, H - 4), v = zS * PLANE + ix(x, y);
+      const wide = t >= 200, x = wide ? ri(R, 3, W - 4) : ri(R, x0, x1), y = wide ? ri(R, 3, H - 4) : ri(R, y0, y1), v = zS * PLANE + ix(x, y);
       if (!landT(L.terrain[v]) || Math.max(Math.abs(x - h.cx), Math.abs(y - h.cy)) < 30) continue;
-      rows.push(['world_lair', v, rowSeed('world_lair', v + k, seed), key]);
+      rows.push(['world_lair', v, lr.seed !== null ? lr.seed : rowSeed('world_lair', v + k, seed), lr.key]);
+      loot.push(['bone', null, 3 + ri(R, 0, 4), x, y, null, zS]);
+      out.lairs.push({ key: lr.key, v });
       break;
     }
   });
+  return out;
 }
 function generateIn(s, opts) {
   checkShape();
@@ -1623,7 +1701,7 @@ function generateIn(s, opts) {
     for (const c of sf.ravines.cells) { const i = b + c; L.terrain[i] = TER.DIRT; L.ore[i] = 0; L.fluid[i] = 0; }
     for (const c of sf.ravines.ends) L.terrain[b + c] = TER.RAMP;
   }
-  if (RG) regionRows(L, seed, sf, below.rows);
+  const hist = RG ? regionRows(L, seed, sf, below.rows, below.loot) : null;
   for (const [def, x, y, mat, init] of sf.bld) s.bld.push(newBuilding(s.bld.length, def, x, y, 0, mat, { ...init, st: 'done', z: zS }));
   for (const [def, x, y, mat, init, z] of below.bld) s.bld.push(newBuilding(s.bld.length, def, x, y, 0, mat, { ...init, st: 'done', z }));
   const loot = sf.loot.map(([k, m, n, x, y, name]) => [k, m, n, x, y, name, zS]).concat(below.loot);
@@ -1638,6 +1716,7 @@ function generateIn(s, opts) {
       biome: RG.biome, side: sf.side, sea: sf.sea, lakes: sf.lakes, rocks: sf.rocks, ravines: sf.ravines ? sf.ravines.n : 0, massifTiles: sf.massifTiles,
       riverEdges: sf.riverEdges, ember: RG.ember, aquiferPct: RG.aquiferPct, soil: RG.soil, blightPct: RG.blight, ruins: RG.ruins,
       heights: RG.heights.max, edges: (opts.region && opts.region.edges) || null, climate: (opts.region && opts.region.climate) || null,
+      history: hist,
     };
   }
   info.fails = checkGuarantees(L, info);
