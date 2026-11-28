@@ -32,7 +32,7 @@ function send(ctx, cmd, okText) {
 
 export function openOffices(ctx) {
   const st = { pick: null };
-  ctx.openSheet('Offices', (el) => officesPanel(el, ctx.s, ctx, st), {});
+  ctx.openSheet('Offices', (el) => officesPanel(el, ctx.s, ctx, st), { push: true });
 }
 
 export function officesPanel(el, s, ctx = null, st = { pick: null }) {

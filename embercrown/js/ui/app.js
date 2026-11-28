@@ -1,5 +1,5 @@
 // UI boot (owner I). Joins the shell API of js/main.js (owner A: state, saves, lifecycle, debug hook)
-// to the screens of js/ui: the title (colonies.js) and the in-game shell (shell.js).
+// to the screens of js/ui: the title (front.js) and the in-game shell (shell.js).
 //
 // Until main.js calls mountTitle itself (its header names that contract), index.html loads this
 // module after main.js. The title then lives in #title and A's Stage 0 placeholder in #screens is
@@ -15,7 +15,7 @@ import { fortressRequested } from '../game/core/flags.js';
 import { randomSeedText } from '../engine/rng.js';
 import { STAGE } from './stage.js';
 import { applyCommand } from '../game/core/commands.js';
-import { mountTitle, unmountTitle } from './colonies.js';
+import { mountTitle, unmountTitle } from './front.js';
 import { mountShell } from './shell.js';
 import { emulateInsets } from './layout.js';
 import { installFrame } from './frame.js';
@@ -42,7 +42,7 @@ export function foundNew(seed = randomSeedText(), opts = {}) {
   return s;
 }
 
-/** The API handed to mountTitle (contract in colonies.js). */
+/** The API handed to mountTitle (contract in front.js). */
 export function titleApi() {
   return {
     listColonies,
@@ -88,17 +88,17 @@ export async function enter(sOrPromise, opts = {}) {
     storageInfo: () => storageInfo(),
     readSettings: () => readSettings(),
     writeSettings: (patch) => writeSettings(patch),
-    quit: () => { saveNow().catch(() => null).finally(() => showTitle()); },
+    quit: (o) => { saveNow().catch(() => null).finally(() => showTitle(o && o.view)); },
   });
   if (window.__ec) window.__ec.ui = ui;
 }
 
-export function showTitle() {
+export function showTitle(view) {
   if (ui.shell) { ui.shell.destroy(); ui.shell = null; }
   app.s = null;
   const root = document.getElementById('title') || document.getElementById('screens');
   root.hidden = false;
-  ui.title = mountTitle(root, titleApi());
+  ui.title = mountTitle(root, titleApi(), { view });
   return ui.title;
 }
 

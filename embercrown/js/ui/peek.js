@@ -10,7 +10,8 @@
 // selected and a target under the finger: "Prioritise: Mine here").
 // Stage Z1 (EMBERCROWN-FORTRESS.md 4.2, 4.3): with levels the colonist line names the level ("Mining granite ·
 // -5 Middle", the HUD's level words) and a stair or ramp tile offers Go up / Go down (the view follows).
-import { h, icon } from './kit.js';
+import { h, icon, onTap } from './kit.js';
+import { t } from './strings.js';
 import { W, PLANE, TER, TER_NAMES, TER_MINEABLE, DESIG, idx } from '../game/core/grid.js';
 import { def, all, structDef, hasFlag } from '../game/core/content.js';
 import { FIX, WORK_IDS } from '../game/core/schema.js';
@@ -106,7 +107,20 @@ export function peekJob(c) {
   const r = roleName(c.role[0]);
   return r === 'None' ? t : `Idle: no ${r} work`;
 }
+/**
+ * The peek card for a selection (W1.4, EMBERCROWN-WORLD.md 8.4 and 8.6): the head carries a chevron button
+ * ("Open >") that opens the full sheet, so the way in is visible (a tap on the name plate still opens it, a
+ * swipe up too). A raid or a drafted group has no full sheet: no chevron.
+ */
 export function peekContent(ctx, sel) {
+  const c = peekBody(ctx, sel);
+  if (!c || !c.head || sel.kind === 'raid' || sel.kind === 'drafted') return c;
+  const open = h('button.ec-peek-open', { type: 'button', 'data-act': 'peek-open', 'aria-label': t('peek.openFull') }, h('span.ec-peek-open-t', { text: t('peek.open') }), h('span', { html: icon('chev') }));
+  onTap(open, () => openSubjectSheet(ctx, sel));
+  c.head.append(open);
+  return c;
+}
+function peekBody(ctx, sel) {
   const s = ctx.s;
   if (sel.kind === 'raid' || sel.kind === 'drafted') return threatPeek(ctx, sel);
   if (sel.kind === 'colonist') {

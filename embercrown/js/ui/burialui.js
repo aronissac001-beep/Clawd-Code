@@ -55,7 +55,7 @@ export function unrestAlert(s) {
 }
 
 export function openDead(ctx) {
-  ctx.openSheet('The dead', (el) => deadPanel(el, ctx.s, ctx), {});
+  ctx.openSheet('The dead', (el) => deadPanel(el, ctx.s, ctx), { push: true });
 }
 
 export function deadPanel(el, s, ctx = null) {

@@ -55,8 +55,7 @@
 //                                          colony (written into both a and b), with the Chronicle line "Recovered
 //                                          from a copy of <date>" when it predates a fall; the caller confirms
 //                                          first (RECOVER_TEXT.confirm)
-//   mountRecoverPanel(el, { onLoaded?, toast? })   the panel itself (DOM; existing .ec-row / .ec-btn styles),
-//                                          for I to place in Settings > Storage (in-game sheet and title)
+//   (the panel itself is js/ui/settingsui.js mountRecoverPanel, W1.4a: the Storage UI left this file)
 // Window events: 'ec2:ready' (launch done: quick-save promoted, index reconciled), 'ec2:storage'
 // ({ kind, text } storage alerts), 'ec2:resume' (the page is visible again: the shell pauses, 2.2),
 // 'ec2:backup' ({ id, reason, name, filename }: show the "Back up your hold" card), 'ec2:dawn'
@@ -250,56 +249,7 @@ export async function recoverCopy(id, which) {
   setOpen(s);
   return s;
 }
-/**
- * The Recover from a device problem panel (DOM, browser only): one section per colony, one row per
- * stored copy; a tap asks once (RECOVER_TEXT.confirm), then loads. opts.onLoaded(state) enters the game.
- */
-export function mountRecoverPanel(el, opts = {}) {
-  const doc = el.ownerDocument || document;
-  const mk = (tag, cls, text, attrs = {}) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; for (const k of Object.keys(attrs)) e.setAttribute(k, attrs[k]); return e; };
-  const root = mk('section', 'ec-recover', undefined, { 'data-panel': 'recover' });
-  root.append(mk('h3', 'ec-sub', RECOVER_TEXT.title), mk('p', 'ec-bio-d', RECOVER_TEXT.help));
-  const list = mk('div', 'ec-recover-list', undefined, { role: 'list' });
-  const status = mk('p', 'ec-bio-d', 'Reading the stored copies...', { role: 'status' });
-  root.append(list, status);
-  el.append(root);
-  const ask = (row, c, k) => {
-    for (const x of list.querySelectorAll('.ec-recover-ask')) x.remove();
-    const box = mk('div', 'ec-recover-ask', undefined, { role: 'group', 'aria-label': `${c.name}: ${k.label}`, style: 'display:grid;gap:10px;margin:4px 0 12px' });
-    const yes = mk('button', 'ec-btn primary', undefined, { type: 'button', 'data-act': 'recover-load' });
-    yes.append(mk('span', 'ec-btn-label', RECOVER_TEXT.load), mk('span', 'ec-btn-sub', `${c.name}, ${k.date}`));
-    const no = mk('button', 'ec-btn', undefined, { type: 'button', 'data-act': 'recover-cancel' });
-    no.append(mk('span', 'ec-btn-label', RECOVER_TEXT.cancel));
-    box.append(mk('p', 'ec-bio-d', RECOVER_TEXT.confirm), yes, no);
-    row.after(box);
-    no.addEventListener('click', () => box.remove());
-    yes.addEventListener('click', async () => {
-      yes.disabled = true; status.textContent = 'Loading...';
-      try {
-        const s = await recoverCopy(c.id, k.which);
-        status.textContent = isFallen(s) ? 'This copy is the ruin.' : RECOVER_TEXT.done;
-        if (opts.toast) opts.toast(status.textContent);
-        if (opts.onLoaded) opts.onLoaded(s);
-      } catch (e) { yes.disabled = false; status.textContent = `The copy could not be loaded: ${e && e.message ? e.message : e}`; }
-    });
-  };
-  recoveryList().then((cols) => {
-    list.textContent = '';
-    if (!cols.length) { status.textContent = RECOVER_TEXT.none; return; }
-    status.textContent = '';
-    for (const c of cols) {
-      list.append(mk('h4', 'ec-row-help', c.fallen ? `${c.name} (fell ${c.fellText || ''})`.replace(' ()', '') : c.name, { role: 'heading', 'aria-level': '4' }));
-      if (!c.copies.length) { list.append(mk('p', 'ec-row-help', 'No readable copy is stored.')); continue; }
-      for (const k of c.copies) {
-        const row = mk('button', 'ec-row', undefined, { type: 'button', role: 'listitem', 'data-act': 'recover-copy', 'data-colony': c.id, 'data-which': k.which });
-        row.append(mk('span', 'ec-row-n', k.date), mk('span', 'ec-row-s', k.fallen ? `${k.label}, fallen` : k.label));
-        row.addEventListener('click', () => ask(row, c, k));
-        list.append(row);
-      }
-    }
-  }).catch(() => { status.textContent = 'The stored copies could not be read.'; });
-  return root;
-}
+// The Recover from a device problem panel (DOM) is settingsui.js mountRecoverPanel (W1.4a); the data stays here.
 
 // ---- The dawn backup and the backup prompt (11.5, D11) --------------------------------------------------
 let lastDawn = null;
@@ -554,7 +504,7 @@ function installDebugHook() {
     newColony, saveNow, continueColony, closeColony, lifecycleSave,
     saveDawn, loadBackup, checkBackup, backupColony, prepareBackup, moveToApp, pasteColonyFromSafari, importColonyFile, storageInfo, isStandalone,
     applySettings, writeSettings, exportClassicSaves, clearClassicSaves, colonyRoom,
-    checkFall, isRuin, ruinSummary, openRuin, recoveryList, recoverCopy, mountRecoverPanel, RECOVER_TEXT,
+    checkFall, isRuin, ruinSummary, openRuin, recoveryList, recoverCopy, RECOVER_TEXT,
     snapshotMs: () => { if (!app.s) return null; const t0 = performance.now(); const { payload } = snapshot(app.s); return { ms: performance.now() - t0, rawBytes: payload.length }; },
     reload: async () => { if (!app.s) return null; const h = stateHash(app.s); const t = await loadBlob(await saveBlob(app.s), { pristine: pristineResolver(app.s.id) }); t.id = app.s.id; app.s = t; return { same: stateHash(t) === h, hash: h }; },
     // tests (Stage Z1 E8): open a state built in the page (a stub fortress) as the colony; its pristine world

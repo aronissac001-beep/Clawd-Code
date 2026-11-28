@@ -3,7 +3,8 @@
 // badge, its uniform (tap a slot to cycle what it asks for), its training schedule for this season, and
 // what it lacks ("First Watch lacks 2 helms"). Read-only views of F's people/draft.js; every change is a
 // command (squad, order with squad, alert; C3 v3).
-//   militaryTab(el, ctx)          fill the tab (colonyui.js adds 'Military' to COLONY_TABS)
+//   militaryTab(el, ctx)          fill the tab (People > Squads, peopleui.js; the old Colony > Military)
+//   alertSwitch(ctx, after)       the Peace | Muster | Shelter switch (pinned on the People list)
 //   militaryTap(ctx, tile)        the world tap while a Station or Patrol pick is open: true when used
 //   militaryPicking()             the open pick ({ squad, kind, pts }) or null (the shell's tap hint)
 import { h, onTap, icon } from './kit.js';
@@ -69,13 +70,15 @@ function seg(label, items, cur, act, fn) {
 }
 const btn = (text, act, fn, extra = '') => { const b = h('button.ec-act' + extra, { type: 'button', 'data-act': act, text }); onTap(b, fn); return b; };
 
+/** The alert switch: Peace | Muster | Shelter (one tap; the People list pins it, W1.3a). after(): refresh. */
+export function alertSwitch(ctx, after = null) {
+  return seg('Alert level', ALERTS.map((a) => [a, a[0].toUpperCase() + a.slice(1)]), alertLevel(ctx.s), 'alert', (v) => { ctx.send({ t: 'alert', level: v }, ALERT_TEXT[v]); if (after) after(); });
+}
 /** Fill the Military tab. */
 export function militaryTab(el, ctx) {
   const s = ctx.s;
   const level = alertLevel(s);
-  el.append(h('h3.ec-sub', { text: 'Alert' }),
-    seg('Alert level', ALERTS.map((a) => [a, a[0].toUpperCase() + a.slice(1)]), level, 'alert', (v) => { ctx.send({ t: 'alert', level: v }, ALERT_TEXT[v]); ctx.refreshSheet(); }),
-    h('p.ec-note', { text: ALERT_TEXT[level] }));
+  el.append(h('h3.ec-sub', { text: 'Alert' }), alertSwitch(ctx, () => ctx.refreshSheet()), h('p.ec-note', { text: ALERT_TEXT[level] }));
   if (pick) {
     el.append(h('p.ec-note', { text: `Picking ${pick.kind === 'patrol' ? 'patrol points' : 'a station'}: ${pick.pts.length} set.` }),
       h('div.ec-row', null, pick.kind === 'patrol' && pick.pts.length >= 2 ? btn('Done', 'pick-done', () => { finishPick(ctx); ctx.refreshSheet(); }) : null,

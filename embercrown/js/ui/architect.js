@@ -1,5 +1,5 @@
-// Build menu, the Architect (owner I; doc 10.3, 10.11). A horizontally scrolling strip of
-// icon-and-label tabs, each a 2-column grid of cards (3 in landscape): icon, name, cost line, tier badge.
+// Build menu, the Architect (owner I; doc 10.3, 10.11; W1.4 compact cards, EMBERCROWN-WORLD.md 8.1). A horizontally
+// scrolling strip of icon-and-label tabs, each a 2-column grid of one-line cards: art, name, cost line, tier badge.
 // Tabs (10.3 order): Rooms (the stamps and the saved rooms), Structure, Housing, Storage, Farm,
 // Workshops, Furniture, Defence, Light, Utility, Civic (Monuments and Charter arrive in Stage 3).
 // Menus show what this build of the game offers (availableIn(def, STAGE), stage.js and schema.js); a
@@ -13,6 +13,7 @@ import { costText } from '../game/tools/place.js';
 import { stampDefs } from '../game/tools/stamp.js';
 import { lockedWhy as researchLocked } from '../game/colony/research.js';
 import { defThumb } from './thumbs.js';
+import { t, list } from './strings.js';
 
 import { STAGE } from './stage.js';
 export { STAGE };
@@ -75,38 +76,72 @@ export function lockedWhy(s, d) {
 /** The tier badge of a def ("Hamlet") when it is above Camp. */
 const tierBadge = (d) => { if (!d.tier || d.tier === 'camp') return null; const t = def('tier', d.tier); return t ? t.name : null; };
 
+/** True on the first visit to `key` on this device (marks it seen): the shared "ec2.seen." keys of the sheet engine. */
+const SEEN = 'ec2.seen.';
+const seenNow = new Set();
+function firstVisit(key) {
+  if (seenNow.has(key)) return false;
+  seenNow.add(key);
+  let v = null;
+  try { v = localStorage.getItem(SEEN + key); } catch (_) { v = null; }
+  if (v) return false;
+  try { localStorage.setItem(SEEN + key, '1'); } catch (_) { /* private mode: this session remembers */ }
+  return true;
+}
+
 /**
- * Fill the Build panel. ctx: { s, isLand(), startTool(spec), toast(text) }; state: { tab } (kept by
- * the shell between openings, so the last tab stays chosen).
+ * Fill the Build panel (W1.4, EMBERCROWN-WORLD.md 8.1 slot 1, 11 item 9). ctx: { s, isLand(), startTool(spec),
+ * toast(text) }; state: { tab, later } (kept by the shell between openings, so the last tab stays chosen).
+ * Compact cards: the art, a one-line name (ellipsis) and a cost line; the description on long-press. The
+ * tab's paragraph shows on its first visit only, then behind the panel's "?". Cards the hold cannot place
+ * yet collapse into one "More later (N)" row that names the reasons; a tap there lists them.
  */
 export function buildPanel(el, ctx, state) {
-  const strip = h('div.ec-strip.ec-bstrip', { role: 'tablist', 'aria-label': 'Build categories' });
-  const grid = h('div.ec-grid.ec-bgrid', { role: 'tabpanel' });
-  const show = (id) => {
+  const strip = h('div.ec-strip.ec-bstrip', { role: 'tablist', 'aria-label': t('build.tabs') });
+  const grid = h('div.ec-grid.ec-bgrid.ec-bgrid2', { role: 'tabpanel' });
+  const show = (id, keepLater = false) => {
+    if (!keepLater && state.tab !== id) state.later = false;
     state.tab = id;
     for (const b of strip.children) { const on = b.dataset.tab === id; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }
     while (grid.firstChild) grid.removeChild(grid.firstChild);
-    const t = BUILD_TABS.find((x) => x.id === id);
-    if (t && t.help) grid.append(h('p.ec-note.ec-span.ec-help-line', { text: t.help }));
-    if (id === 'rooms') roomCards(grid, ctx);
+    const tb = BUILD_TABS.find((x) => x.id === id);
+    if (tb && tb.help && firstVisit('build.' + id)) grid.append(h('p.ec-note.ec-span.ec-help-line', { text: tb.help }));
+    let shut = [];
+    if (id === 'rooms') shut = roomCards(grid, ctx);
     else {
-      // cards the colony can place first, then the locked ones (greyed, with their reason)
-      const defs = tabDefs(id), open = [], shut = [];
-      for (const d of defs) (lockedWhy(ctx.s, d) ? shut : open).push(d);
-      for (const d of open.concat(shut)) grid.append(defCard(ctx, d));
+      // cards the hold can place first; the locked ones collapse into "More later (N)"
+      for (const d of tabDefs(id)) { if (lockedWhy(ctx.s, d)) shut.push(() => defCard(ctx, d)); else grid.append(defCard(ctx, d)); }
     }
-    if (!grid.children.length) grid.append(h('p.ec-note', { text: 'Nothing here yet.' }));
+    if (shut.length) laterRow(grid, ctx, state, shut, () => show(id, true));
+    if (!grid.children.length) grid.append(h('p.ec-note', { text: t('build.empty') }));
   };
-  for (const t of BUILD_TABS) {
-    if (t.pick && !tabDefs(t.id).length) continue;
-    const b = h('button.ec-strip-tab', { type: 'button', role: 'tab', 'data-tab': t.id, 'data-act': 'build-tab-' + t.id }, h('span', { html: icon(t.icon) }), h('span', { text: t.label }));
-    onTap(b, () => { show(t.id); if (b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
+  for (const tb of BUILD_TABS) {
+    if (tb.pick && !tabDefs(tb.id).length) continue;
+    const b = h('button.ec-strip-tab', { type: 'button', role: 'tab', 'data-tab': tb.id, 'data-act': 'build-tab-' + tb.id }, h('span', { html: icon(tb.icon) }), h('span', { text: tb.label }));
+    onTap(b, () => { show(tb.id); if (b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
     strip.append(b);
   }
   el.append(strip, grid);
-  show(state.tab || 'rooms');
+  show(state.tab || 'rooms', true);
 }
 
+/**
+ * "More later (N)": one row for the cards the hold cannot place yet, naming their reasons; a tap lists the
+ * cards (greyed, each with its reason) and a second tap folds them again. make: [() => card].
+ */
+function laterRow(grid, ctx, state, make, redraw) {
+  const cards = make.map((f) => f());
+  const why = [...new Set(cards.map((c) => c.dataset.why).filter(Boolean))];
+  const open = !!state.later;
+  const b = h('button.ec-row.ec-span.ec-later', { type: 'button', 'data-act': 'build-later', 'aria-expanded': open ? 'true' : 'false' },
+    h('span.ec-row-n', null, t('build.later', { n: cards.length }), h('span.ec-row-help', { text: list(why, 3) })),
+    h('span.ec-later-ic', { html: icon(open ? 'up' : 'chevDown') }));
+  onTap(b, () => { state.later = !open; redraw(); });
+  grid.append(b);
+  if (open) grid.append(...cards);
+}
+
+/** The Orders and Zones card (icon, name, sub line); build cards use buildCard below. */
 export function card(label, ic, { sub = null, locked = null, act, onPick, toast, badge = null, thumb = undefined } = {}) {
   // build cards (thumb given, even null) show the item's pixel art in a well, its cost and a lock badge
   const art = thumb !== undefined;
@@ -119,12 +154,31 @@ export function card(label, ic, { sub = null, locked = null, act, onPick, toast,
   return b;
 }
 
-function defCard(ctx, d) {
-  const why = lockedWhy(ctx.s, d);
-  return card(d.name, defIcon(d), { thumb: defThumb(d), sub: costText(d), locked: why, badge: tierBadge(d), act: 'build-' + d.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'place', def: d.id }) });
+/**
+ * A compact build card (11 item 9): the item's pixel art in a small well, the name on one line (an ellipsis
+ * past the width; the full name is the button's label), the cost line, a lock and its reason when locked.
+ * Long-press: the description in a toast. o: { thumb, ic, cost, locked, badge, act, text, onPick, toast }.
+ */
+export function buildCard(label, o) {
+  const art = h('span.ec-bc-art', o.thumb ? null : { html: icon(o.ic || 'hammer') }, o.thumb || null);
+  if (o.locked) art.append(h('span.ec-bcard-lock', { html: icon('lock') }));
+  const line = o.locked || [o.cost, o.badge].filter(Boolean).join(' \u00b7 ');
+  const b = h('button.ec-card.ec-bc' + (o.locked ? '.locked' : ''), { type: 'button', 'data-act': o.act, 'aria-disabled': o.locked ? 'true' : null,
+    'aria-label': `${label}. ${line}`, 'data-why': o.locked || null },
+  art, h('span.ec-bc-t', null, h('span.ec-card-n', { text: label }), h('span.' + (o.locked ? 'ec-card-why' : 'ec-card-sub'), { text: line || ' ' })));
+  const say = () => o.toast && o.toast([label, o.text].filter(Boolean).join(': ') + (line ? ` (${line})` : ''));
+  onTap(b, () => (o.locked ? o.toast && o.toast(`${label}: ${o.locked}`) : o.onPick && o.onPick()), { longpress: say });
+  return b;
 }
 
+function defCard(ctx, d) {
+  return buildCard(d.name, { thumb: defThumb(d, 32), ic: defIcon(d), cost: costText(d), locked: lockedWhy(ctx.s, d), badge: tierBadge(d), act: 'build-' + d.id, text: d.text, toast: ctx.toast,
+    onPick: () => ctx.startTool({ kind: 'place', def: d.id }) });
+}
+
+/** The Rooms tab: the stamps (open ones in the grid; locked ones returned for "More later") and the copied rooms. */
 function roomCards(grid, ctx) {
+  const shut = [];
   for (const sd of stampDefs()) {
     if (sd.stage && !availableIn(sd, STAGE)) continue;
     // a stamp whose own furniture is still locked (the Infirmary's beds need Hamlet) is locked with
@@ -132,13 +186,16 @@ function roomCards(grid, ctx) {
     let locked = null;
     for (const f of sd.furnish || []) { const fd = def('structure', f.def); if (fd && fd.kind !== 'zone' && (locked = lockedWhy(ctx.s, fd))) break; }
     const main = (sd.furnish || []).map((f) => def('structure', f.def)).find((fd) => fd && fd.kind !== 'zone');
-    grid.append(card(sd.name, STAMP_ICON[sd.id] || 'rooms', { thumb: main ? defThumb(main) : null, sub: STAMP_TEXT[sd.id] || 'A room stamp.', locked, act: 'stamp-' + sd.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) }));
+    const mk = () => buildCard(sd.name, { thumb: main ? defThumb(main, 32) : null, ic: STAMP_ICON[sd.id] || 'rooms', cost: STAMP_TEXT[sd.id] || t('build.stamp'), locked, act: 'stamp-' + sd.id,
+      text: STAMP_TEXT[sd.id], toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'stamp', stamp: sd.id }) });
+    if (locked) shut.push(mk); else grid.append(mk());
   }
   const tms = ctx.s.colony.templates;
   for (const tm of tms) {
-    grid.append(card(tm.name, 'copy', { thumb: null, sub: `Copied room, ${tm.w} x ${tm.h}`, act: 'paste-' + tm.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'paste', templateId: tm.id }) }));
+    grid.append(buildCard(tm.name, { thumb: null, ic: 'copy', cost: t('build.copied', { w: tm.w, h: tm.h }), act: 'paste-' + tm.id, toast: ctx.toast, onPick: () => ctx.startTool({ kind: 'paste', templateId: tm.id }) }));
   }
-  if (!tms.length) grid.append(h('p.ec-note.ec-span', { text: 'Copy a room from its card to paste it here.' }));
+  if (!tms.length) grid.append(h('p.ec-note.ec-span.ec-bc-note', { text: t('build.copyHint') }));
+  return shut;
 }
 
 /** Orders menu (10.3): each is a tool. */

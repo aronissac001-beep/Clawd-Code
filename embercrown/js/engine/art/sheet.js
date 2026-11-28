@@ -25,6 +25,8 @@ import { cropSprite } from './beings.js';
 /** A crop sprite at its stage, its base on the cell's tile at x (world units). */
 function drawCrop(g, kind, stage, x) { const sp = cropSprite(kind, stage); g.drawImage(sp.c, x + T / 2 - sp.ax, T - 4 - sp.ay, sp.w, sp.h); }
 import { pixelPath, PATH_ROUTE, edgeMarker } from './marks.js';
+import { uiArtSamples } from './ui.js';
+import { fxArtSamples } from './fx.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
@@ -122,6 +124,12 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
       c.width = w; c.height = h; c.style.width = `${w * 2}px`;
       paintTitle(new Px(c.getContext('2d')), w, h, 0);
       cap.innerHTML = `<b>title</b> ${w} x ${h} native, 2x`; f.append(c, cap); grid.appendChild(f);
+    }
+    for (const [s, name] of [[0, 'Thaw'], [1, 'Highsun'], [2, 'Ashfall'], [3, 'Deepcold']]) { // W1.6: the season variants
+      const f = document.createElement('figure'), c = document.createElement('canvas'), cap = document.createElement('figcaption');
+      c.width = 130; c.height = 115; c.style.width = '260px';
+      paintTitle(new Px(c.getContext('2d')), 130, 115, 0, { season: s });
+      cap.innerHTML = `<b>title</b> ${name} 130 x 115, 2x`; f.append(c, cap); grid.appendChild(f);
     }
     for (const [s, m, label] of [[192, false, '192'], [180, false, '180 (apple-touch)'], [512, true, '512 maskable']]) {
       const f = document.createElement('figure'), c = drawAppIcon(s, m), cap = document.createElement('figcaption');
@@ -269,6 +277,14 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
         cell([], `<b>autotile</b> ${st}: masks 0-15`, 8 * T, 2 * T, 0, (g) => { for (let m = 0; m < 16; m++) paintRockTile(g, m % 8, (m / 8) | 0, m, mat, true, true); });
       }
     }
+  }
+  if (!only || only === 'ui') {
+    section('UI art: panel frames, rune rule, icon sheet (ui.js)');
+    try { uiArtSamples(document).figures.forEach((f) => grid.appendChild(f)); } catch (e) { report.errors.push(`ui art: ${e && e.message}`); }
+  }
+  if (!only || only === 'fx') {
+    section('FX art: particle frames and floating numbers (fx.js)');
+    try { fxArtSamples(document).figures.forEach((f) => grid.appendChild(f)); } catch (e) { report.errors.push(`fx art: ${e && e.message}`); }
   }
   if (!only || only === 'sfx') sfxSection();
 

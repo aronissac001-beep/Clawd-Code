@@ -15,7 +15,7 @@
   --panel: rgba(30, 25, 29, 0.96); --glass: rgba(34, 27, 30, 0.9); --glass-lo: rgba(28, 23, 26, 0.74);
   --rock: #24212c; --panel-2: var(--raised);
   /* brass (structure) and ember (heat, attention) */
-  --brass: #c9973e; --brass-hi: #f0c86a; --ember: #f2a24a; --amber: #f0a830;
+  --brass: #cc9d4a; --brass-hi: #f0c86a; --ember: #f2a24a; --amber: #f0a830;
   --line: rgba(201, 151, 62, 0.55); --line-soft: rgba(201, 151, 62, 0.32); --line-faint: rgba(201, 151, 62, 0.14);
   --tint: rgba(201, 151, 62, 0.16);
   --primary-bg: linear-gradient(#f0bd62, #cf9238); --primary-line: #ffdc98; --on-primary: #2a1a10;
@@ -23,7 +23,7 @@
   --good: #8fd16a; --warn: #e8b04a; --bad: #ef6b55; --bad-text: #ffb4a0;
   --good-bg: rgba(143, 209, 106, 0.1); --warn-bg: rgba(232, 176, 74, 0.13); --bad-bg: rgba(80, 22, 18, 0.9); --bad-line: rgba(239, 107, 85, 0.78);
   /* text tiers */
-  --text: #f6ead2; --dim: #d3c3a3; --faint: #ad9f88;
+  --text: #f6ead2; --dim: #d3c3a3; --faint: #b1a48e;
   /* spacing (4 pt grid), radii (small, pixel-art corners), shadows */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 22px;
@@ -167,7 +167,7 @@ body.ec-game #title, body.ec-game #screens { display: none; }
   background: radial-gradient(circle at 50% 38%, #e8c9a0 0 30%, var(--cloth, #5a4a3a) 31%);
   box-shadow: inset 0 0 0 3px var(--ring, var(--good)), 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
-.ec-portrait-i { font-size: var(--fs-2); font-weight: 700; color: var(--on-primary); transform: translateY(-3px); }
+.ec-portrait-i { font-size: var(--fs-2); font-weight: 700; color: var(--ink, var(--on-primary)); transform: translateY(-3px); }
 .ec-portrait.drafted::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; border-radius: 50%; background: var(--bad); border: 2px solid #1d1a20; }
 body.rail-hidden:not(.land) .ec-rail { display: none; }
 
@@ -565,7 +565,7 @@ body.land.has-peek .ec-guide { display: none; }
 .ec-thought { display: grid; grid-template-columns: 1fr auto 44px; align-items: center; gap: 8px; min-height: 40px; font-size: var(--fs-2); border-bottom: 1px solid var(--line-faint); }
 .ec-thought-w { font-size: var(--fs-1); color: var(--faint); white-space: nowrap; }
 .ec-thought b { text-align: right; font-variant-numeric: tabular-nums; font-size: var(--fs-4); }
-.ec-thought.bad b { color: var(--bad); }
+.ec-thought.bad b { color: var(--bad-text); }
 .ec-thought.good b { color: var(--good); }
 
 /* the Dawn Ledger: toast-sized at dawn (tap to expand), a card on resume; top of the world view */
@@ -754,7 +754,8 @@ body.land .ec-toast { max-width: min(420px, calc(100% - 16px)); }
 .ec-fallen-b .ic { width: 20px; height: 20px; color: var(--brass-hi); }
 .ec-fallen-bl { font-size: var(--fs-2); min-width: 0; overflow-wrap: anywhere; }
 .ec-fallen-b.bad { border-color: var(--bad); }
-.ec-fallen-b.bad .ic, .ec-fallen-b.bad .ec-fallen-bl { color: var(--bad); }
+.ec-fallen-b.bad .ic { color: var(--bad); }
+.ec-fallen-b.bad .ec-fallen-bl { color: var(--bad-text); }
 .ec-fallen-b.pressed { transform: translateY(1px); }
 .ec-title-h { margin: 4px 0 6px; font-size: var(--fs-4); color: var(--brass-hi); }
 /* "The Hearth goes cold" and the Annals (sheets) */
@@ -1122,6 +1123,15 @@ body.land .ec-bstrip .ec-strip-tab .ic { display: block; }
   .ec-title-sub::before { display: none; }
   .ec-title-actions { padding: 12px 10px 10px; gap: 8px; }
 }
+/* W1.6: the title's paired rows (New hold + Options, Settings + Help) and the stone 9-slice on its buttons (8.9) */
+.ec-title-actions { min-width: 0; }
+.ec-title-pair { display: flex; gap: 8px; align-items: stretch; }
+.ec-title-pair > .ec-btn { flex: 1 1 0; width: 0; min-width: 0; }
+.ec-title-pair > .ec-btn[data-side] { flex: 0 0 auto; width: auto; min-width: 104px; }
+.ec-title-actions .ec-btn {
+  border-style: solid; border-color: transparent; border-width: var(--px-frame-stone-w, 1px);
+  border-image: var(--px-frame-stone, none) var(--px-frame-stone-slice, 1) / var(--px-frame-stone-w, 1px) repeat;
+}
 
 /* landscape coach card (pass 2 fix): text left, the button at the right, so it never scrolls its button away;
    the depth ruler and section view take the left edge, so the card steps aside while one is open */
@@ -1147,3 +1157,132 @@ body.land .ec-medal .ec-portrait { width: 46px !important; height: 46px !importa
 body.land .ec-medal .ec-thumb { width: 46px !important; height: 46px !important; }
 body.land .ec-chead-n { margin-bottom: 2px; }
 body.land .ec-ribbon { padding: 1px 14px 1px 8px; }
+
+/* ---------- W1.2 the sheet engine (EMBERCROWN-WORLD.md 8.1 G21, 8.4 G22, 8.9; owner I; js/ui/sheet.js) ----------
+   One sheet: detents medium (--detent-mid) and large (up to the top bar) in portrait; in landscape 48vw at full
+   height over the side rail. The head row is the grabber (a tap cycles the detents, a swipe down closes); the
+   back arrow, the breadcrumb, "?" and close sit on it. Safe areas on all four sides. */
+:root { --sheet-w-land: 48vw; --detent-mid: 50vh; }
+@supports (height: 1dvh) { :root { --detent-mid: 50dvh; } }
+.ec-sheet, .ec-sheet[data-detent="medium"] { top: auto; bottom: 0; height: var(--detent-mid); max-height: calc(100% - var(--sa-t) - var(--top)); }
+.ec-sheet.tall, .ec-sheet[data-detent="large"] { top: calc(var(--sa-t) + var(--top)); bottom: 0; height: auto; max-height: none; }
+.ec-sheet:focus { outline: none; }
+.ec-sheet-head { position: relative; justify-content: flex-start; gap: 4px; min-height: 56px; padding-top: 10px; flex: none; }
+.ec-sheet-head > .ec-grab {
+  position: absolute; inset: 0; z-index: 0; width: 100%; height: auto; display: block; background: none; border: 0; border-radius: 0;
+  box-shadow: none; touch-action: none; cursor: grab;
+}
+.ec-sheet-head > .ec-grab i { position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgba(211, 195, 163, 0.45); }
+.ec-sheet-head > :not(.ec-grab) { position: relative; z-index: 1; }
+.ec-crumbs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; pointer-events: none; overflow: hidden; }
+.ec-crumbs h2 { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ec-crumb {
+  pointer-events: auto; flex: 0 1 auto; min-width: 44px; max-width: 42%; min-height: 44px; padding: 0 6px; border-radius: var(--r-md);
+  font-size: var(--fs-3); font-weight: 600; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ec-crumb-sep { flex: none; margin: 0 6px 0 0; color: var(--dim); font-size: var(--fs-3); }
+.ec-sheet-head .ec-head-r, .ec-sheet-head > .ec-ibtn { pointer-events: auto; }
+.ec-sheet-head [data-act="sheet-intro"][aria-expanded="true"] { background: var(--sel); border-color: var(--line); }
+.ec-sheet-intro { margin: 2px 0 8px; padding: 8px 10px; border-radius: var(--r-md); background: var(--well); font-size: var(--fs-2); line-height: 1.4; color: var(--text); }
+/* landscape: half the width at full height, over the side rail (G22); the HUD on the left stays clear of it */
+body.land .ec-sheet, body.land .ec-sheet[data-detent] {
+  left: auto; right: 0; top: 0; bottom: 0; height: auto; max-height: none; width: calc(var(--sheet-w-land) + var(--sa-r));
+  padding: var(--sa-t) max(12px, var(--sa-r)) max(8px, var(--sa-b)) 12px; border-radius: 0; border-top: 0; border-left: 1.5px solid var(--line);
+}
+body.land .ec-sheet-head { padding-top: 0; min-height: 52px; }
+body.land .ec-sheet-head > .ec-grab { display: none; }
+body.land.has-sheet .ec-top, body.land.has-sheet .ec-stockstrip { right: calc(var(--sheet-w-land) + var(--sa-r)); }
+body.land.has-sheet .ec-paused-frame { right: calc(var(--sheet-w-land) + var(--sa-r)); }
+body.land.has-sheet .ec-hint { left: calc(var(--sa-l) + (100% - var(--sa-l) - var(--sa-r) - var(--sheet-w-land)) / 2); }
+body.land.has-sheet .ec-toasts { right: calc(var(--sheet-w-land) + var(--sa-r) + 8px); }
+
+/* ---------- W1.4 (EMBERCROWN-WORLD.md 8.1, 8.4, 8.6, 8.7; 11 items 9, 10, 12, 26): compact build cards, the peek
+   chevron and the compact landscape peek, the level pill and the level list, the Menu and Settings ---------- */
+/* Build: the panel stands at the medium detent in portrait; one scrolling category strip with a fade edge; one-line cards */
+body:not(.land) .ec-panel[data-panel="build"] { height: var(--detent-mid); max-height: calc(100% - var(--sa-t) - var(--top) - var(--bar) - var(--sa-b)); padding: 0 max(var(--sp-2), var(--sa-r)) 8px max(var(--sp-2), var(--sa-l)); }
+.ec-panel[data-panel="build"] .ec-panel-head { min-height: 48px; }
+body .ec-panel[data-panel="build"] .ec-bstrip { display: flex; flex-wrap: nowrap; overflow-x: auto; margin: 0 0 6px; padding-right: 28px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+body .ec-panel[data-panel="build"] .ec-bstrip .ec-strip-tab { flex: none; flex-direction: row; gap: 6px; height: 44px; min-width: 0; padding: 0 12px; }
+body .ec-panel[data-panel="build"] .ec-bstrip .ec-strip-tab .ic { width: 18px; height: 18px; }
+.ec-bgrid.ec-bgrid2, body.land .ec-bgrid.ec-bgrid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+:root[data-ec-text="130"] .ec-bgrid.ec-bgrid2, :root[data-ec-text="130"] body.land .ec-bgrid.ec-bgrid2 { grid-template-columns: minmax(0, 1fr); }
+body .ec-card.ec-bc { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 46px; padding: 2px 3px 2px 2px; text-align: left;
+  background: linear-gradient(var(--raised-hi), var(--raised) 46%); border-color: var(--line-soft); }
+.ec-bc-art { position: relative; flex: none; width: 34px; height: 40px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--brass-hi);
+  background: var(--well); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.45); }
+.ec-bc-art .ec-thumb { display: block; width: 32px; height: 32px; image-rendering: pixelated; }
+.ec-bc-art .ic { width: 24px; height: 24px; }
+.ec-bc-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.ec-bc .ec-card-n, .ec-bc .ec-card-sub, .ec-bc .ec-card-why { display: block; grid-column: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; line-height: 1.25; }
+.ec-bc .ec-card-n { font-size: var(--fs-1); font-weight: 700; color: var(--text); }
+.ec-bc .ec-card-sub { font-size: var(--fs-1); color: var(--brass-hi); }
+.ec-bc .ec-card-why { font-size: var(--fs-1); color: #ffd08a; }
+.ec-bc.locked { background: var(--surface-2); border-style: dashed; }
+.ec-bc.locked .ec-thumb { filter: grayscale(0.85) brightness(0.65); }
+.ec-bc .ec-bcard-lock { position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; background: var(--surface); color: #ffd08a; }
+.ec-bc .ec-bcard-lock .ic { width: 14px; height: 14px; }
+.ec-later { grid-column: 1 / -1; min-height: 46px; padding: 4px 10px; border: 1px dashed var(--line-soft); border-radius: var(--r-md); background: var(--surface-2); }
+.ec-later .ec-row-n { font-size: var(--fs-2); font-weight: 650; }
+.ec-later .ec-row-help { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ec-later-ic { flex: none; color: var(--brass-hi); }
+.ec-later-ic .ic { width: 20px; height: 20px; }
+.ec-bc-note { margin: 4px 0 0; }
+/* the peek card: the chevron that opens the full sheet; in landscape a compact 280 x 120 card at the bottom right */
+.ec-peek-open { flex: none; height: 44px; min-width: 64px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 6px 0 10px;
+  border-radius: var(--r-md); border: 1px solid var(--line-soft); background: var(--raised); box-shadow: var(--bevel); color: var(--brass-hi); font-size: var(--fs-1); font-weight: 650; }
+.ec-peek-open .ic { width: 16px; height: 16px; }
+body.land .ec-peek { top: auto; bottom: calc(var(--sa-b) + 8px); right: calc(var(--sa-r) + var(--side) + 8px); width: 280px; height: 120px; gap: 4px; padding: 0 8px 8px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-2); }
+body.land .ec-peek .ec-peek-acts { gap: 6px; }
+body.land .ec-peek .ec-act { min-width: 0; padding: 0 4px; font-size: var(--fs-1); }
+
+/* the level pill: the band swatch, the number and the band name in one pill (no floating plate) */
+.ec-lv-capsule { width: auto; align-items: flex-end; background: none; box-shadow: none; }
+body.land .ec-lv-capsule { align-items: flex-start; }
+.ec-lv-btn { box-shadow: 0 0 0 1px var(--line-soft), var(--sh-1); }
+.ec-lv-chip.ec-lv-pill { width: auto; min-width: 52px; max-width: calc(140px * var(--ts)); height: 52px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 12px 0 10px; border-radius: 26px; white-space: nowrap; }
+.ec-lv-pill .ec-lv-n { font-size: var(--fs-3); }
+.ec-lv-pill .ec-lv-n:empty { display: none; }
+.ec-lv-pill .ec-lv-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-2); font-weight: 600; color: var(--text); }
+/* the level list: a sheet with its two buttons above the rows; no faint italic text */
+.ec-lvlist-head { margin: 8px 0 6px; font-size: var(--fs-1); color: var(--dim); }
+.ec-lvlist-acts { margin: 0 0 8px; }
+.ec-lvlist-acts .ec-act[hidden] { display: none; }
+.ec-ruler-list.ec-lvlist { flex: none; overflow: visible; }
+.ec-lvlist .ec-ruler-row { min-height: 52px; padding: 6px 12px 6px 16px; font-size: var(--fs-2); }
+.ec-lvlist .ec-ruler-t b { font-variant-numeric: tabular-nums; }
+.ec-lvlist .ec-ruler-sub { margin-top: 2px; font-size: var(--fs-1); color: var(--dim); }
+.ec-lvlist .ec-ruler-fold { display: flex; align-items: center; min-height: 44px; padding: 6px 16px; font-size: var(--fs-1); font-style: normal; color: var(--dim); }
+.ec-lvlist-here { margin-left: 8px; font-size: var(--fs-1); font-weight: 600; color: var(--good); }
+/* the Menu: two groups of rows, each with its icon */
+.ec-menu-group { margin: 8px 0 12px; border: 1px solid var(--line-faint); border-radius: var(--r-lg); background: var(--surface-2); overflow: hidden; }
+.ec-menu-group > .ec-row:last-child { border-bottom: 0; }
+.ec-row.ec-menu-row { min-height: 52px; padding: 4px 12px; }
+.ec-menu-ic { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); color: var(--brass-hi); }
+.ec-menu-ic .ic { width: 20px; height: 20px; }
+.ec-menu-row .ec-row-s { color: var(--dim); }
+/* Settings: a sticky jump strip, group heads, pixel-art switches (44 x 28 inside 52 pt rows) */
+body .ec-strip.ec-setjump { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: nowrap; overflow-x: auto; margin: 4px 0 0; background: var(--surface-2); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+body .ec-setjump .ec-strip-tab { flex: none; min-width: 0; padding: 0 12px; color: var(--text); }
+.ec-setgroup { scroll-margin-top: 60px; }
+.ec-row.ec-swrow { min-height: 52px; padding: 4px; }
+.ec-swrow .ec-row-n { flex: 1; }
+.ec-switch { position: relative; flex: none; width: 44px; height: 28px; background: #3a3036; box-shadow: inset 0 0 0 2px #120e12, inset 0 4px 0 rgba(0, 0, 0, 0.35); }
+.ec-switch i { position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; background: var(--dim);
+  box-shadow: inset 0 0 0 2px #120e12, inset -2px -2px 0 rgba(0, 0, 0, 0.3), inset 2px 2px 0 rgba(255, 255, 255, 0.3); }
+.ec-swrow[aria-checked="true"] .ec-switch { background: #4f7a32; }
+.ec-swrow[aria-checked="true"] .ec-switch i { left: 20px; background: var(--text); }
+.ec-swrow[aria-disabled="true"] .ec-switch { opacity: 0.45; }
+.ec-setenum { padding: 8px 4px 4px; border-bottom: 1px solid var(--line-faint); }
+.ec-setenum > .ec-row-n { display: block; font-size: var(--fs-3); }
+.ec-setenum .ec-seg { margin-top: 6px; }
+.ec-setstore { padding: 4px 0; }
+.ec-sheet-body:has(.ec-setjump) { scroll-padding-top: 56px; }
+body.land .ec-peek .ec-peek-open { min-width: 44px; padding: 0; }
+body.land .ec-peek .ec-peek-open-t { display: none; }
+body.land.has-peek:not(.has-panel):not(.has-sheet) .ec-paused-frame { right: calc(var(--sa-r) + var(--side)); }
+/* W1.3a: the People sheet's pinned alert row and the rail's "+N" chip */
+.ec-people-mil { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 4px 0 6px; background: var(--surface); }
+.ec-rail-more { background: var(--raised); border: 1px solid var(--line); color: var(--brass-hi); font-size: var(--fs-2); font-weight: 700; }

@@ -2,7 +2,35 @@
 // the title's button panel, and a riveted brass trim for their inner edge, painted once at start-up as
 // tiny pixel canvases in the art palette (docs/ART-STYLE.md) and handed to the CSS as data-URL custom
 // properties (--px-stone, --px-trim, --px-trim-v). No image files; without a canvas the bars stay flat.
+// W1.5 (EMBERCROWN-WORLD.md 7.2 item 2, 8.9): it also installs D's 9-slice panel frames and the rune rule
+// (js/engine/art/ui.js frameVars) as --px-frame-<stone|wood|plate|plate-hot>[-slice|-w], --px-rule[-w|-h],
+// --px-rune[-w] and --px-m, baked for the screen's device pixel ratio so that every art pixel is a whole
+// number of device pixels, and bakes them again when the ratio changes (a zoom, another screen). Use:
+//   border: var(--px-frame-stone-w) solid transparent;
+//   border-image: var(--px-frame-stone) var(--px-frame-stone-slice) / var(--px-frame-stone-w) repeat;
+//   image-rendering: pixelated; background-clip: padding-box;
 import { PAL } from '../engine/art/palette.js';
+import { frameVars } from '../engine/art/ui.js';
+
+let dprWatch = null;
+/** Install (or re-install for a new device pixel ratio) the panel frames and the rule (idempotent per ratio). */
+export function installPanels(k = 2) {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return null;
+  const dpr = window.devicePixelRatio || 1, root = document.documentElement;
+  if (root.dataset.panels === String(dpr)) return root.dataset.panels;
+  try {
+    const v = frameVars({ k, dpr });
+    for (const n in v) root.style.setProperty(n, v[n]);
+    root.dataset.panels = String(dpr);
+  } catch (_) { return null; /* no canvas: the CSS borders stay */ }
+  if (window.matchMedia) {
+    if (dprWatch) dprWatch.mq.removeEventListener?.('change', dprWatch.fn);
+    const mq = window.matchMedia(`(resolution: ${dpr}dppx)`), fn = () => installPanels(k);
+    mq.addEventListener?.('change', fn, { once: true });
+    dprWatch = { mq, fn };
+  }
+  return root.dataset.panels;
+}
 
 function paint(w, hh, fn) {
   const c = document.createElement('canvas');
@@ -16,7 +44,9 @@ function paint(w, hh, fn) {
 
 /** Install the textures on :root (idempotent). */
 export function installFrame() {
-  if (typeof document === 'undefined' || document.documentElement.dataset.frame) return;
+  if (typeof document === 'undefined') return;
+  installPanels();
+  if (document.documentElement.dataset.frame) return;
   try {
     // 16 x 8: two courses of dark ashlar, offset joints, a lit top edge per block and a few chips
     const stone = paint(16, 8, (px) => {

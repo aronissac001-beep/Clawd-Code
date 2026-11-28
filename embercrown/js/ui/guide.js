@@ -8,8 +8,15 @@
 // UI only: it reads state and starts tools through the shell context; it never sends a command of
 // its own and never writes the sim state. Progress is a per-colony localStorage flag set
 // ('ec2.guide.<colony id>'), so it survives a reload without touching the save or the state hash.
+// The new shell (SHELL2; EMBERCROWN-WORLD.md 8.8, G23, step W1.7) teaches by need: 6 steps (chop, stockpile, bed,
+// food, dig down, defend), each with a "Show me" that arms the tool for the step's next missing part, on a card
+// at the top of the world (<= 20 % of the portrait height) that folds to a "2/6" chip; its progress is kept
+// under 'ec2.guide.<colony id>.c6'. The one-line hints and the "What is new" deck live in intros.js. Text: the
+// COACH_TEXT rows of js/data/text/help.js.
 import { h, onTap, icon, clear } from './kit.js';
 import { openSubjectSheet } from './sheet.js';
+import { SHELL2_ON } from './peopleui.js';
+import { COACH_TEXT } from '../data/text/help.js';
 import { DESIG, D, zS, PLANE, TER } from '../game/core/grid.js';
 import { vdigList, VD } from '../game/work/vdig.js';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../game/core/time.js';
@@ -72,6 +79,34 @@ function stockBelow(s) {
   for (let i = 0, e = zS * PLANE; i < e; i++) if (zl[i] && ids.has(zl[i])) return true;
   return false;
 }
+/**
+ * The 6 steps of the new shell (8.8): id, parts [{ done(s), go }]; a step is done when every part is, and its
+ * "Show me" arms the tool of the first part not done (bed: the carpenter's bench, then the bedroom stamp).
+ * deep: a map with levels digs a stair down; a flat test map carves into the mountain.
+ */
+const built = (d) => (s) => s.bld.some((b) => b && b.def === d);
+export function coachSteps(deep = true) {
+  const P = (done, tool) => ({ done, go: { tool } });
+  const rows = [
+    ['chop', [P((s) => countDesig(s, DESIG.CHOP) >= 1, { kind: 'rect', id: 'chop' })]],
+    ['stockpile', [P((s) => s.zones.some((z) => z.type === 'stockpile'), { kind: 'zone', op: 'new', preset: 'all' })]],
+    ['bed', [P(built('carpenter'), { kind: 'place', def: 'carpenter' }), P(built('bed'), { kind: 'stamp', stamp: 'bedroom' })]],
+    ['food', [P(built('campfire'), { kind: 'place', def: 'campfire' }), P((s) => s.zones.some((z) => z.type === 'grow'), { kind: 'zone', op: 'new', type: 'grow' })]],
+    deep ? ['dig', [P((s) => vdigList(s).some((e) => e[1] === VD.STAIR) || stairDug(s), { kind: 'vert', id: 'stairs' })]]
+      : ['carve', [P((s) => s.colony.plans.some((p) => p.kind === 'carve') || countDesig(s, DESIG.MINE) >= 6, { kind: 'carve' })]],
+    ['defend', [P((s) => s.bld.filter((b) => b && b.def === 'brazier').length >= 2, { kind: 'place', def: 'brazier' })]],
+  ];
+  return Object.freeze(rows.map(([id, parts]) => Object.freeze({
+    id, parts, title: COACH_TEXT.steps[id].title, how: COACH_TEXT.steps[id].how,
+    done: (s) => parts.every((p) => p.done(s)),
+    goFor: (s) => { const p = parts.find((x) => { try { return !x.done(s); } catch (_) { return true; } }); return (p || parts[parts.length - 1]).go; },
+  })));
+}
+export const COACH_STEPS = coachSteps(true);
+/** The coach card's inline layout (portrait and landscape alike; style.css owns the look, these the grid). */
+const CARD6 = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', columnGap: '8px', rowGap: '0', alignItems: 'center',
+  padding: '2px 2px 8px 12px', width: 'min(360px, calc(100vw - var(--sa-l) - var(--sa-r) - 76px))', maxHeight: 'none', overflow: 'visible' };
+const fill = (t, v) => t.replace(/\{(\w+)\}/g, (m, k) => (v[k] === undefined ? m : String(v[k])));
 const END = { title: 'Your hold has begun', how: 'Dig deeper for coal and iron, keep the Hearth fed, and watch the chip at the top for the next omen.' };
 const LV_END = { title: 'The levels are yours', how: 'Dig down for coal, iron and the caverns below. Tap the level chip for the depth ruler: every level you have found.' };
 const WAIT = { title: 'Keep building', how: 'The coach returns when the first omen comes (day 2, at dusk). Dig, build and stock wood until then.' };
@@ -84,7 +119,8 @@ function countDesig(s, bit) {
   for (let i = 0; i < D.length; i++) if (D[i] & bit) n++;
   return n;
 }
-const KEY = (s, lv = false) => 'ec2.guide.' + (s.id || 'colony') + (lv ? '.lv' : '');
+// lv: true for the level steps ('.lv'), or a key suffix ('.c6': the 6-step coach of the new shell)
+const KEY = (s, lv = false) => 'ec2.guide.' + (s.id || 'colony') + (typeof lv === 'string' ? lv : lv ? '.lv' : '');
 /** A Stage 2 hold given depth at the fortress switch (migrate4 writes the Chronicle's depth line). */
 export const migratedHold = (s) => (s.d || 1) > 1 && Array.isArray(s.chron) && s.chron.some((e) => e && e[2] === 'chron_depth');
 function load(s, lv = false) {
@@ -103,9 +139,13 @@ export function mountGuide(root, ctx) {
   // with no day limit (EMBERCROWN-FORTRESS.md 4.6: digging down is new to it); kept under its own key
   const st0 = load(s);
   const lvMode = D > 1 && migratedHold(s) && (st0.off || s.tick >= COACH_END_TICK);
-  const GUIDE_STEPS = lvMode ? LEVEL_STEPS : stepsFor(D > 1);   // this colony's steps (shadows the module list)
-  const st = lvMode ? load(s, true) : st0;
-  const save = (s0, v) => saveSt(s0, v, lvMode);
+  // the new shell: the 6 steps (8.8), kept under their own key; a coach closed on the old card stays closed
+  const six = SHELL2_ON && !lvMode;
+  const GUIDE_STEPS = lvMode ? LEVEL_STEPS : six ? coachSteps(D > 1) : stepsFor(D > 1);   // this colony's steps (shadows the module list)
+  const sfx = lvMode ? true : six ? '.c6' : false;
+  const st = sfx ? load(s, sfx) : st0;
+  if (six && st0.off) st.off = true;
+  const save = (s0, v) => saveSt(s0, v, sfx);
   const el = h('aside.ec-guide', { 'aria-label': 'Getting started', hidden: true });
   root.append(el);
   let shown = null;   // the step id (or 'end') on screen, so a check that changes nothing leaves the DOM
@@ -127,6 +167,7 @@ export function mountGuide(root, ctx) {
   save(s, st);
 
   function render() {
+    if (six) { render6(); return; }
     const step = GUIDE_STEPS.find((g) => !st.done.includes(g.id) && ready(g));
     const waiting = !step && GUIDE_STEPS.some((g) => !st.done.includes(g.id));
     const key = st.off ? 'off' : (step ? step.id : waiting ? (warned(s) ? 'wait2' : 'wait') : 'end') + (st.small ? ':s' : '');
@@ -164,6 +205,43 @@ export function mountGuide(root, ctx) {
       el.append(go);
     }
   }
+  /** The 6-step card (8.8): "n/6" and the title with the fold button, then the line and "Show me". */
+  function render6() {
+    const step = GUIDE_STEPS.find((g) => !st.done.includes(g.id));
+    const key = st.off ? 'off' : (step ? step.id + ':' + st.done.length : 'end') + (st.small ? ':s' : '');
+    if (key === shown) return;
+    shown = key;
+    clear(el);
+    el.removeAttribute('style');
+    el.classList.remove('ec-coach');
+    el.hidden = st.off;
+    document.body.classList.toggle('has-guide', !st.off && !st.small);
+    if (st.off) return;
+    el.classList.toggle('small', st.small);
+    const total = GUIDE_STEPS.length, nDone = st.done.filter((id) => GUIDE_STEPS.some((g) => g.id === id)).length;
+    if (st.small) {
+      const chip = h('button.ec-guide-chip', { type: 'button', 'data-act': 'guide-open', 'aria-label': fill(COACH_TEXT.chipLabel, { done: nDone, total }) },
+        h('span', { html: icon('check') }), h('span', { text: fill(COACH_TEXT.count, { n: nDone, total }) }));
+      onTap(chip, () => { st.small = false; save(s, st); render(); });
+      el.append(chip);
+      return;
+    }
+    el.classList.add('ec-coach');
+    Object.assign(el.style, CARD6);
+    const cur = step || COACH_TEXT.end;
+    const hide = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'guide-hide', 'aria-label': step ? COACH_TEXT.fold : COACH_TEXT.close, html: icon(step ? 'chevDown' : 'x') });
+    hide.style.gridColumn = '2'; hide.style.gridRow = '1';
+    onTap(hide, () => { if (step) st.small = true; else st.off = true; save(s, st); render(); });
+    const t = h('div.ec-guide-t', { style: { gridColumn: '1', gridRow: '1', margin: '0', fontSize: 'var(--fs-3)', lineHeight: '1.25' } },
+      h('span.ec-guide-n', { text: step ? fill(COACH_TEXT.count, { n: GUIDE_STEPS.indexOf(step) + 1, total }) + ' ' : '' }), document.createTextNode(cur.title));
+    const how = h('div.ec-guide-how', { text: cur.how, style: { gridColumn: step ? '1' : '1 / -1', gridRow: '2', margin: '0', alignSelf: 'center' } });
+    el.append(t, hide, how);
+    if (step) {
+      const go = h('button.ec-act.ec-guide-go', { type: 'button', 'data-act': 'guide-go', text: COACH_TEXT.showMe, style: { gridColumn: '2', gridRow: '2', margin: '0 6px 0 0', padding: '0 14px', alignSelf: 'center' } });
+      onTap(go, () => { const g = step.goFor(s); if (g && g.tool) ctx.startTool(g.tool); });
+      el.append(go);
+    }
+  }
   render();
   return {
     el,
@@ -178,7 +256,7 @@ export function mountGuide(root, ctx) {
         save(s, st);
         // a short "done" toast for each step finished while the card was up
         const g = GUIDE_STEPS.find((x) => x.id === st.done[st.done.length - 1]);
-        if (g && st.done.length > before && ctx.toast) ctx.toast(`Done: ${g.title.charAt(0).toLowerCase()}${g.title.slice(1)}.`);
+        if (g && st.done.length > before && ctx.toast) ctx.toast(six ? fill(COACH_TEXT.done, { what: g.title.charAt(0).toLowerCase() + g.title.slice(1) }) : `Done: ${g.title.charAt(0).toLowerCase()}${g.title.slice(1)}.`);
         // the last step done: the closing card opens once, even from the small chip
         if (GUIDE_STEPS.every((x) => st.done.includes(x.id))) { st.small = false; save(s, st); }
       }

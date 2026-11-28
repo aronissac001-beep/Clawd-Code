@@ -67,7 +67,7 @@ export function peopleList(el, ctx, { work = false } = {}) {
   }
   coverageRow(el, s);
 }
-function coverageRow(el, s) {
+export function coverageRow(el, s) {
   const gaps = coverage(s);
   el.append(gaps.length
     ? h('div.ec-cover.warn', { role: 'status' }, h('span', { html: icon('alert') }), h('span', { text: gaps.join('. ') + '.' }))

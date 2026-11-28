@@ -7,10 +7,28 @@
 // least 20 s between two cards; urgent ones (taint, the Ember-touched, fire, a break) may come during
 // the coach's days, the rest wait for it to end. Each intro shows once per device (the player has
 // learnt it), kept in localStorage 'ec2.intros' (no save or state change: UI only).
+// The new shell (SHELL2; EMBERCROWN-WORLD.md 8.8, G23, step W1.7) adds, on the same card element:
+//   - hints by need: one line and "Show me", the first time something happens in this hold (the first night,
+//     cavern, flood, visitor, forecast front, foul or smoky air, clash of customs, envoy demand); each shows once
+//     per hold ('ec2.hints.<colony id>'), folds away after HINT_MS, may come during the coach, and is listed
+//     under Help / Hints (hintsBlock);
+//   - the "What is new" deck: up to 3 cards (the world around the hold, the new menus, fronts and air; a card
+//     shows only once its system is in the hold) for a hold played before the new shell, once per hold
+//     ('ec2.whatsnew.<colony id>'); a hold founded under the new shell starts with every card seen, and
+//     queueWhatsNew(id, cards) queues cards again (9.4 part 2 step 8).
+// Text: HINT_TEXT and WHATSNEW_TEXT of js/data/text/help.js. UI only: nothing here writes the save or the state.
 import { h, onTap, icon, clear } from './kit.js';
 import { openDemand, openTrade } from './letters.js';
 import { openHelp } from './help.js';
-import { dayOf } from '../game/core/time.js';
+import { openWorld } from './worldui.js';
+import { SHELL2_ON } from './peopleui.js';
+import { COACH_END_TICK, migratedHold } from './guide.js';
+import { COACH_TEXT, HINT_TEXT, WHATSNEW_TEXT } from '../data/text/help.js';
+import { LEVELS } from '../data/levels.js';
+import { dayOf, phaseOf, TICKS_PER_HOUR } from '../game/core/time.js';
+import { fluidRec, FLOW } from '../game/world/fluids.js';
+import { visitorsOf } from '../game/colony/visitors.js';
+import { def } from '../game/core/content.js';
 
 const KEY = 'ec2.intros';
 const living = (s) => s.col.filter((c) => !c.hp.dead);
@@ -66,6 +84,95 @@ export const INTROS = Object.freeze([
     when: (s) => dayOf(s.tick) >= 10, go: { label: 'Help', fn: (ctx) => openHelp(ctx) } },
 ]);
 
+// ---- hints by need (8.8) ---------------------------------------------------------------------------------------
+const CAVERN_DISC = new Set(LEVELS.filter((l) => l.cavern && l.disc).map((l) => l.disc));
+/** Moving water at alert depth, not a river source (as alerts.js reads the fluid set). */
+function flooding(s) {
+  const r = fluidRec(s), fl = s.L && s.L.fluid;
+  if (!r || !fl || !r.act || !r.act.length) return false;
+  for (const i of r.act) { const v = fl[i]; if (!(v & 16) && !(v & 8) && (v & 7) >= FLOW.alertDepth) return true; }
+  return false;
+}
+/** A front within the forecast (6.2: weather v2, shown from arrive - 24 h). */
+function frontSoon(s) {
+  const w = s.colony && s.colony.world && s.colony.world.weather;
+  const f = w && w.v >= 2 ? w.front : null;
+  return !!(f && typeof f.arrive === 'number' && s.tick >= f.arrive - 24 * TICKS_PER_HOUR);
+}
+/** Foul or smoky air past the first thought (6.3: smoke or foul > 96 in any cell). */
+function airBad(s) {
+  const a = (s.rt && s.rt.air) || s.air;
+  if (!a) return false;
+  const over = (arr) => { if (!arr || typeof arr.length !== 'number') return false; for (let i = 0; i < arr.length; i++) if (arr[i] > 96) return true; return false; };
+  if (a.smoke || a.foul) return over(a.smoke) || over(a.foul);
+  // packed: 3 values per cell (smoke, foul, gas)
+  if (typeof a.length === 'number') { for (let i = 0; i + 1 < a.length; i += 3) if (a[i] > 96 || a[i + 1] > 96) return true; }
+  return false;
+}
+const hasDef = (k, id) => { try { return !!def(k, id); } catch (_) { return false; } };
+const firstBuilt = (s, d) => s.bld.find((b) => b && b.def === d) || null;
+/** The hints, in priority order: id, when(s), go: { tool | fn(ctx, s) } | null. Text: HINT_TEXT.rows[id]. */
+export const HINTS = Object.freeze([
+  { id: 'night', when: (s) => phaseOf(s.tick) === 'night',
+    go: { fn: (ctx, s) => { const hr = s.colony.hearth, b = hr && hr.id !== null && hr.id !== undefined ? s.bld[hr.id] : firstBuilt(s, 'hearth'); if (b) { ctx.centerOn(b.x + 1, b.y + 1); ctx.select({ kind: 'building', id: b.id, x: b.x, y: b.y }); } } } },
+  { id: 'cavern', when: (s) => { const d = s.colony.world && s.colony.world.disc; return Array.isArray(d) && d.some((k) => CAVERN_DISC.has(k)); },
+    go: { tool: { kind: 'place', def: 'wall' } } },
+  { id: 'flood', when: flooding, go: { tool: { kind: 'place', def: 'door' } } },
+  { id: 'visitor', when: (s) => visitorsOf(s).length > 0 || !!tradeVisit(s), go: { fn: (ctx) => openWorld(ctx, 'letters') } },
+  { id: 'front', when: frontSoon, go: null },
+  { id: 'air', when: airBad, go: { tool: { kind: 'place', def: hasDef('structure', 'chimney') ? 'chimney' : 'door' } } },
+  { id: 'clash', when: (s) => living(s).some((c) => Array.isArray(c.thoughts) && c.thoughts.some((t) => t && /clash/.test(String(t[0])))),
+    go: { fn: (ctx) => ctx.openColony('People') } },
+  { id: 'envoy', when: (s) => !!(s.colony.trade && s.colony.trade.envoy), go: { fn: (ctx) => openWorld(ctx, 'factions') } },
+]);
+export const HINT_MS = 12000;
+const HKEY = (s) => 'ec2.hints.' + (s.id || 'colony');
+const DKEY = (s) => 'ec2.whatsnew.' + (s.id || 'colony');
+const loadList = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
+const saveList = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* private mode: it may show again */ } };
+/** The hints this hold has shown (ids, in the order shown). */
+export const hintsSeen = (s) => loadList(HKEY(s)).filter((id) => HINTS.some((x) => x.id === id));
+
+/** Help / Hints: the hints this hold has shown, each with its "Show me" (closes Help first). */
+export function hintsBlock(el, ctx) {
+  const seen = hintsSeen(ctx.s);
+  el.append(h('h3.ec-sub', { text: HINT_TEXT.title }));
+  if (!seen.length) { el.append(h('p.ec-note', { text: HINT_TEXT.none })); return; }
+  for (const id of seen) {
+    const it = HINTS.find((x) => x.id === id);
+    const row = h('div.ec-hintrow', { style: { display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' } },
+      h('p.ec-bio-d', { text: HINT_TEXT.rows[id], style: { flex: '1 1 auto', margin: '0' } }));
+    if (it && it.go) {
+      const go = h('button.ec-act', { type: 'button', 'data-act': 'hint-again', 'data-hint': id, text: COACH_TEXT.showMe, style: { flex: 'none', minHeight: '44px' } });
+      onTap(go, () => { if (ctx.closeSheet) ctx.closeSheet(); runGo(ctx, ctx.s, it.go); });
+      row.append(go);
+    }
+    el.append(row);
+  }
+}
+function runGo(ctx, s, g) {
+  if (!g) return;
+  if (g.fn) g.fn(ctx, s);
+  else if (g.colony) ctx.openColony(g.colony);
+  else if (g.panel) ctx.openPanel(g.panel);
+  else if (g.tool) ctx.startTool(g.tool);
+}
+
+// ---- the "What is new" deck (8.8) ------------------------------------------------------------------------------
+/** The cards: id, when(s) (the system is in this hold). Text: WHATSNEW_TEXT.cards[id]. */
+export const DECK = Object.freeze([
+  { id: 'world', when: (s) => !!s.realm },
+  { id: 'menus', when: () => true },
+  { id: 'air', when: (s) => !!((s.colony.world && s.colony.world.weather && s.colony.world.weather.v >= 2) || (s.rt && s.rt.air) || s.air) },
+]);
+/** A hold played before the new shell: past the coach's days, or a Stage 2 hold given depth. */
+export const olderHold = (s) => s.tick >= COACH_END_TICK || migratedHold(s);
+/** Queue deck cards again for colony `id` (9.4 part 2: the world card after the migration). */
+export function queueWhatsNew(id, cards = DECK.map((c) => c.id)) {
+  const k = 'ec2.whatsnew.' + (id || 'colony');
+  saveList(k, loadList(k).filter((x) => !cards.includes(x)));
+}
+
 function loadSeen() { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } }
 function saveSeen(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) { /* private mode: they may show again */ } }
 
@@ -80,16 +187,64 @@ export function mountIntros(root, ctx, opts) {
   let seen = loadSeen(), cur = null, lastEnd = -Infinity, lastShow = 0;
   let after = null;   // showFirst's follow-on (the Dawn Ledger after the depth card), run when the card is closed
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  // the new shell: hints by need and the "What is new" deck (8.8), per hold
+  const hintSeen = SHELL2_ON ? loadList(HKEY(s)) : [];
+  const pending = [];   // hints whose moment came while something else was up (UI memory)
+  let deckSeen = [];
+  if (SHELL2_ON) {
+    let raw = null;
+    try { raw = localStorage.getItem(DKEY(s)); } catch (_) { raw = null; }
+    // a hold founded under the new shell has nothing to catch up on: every card counts as seen
+    if (raw === null && !olderHold(s)) saveList(DKEY(s), DECK.map((c) => c.id));
+    deckSeen = loadList(DKEY(s));
+  }
+  const due = (x) => { try { return !!x.when(s); } catch (_) { return false; } };
+  const deckDue = () => (SHELL2_ON ? DECK.filter((c) => !deckSeen.includes(c.id) && due(c)).map((c) => c.id) : []);
+  const reset = () => { clear(el); el.removeAttribute('style'); el.removeAttribute('role'); el.classList.remove('ec-needhint', 'ec-deck'); };
   function hide(markSeen = true) {
-    if (cur && markSeen && !seen.includes(cur.id)) { seen.push(cur.id); saveSeen(seen); }
-    cur = null; el.hidden = true; clear(el); lastEnd = now();
+    if (cur && cur.kind === 'hint') { if (markSeen && !hintSeen.includes(cur.id)) { hintSeen.push(cur.id); saveList(HKEY(s), hintSeen); } }
+    else if (cur && cur.kind === 'deck') { if (markSeen) { for (const id of cur.ids) if (!deckSeen.includes(id)) deckSeen.push(id); saveList(DKEY(s), deckSeen); } }
+    else if (cur && markSeen && !seen.includes(cur.id)) { seen.push(cur.id); saveSeen(seen); }
+    cur = null; el.hidden = true; reset(); lastEnd = now();
     document.body.classList.remove('has-intro');
     if (!document.querySelector('.ec-guide:not(.ec-intro):not([hidden])')) document.body.classList.remove('has-guide');
     const then = after; after = null;
     if (then) then();
   }
+  /** A hint: one line, "Show me" and close; it folds away after HINT_MS and counts as seen. */
+  function showHint(it) {
+    cur = { kind: 'hint', id: it.id, it, when: () => true }; reset(); el.hidden = false;
+    el.classList.add('ec-needhint');
+    el.setAttribute('role', 'status');
+    Object.assign(el.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 4px 4px 12px' });
+    document.body.classList.add('has-guide', 'has-intro');
+    el.append(h('div.ec-guide-how', { text: HINT_TEXT.rows[it.id], style: { flex: '1 1 auto', margin: '0', color: 'var(--text)' } }));
+    if (it.go) {
+      const go = h('button.ec-act.ec-guide-go', { type: 'button', 'data-act': 'hint-go', 'data-hint': it.id, text: COACH_TEXT.showMe, style: { flex: 'none', margin: '0' } });
+      onTap(go, () => { hide(); runGo(ctx, s, it.go); });
+      el.append(go);
+    }
+    const x = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'hint-hide', 'aria-label': COACH_TEXT.close, html: icon('x') });
+    onTap(x, () => hide());
+    el.append(x);
+  }
+  /** The deck: one card at a time, "n/3", Next, and Got it on the last; closing it counts the cards seen. */
+  function showDeck(ids, i = 0) {
+    cur = { kind: 'deck', id: 'deck', ids, when: () => true }; reset(); el.hidden = false;
+    el.classList.add('ec-deck');
+    document.body.classList.add('has-guide', 'has-intro');
+    const c = WHATSNEW_TEXT.cards[ids[i]];
+    const x = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'deck-hide', 'aria-label': COACH_TEXT.close, html: icon('x') });
+    onTap(x, () => hide());
+    const head = WHATSNEW_TEXT.head.replace('{n}', String(i + 1)).replace('{total}', String(ids.length));
+    el.append(h('div.ec-guide-head', null, h('div.ec-guide-n', { text: head }), x), h('div.ec-guide-t', { text: c.title }), h('div.ec-guide-how', { text: c.how }));
+    const last = i >= ids.length - 1;
+    const b = h('button.ec-act.ec-guide-go', { type: 'button', 'data-act': last ? 'deck-ok' : 'deck-next', text: last ? WHATSNEW_TEXT.ok : WHATSNEW_TEXT.next });
+    onTap(b, () => { if (last) hide(); else showDeck(ids, i + 1); });
+    el.append(h('div.ec-intro-row', null, b));
+  }
   function show(it) {
-    cur = it; clear(el); el.hidden = false;
+    cur = it; reset(); el.hidden = false;
     // the coach card steps back while an intro is up (X 2.7: an urgent intro lay over the coach's step)
     document.body.classList.add('has-guide', 'has-intro');
     const x = h('button.ec-ibtn.ec-guide-x', { type: 'button', 'data-act': 'intro-hide', 'aria-label': 'Close', html: icon('x') });
@@ -116,10 +271,20 @@ export function mountIntros(root, ctx, opts) {
   return {
     el,
     get open() { return cur; },
+    /** Hints shown in this hold and hints waiting for a free moment (tests, Help). */
+    hints: () => ({ seen: hintSeen.slice(), pending: pending.slice() }),
     check() {
+      // hints: note each one's moment when it comes (it waits for a free moment, once per hold)
+      if (SHELL2_ON) for (const it of HINTS) if (!hintSeen.includes(it.id) && !pending.includes(it.id) && due(it)) pending.push(it.id);
+      if (cur && cur.kind === 'hint') { if (now() - lastShow > HINT_MS) hide(true); return; }
+      if (cur && cur.kind === 'deck') return;
       // a card whose subject is gone (the break passed) folds away; it counts as seen after 8 s on screen
       if (cur) { let still = true; try { still = !!cur.when(s); } catch (_) { still = false; } if (!still) hide(now() - lastShow > 8000); return; }
       if (opts.busy() || now() - lastEnd < 20000) return;
+      const dk = deckDue();
+      if (dk.length) { lastShow = now(); showDeck(dk); return; }
+      const hn = pending.find((id) => !hintSeen.includes(id));
+      if (hn) { pending.splice(pending.indexOf(hn), 1); lastShow = now(); showHint(HINTS.find((x) => x.id === hn)); return; }
       const coach = opts.coachDone();
       for (const it of INTROS) {
         if (seen.includes(it.id) || (!coach && !it.urgent)) continue;

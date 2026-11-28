@@ -1,6 +1,7 @@
 // Help (owner I; doc 10.9 "Every panel has a '?'", Menu > Help). Short cards for the core mechanics
 // and the Stage 2 systems, and the 2-3 line explanation behind each panel's "?" button.
 import { h, onTap } from './kit.js';
+import { hintsBlock } from './intros.js';
 
 /** Menu > Help: the cards, in reading order (the hooks of section 1 first). */
 export const HELP_CARDS = Object.freeze([
@@ -49,6 +50,7 @@ export function helpButton(ctx, key) {
 export function openHelp(ctx) {
   ctx.openSheet('Help', (el) => {
     for (const [t, x] of HELP_CARDS) el.append(h('section.ec-bio.ec-helpcard', null, h('h3.ec-sub', { text: t }), h('p.ec-bio-d', { text: x })));
+    hintsBlock(el, ctx);
     el.append(h('p.ec-note', { text: 'Every panel has a ? button with a short note.' }));
   }, { back: true });
 }

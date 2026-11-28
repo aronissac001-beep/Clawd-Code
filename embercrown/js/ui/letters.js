@@ -11,6 +11,9 @@
 //   The trade sheet (9.8): the visiting trader's stock and what the hold can sell, prices from K's
 //   buyPrice / sellPrice, a basket, and one `trade` command.
 // UI memory only (never saved): the session's letter list and which letters were read.
+// W1.9 (EMBERCROWN-WORLD.md 8.10, 11 item 27): mountLetters installs the a11y layer (a11y.js: sheets are modal
+//   dialogs with a focus trap, letters and alerts are read out); a letter about a threat from an edge (an omen, a
+//   storm front later) opens at the medium detent with the camera turned toward that edge (faceThreat).
 import { h, onTap, icon } from './kit.js';
 import { def, all } from '../game/core/content.js';
 import { on } from '../game/core/events.js';
@@ -19,10 +22,13 @@ import { pendingLetters, letterById } from '../game/threat/letters.js';
 import { fullName, nemesisById } from '../game/threat/nemesis.js';
 import { demandCard } from '../game/people/embertouch.js';
 import { buyPrice, sellPrice, colonyCoins } from '../game/colony/trade.js';
-import { nemesisRow } from './colonyui.js';
+import { nemesisRow } from './worldui.js';
 import { W, PLANE, D, TER, DESIG } from '../game/core/grid.js';
 import { stoneId } from '../game/world/defs.js';
 import { vdigAt } from '../game/work/vdig.js';
+import { H, TILE, zS } from '../game/core/grid.js';
+import { threatViews } from '../game/threat/warnings.js';
+import { installA11y } from './a11y.js';
 /** F's ember record: met is the tick the demand was met, or -1 (null in older records). */
 const emberMet = (em) => typeof em.met === 'number' ? em.met >= 0 : !!em.met;
 
@@ -49,6 +55,7 @@ function letterWords(s, e) {
  */
 export function mountLetters(ctx, hooks = {}) {
   const s = ctx.s;
+  installA11y();
   const list = [];            // [{ id, kind, title, text, tick, read, data }]
   const seenChoice = new Set();
   const off = on('letter', (e) => {
@@ -108,11 +115,39 @@ export function openChoice(ctx, l, hooks = {}) {
   }, { onClose: () => { if (restore) restore(); }, letter: true, back: !!hooks.back });
 }
 
+// ---- 11 item 27: a threat letter faces its edge ------------------------------------------------------------
+const SIDE = Object.freeze({ n: [0.5, 0], s: [0.5, 1], e: [1, 0.5], w: [0, 0.5], ne: [1, 0], nw: [0, 0], se: [1, 1], sw: [0, 1] });
+const SIDE_WORD = Object.freeze({ north: 'n', south: 's', east: 'e', west: 'w', northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw' });
+/** The world point (and level) a threat comes from: its edge marker (H's view.edge, tiles), else a side
+ *  ('n'..'sw' or the word; a storm front) at the middle of that map edge; null when it has neither. */
+export function threatPoint(v) {
+  if (!v) return null;
+  const e = v.edge;
+  if (e && Number.isFinite(e.x) && Number.isFinite(e.y)) return { x: (e.x + 0.5) * TILE, y: (e.y + 0.5) * TILE, z: Number.isFinite(e.z) ? e.z : zS };
+  const sd = v.side || (e && e.side) || v.from;
+  const k = typeof sd === 'string' ? (SIDE[sd] ? sd : SIDE_WORD[sd.toLowerCase()]) : null;
+  if (!k) return null;
+  const [fx, fy] = SIDE[k];
+  return { x: fx * W * TILE, y: fy * H * TILE, z: zS };
+}
+/** Turn the camera toward the edge a threat comes from (beside the open sheet: the shell's centerOn aims at
+ *  the map left uncovered; the camera clamp keeps the edge in view). Call after the letter's openSheet. */
+export function faceThreat(ctx, v) {
+  const p = threatPoint(v);
+  if (!p || !ctx || !ctx.centerOn) return false;
+  if (D > 1 && ctx.setLevel && (ctx.z === undefined || ctx.z() !== p.z)) ctx.setLevel(p.z);
+  ctx.centerOn(p.x, p.y);
+  return true;
+}
+/** The live threat view of an omen letter (its incident), or null once it is gone. */
+const omenView = (s, rec) => { try { return threatViews(s).find((v) => v.inc === rec.data.inc && v.stage !== 'retreat') || null; } catch (_) { return null; } };
+
 /** A letter from the list: a choice letter still waiting opens with its choices; a nemesis letter with its card. */
 export function openLetter(ctx, rec, hooks = {}) {
   const s = ctx.s;
   if (rec.kind === 'choice') { const l = letterById(s, rec.id); if (l) { openChoice(ctx, l, hooks); return; } }
   if (rec.kind === 'trader') { openTrade(ctx, rec.data.visitId); return; }
+  const threat = rec.kind === 'omen' ? omenView(s, rec) : rec.data && (rec.data.edge || rec.data.side) ? rec.data : null;
   ctx.openSheet(rec.title || 'A letter', (el) => {
     el.classList.add('ec-letter');
     el.append(h('div.ec-letter-ic', { html: icon(KIND_ICON[rec.kind] || 'book') }), h('p.ec-letter-t', { text: rec.text || '' }));
@@ -121,7 +156,8 @@ export function openLetter(ctx, rec, hooks = {}) {
       if (n) el.append(nemesisCard(ctx, n));
     }
     el.append(h('p.ec-note', { text: `Day ${Math.floor(rec.tick / TICKS_PER_DAY) + 1}.` }));
-  }, { back: !!hooks.back, letter: true });
+  }, { back: !!hooks.back, letter: true, ...(threat ? { detent: 'medium' } : {}) });
+  if (threat) faceThreat(ctx, threat);
 }
 
 /** Menu > Letters: waiting choices first, then the session's letters, newest first. */
