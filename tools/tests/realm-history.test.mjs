@@ -14,7 +14,11 @@ import { EVENT_TYPES, EVENT_INDEX, EVENT_BYTES } from '../../js/data/realm/event
 import { CIV_COUNT } from '../../js/data/realm/params.js';
 import { REALM_BIOMES } from '../../js/data/realm/biomes.js';
 import { DATA as ANCESTRIES } from '../../js/data/ancestries.js';
-import { encodeRecord, decodeRecord } from '../../js/game/realm/record.js';
+import { encodeRecord, decodeRecord, recordSizes } from '../../js/game/realm/record.js';
+import { checkFigures, CAUSE, CAUSE_KEYS, DEED_SLOT, FIG } from '../../js/game/realm/figures.js';
+import { beastName, BEAST } from '../../js/game/realm/beasts.js';
+import { beastIdentity } from '../../js/game/colony/legends.js';
+import { regionOpts } from '../../js/game/realm/region.js';
 
 const FIXTURES = [{ seed: 1, size: 'standard' }, { seed: 'Ashmark', size: 'small', sea: 2 }, { seed: 90210, size: 'large', hollowing: 'high', wildness: 'low' }];
 const BASE = new Map();
@@ -114,6 +118,79 @@ test('100 Standard seeds: the W3.1a oracle', () => {
   }
   console.log('# 100 seeds:', JSON.stringify(Object.fromEntries(Object.entries(tally).map(([k, v]) => [k, k === 'warned' || k === 'rerolls' ? v : +(v / 100).toFixed(1)]))));
   assert.equal(tally.warned, 0, 'no world accepted with a history warning');
+});
+
+// W3.1b (2.3 steps 5, 6, 10; 2.5): figures, deeds, beasts and artifacts
+test('100 Standard seeds: the W3.1b oracle (figures, deeds and causes by replay, artifacts, beasts)', () => {
+  const tally = { figures: 0, alive: 0, deeds: 0, artifacts: 0, lost: 0, beasts: 0, slain: 0, events: 0 }, causes = {}, mins = { figures: 1e9, artifacts: 1e9, beasts: 1e9 };
+  let maxEv = 0;
+  for (let seed = 1; seed <= 100; seed++) {
+    const r = buildRealm({ seed });
+    settleHistory(r);
+    const T = r.tables, at = `seed ${seed}`, sc = r.n / 64;
+    // the replay oracle: lives, deeds inside lives, causes true at their year, one holder or one lost place, beasts
+    assert.deepEqual(checkFigures(r), [], at);
+    // caps (2.2)
+    assert.ok(T.figures.length <= HISTORY_GEN.caps.figures, `${at}: ${T.figures.length} figures`);
+    assert.ok(T.beasts.length <= Math.round(BEAST.max * sc * sc), `${at}: ${T.beasts.length} beasts`);
+    assert.ok(T.artifacts.filter((a) => a.kind !== 'trophy').length <= Math.round(FIG.art * sc * sc), `${at}: artifacts`);
+    for (const f of T.figures) {
+      const [, , max] = HISTORY_PEOPLES[f.people].lifespan;
+      assert.ok((f.died === null ? r.years : f.died) - f.born <= max, `${at}: figure ${f.id} outlives its people`);
+      assert.ok(f.civ >= 0 && f.civ < T.civs.length && T.sites[f.home], `${at}: figure ${f.id} civ and home`);
+      if (f.kin[1] >= 0) assert.equal(T.figures[f.kin[1]].kin[1], f.id, `${at}: marriages are mutual`);
+    }
+    for (const b of T.beasts) assert.equal(b.name, beastIdentity(b.seed).full, `${at}: beast ${b.id} name`);
+    // the deed rows: a cause on every deed, none on other rows
+    for (let k = 0; k < eventCount(r); k++) {
+      const e = eventAt(r, k), code = e.flags & 7;
+      if (DEED_SLOT[e.key]) { assert.ok(code >= CAUSE.avenge && code <= CAUSE.ambition, `${at}: row ${k} ${e.key} has a cause`); causes[CAUSE_KEYS[code]] = (causes[CAUSE_KEYS[code]] || 0) + 1; }
+      else assert.equal(code, 0, `${at}: row ${k} ${e.key} carries no cause`);
+    }
+    maxEv = Math.max(maxEv, eventCount(r));
+    tally.figures += T.figures.length; tally.alive += T.figures.filter((f) => f.died === null).length; tally.deeds += T.figures.reduce((a, f) => a + f.deeds.length, 0);
+    tally.artifacts += T.artifacts.length; tally.lost += T.artifacts.filter((a) => a.lost).length; tally.beasts += T.beasts.length; tally.slain += T.beasts.filter((b) => !b.alive).length;
+    tally.events += eventCount(r);
+    mins.figures = Math.min(mins.figures, T.figures.length); mins.artifacts = Math.min(mins.artifacts, T.artifacts.length); mins.beasts = Math.min(mins.beasts, T.beasts.length);
+  }
+  console.log('# W3.1b 100 seeds:', JSON.stringify(Object.fromEntries(Object.entries(tally).map(([k, v]) => [k, +(v / 100).toFixed(1)]))), 'min', JSON.stringify(mins), 'max events', maxEv);
+  console.log('# deed causes:', JSON.stringify(causes));
+  assert.ok(tally.figures / 100 >= 250 && mins.beasts >= BEAST.min && mins.artifacts >= 20, 'figures, beasts and artifacts in their ranges');
+  assert.ok(Object.keys(causes).length === 6, 'every cause kind occurs');
+});
+
+test('history feeds the region inputs: lost artifacts are relics, living beasts lairs (3.6); the record stays < 60 KB', async () => {
+  const r = realmOf(FIXTURES[0]), T = r.tables;
+  const lost = T.artifacts.find((a) => a.lost && typeof a.x === 'number');
+  assert.ok(lost, 'a lost artifact');
+  assert.ok(regionOpts(r, lost.x, lost.y).relics.some((x) => x.key === lost.id));
+  const b = T.beasts.find((x) => x.alive);
+  assert.ok(b, 'a living beast');
+  assert.ok(regionOpts(r, b.x, b.y).lairs.some((x) => x.key === b.id));
+  const slain = T.beasts.find((x) => !x.alive);
+  if (slain) {
+    const tr = T.artifacts.find((a) => a.kind === 'trophy' && a.beast === slain.id);
+    assert.ok(tr && tr.made === slain.slain, 'a slain beast leaves a trophy');
+    assert.ok(tr.holders.length || (tr.lost[1] === slain.site && tr.x === slain.x && tr.y === slain.y), 'lost at its lair until a figure finds it');
+  }
+  const z = await recordSizes(r);
+  console.log(`# realm record with history (seed 1, Standard): tables ${z.tables} B, events ${z.events} B raw; ${z.record} B deflated`);
+  assert.ok(z.record < 60_000, `${z.record} B`);
+});
+
+test('a cause is a fact of its year: tampering with a figure or a war is caught by the replay', () => {
+  const r = realmOf(FIXTURES[0]), T = r.tables;
+  let hit = 0;
+  for (let k = 0; k < eventCount(r) && hit < 2; k++) {
+    const e = eventAt(r, k), code = e.flags & 7;
+    if (code === CAUSE.duty && !hit) { const w = T.wars[e.arg], keep = w.began; w.began = e.year + 1; assert.ok(checkFigures(r).some((f) => f.rule === 'cause')); w.began = keep; hit++; }
+  }
+  assert.ok(hit, 'a duty deed in the fixture');
+  const f = T.figures.find((g) => g.deeds.length);
+  const keep = f.born; f.born = r.years + 1;
+  assert.ok(checkFigures(r).some((x) => x.rule === 'deed.life'));
+  f.born = keep;
+  assert.deepEqual(checkFigures(r), []);
 });
 
 test('guarantees: civs alive, a human civ, every start near its people (W3 peoples)', () => {

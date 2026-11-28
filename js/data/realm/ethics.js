@@ -22,8 +22,8 @@ export const PEOPLE_ETHIC = Object.freeze({
 export const REL = Object.freeze({
   base: 40, perDist: 8, sharedHome: 5, compete: 10, competeGap: 3, pact: 10,
   amityRate: 1, amityMax: 40, griefFade: 1, griefMax: 120,
-  /** grievance added for: a site razed, a site taken, tribute paid, an oath broken, a split. */
-  grief: { razed: 25, taken: 15, tribute: 8, oath: 30, split: 20 },
+  /** grievance added for: a site razed, a site taken, tribute paid, an oath broken, a split, a kin figure slain. */
+  grief: { razed: 25, taken: 15, tribute: 8, oath: 30, split: 20, kin: 10 },
   /** a civ's vector: its people's plus up to +-1 on `jitterAxes` seeded axes, clamped to -2..2 (4.4). */
   jitterAxes: 2,
 });

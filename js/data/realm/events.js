@@ -38,6 +38,9 @@ export const EVENT_TYPES = Object.freeze([
   T('war.siege', 'war', 2, 'civ', 'civ', 'site', 'war'),
   T('war.treaty', 'war', 3, 'civ', 'civ', '-', 'war'),
   // figure (W3.1b fills the deeds; W3.1a writes rulers' births and deaths)
+  // A deed row (fig.slew/forged/found/wed/exiled/wrote/sang/healed, beast.slain/wounded) carries its cause (2.5):
+  // flags & 7 is the CAUSE code of js/game/realm/figures.js (none 0, avenge 1, place 2, duty 3, oath 4, protect 5,
+  // ambition 6; append-only) and `arg` its reference: a kin figure, the birthplace site, a war, the pact civ, a beast, or 0.
   T('fig.born', 'figure', 0, 'fig', 'civ'),
   T('fig.cameOfAge', 'figure', 0, 'fig', 'civ'),
   T('fig.slew', 'figure', 2, 'fig', 'fig'),

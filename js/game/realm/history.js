@@ -1,7 +1,8 @@
 // World history (EMBERCROWN-WORLD.md 1.2 step 9, 2.1-2.4; owner L). The yearly loop of 2.3 over a realm whose
 // fields are built (gen.js steps 1-8): growth, contact and grievance, war and peace, rulers and succession, the
-// Hollowing, plagues and famines, pacts; then the roads of step 10 (roads.js). W3.1b adds figures' deeds, beasts
-// and artifacts (2.3 steps 5, 6, 10; 2.5) at the marked hooks.
+// Hollowing, plagues and famines, pacts; then the roads of step 10 (roads.js). W3.1b: figures' births, deeds and
+// deaths, beasts and artifacts (2.3 steps 5, 6, 10; 2.5) run in figures.js and beasts.js from the hooks here,
+// on their own streams ('figures', 'beasts'), and reach this module's helpers through H.fx.
 //
 //   for (const p of historyGen(realm)) ...   // yields { phase: 'history', year, of } every 25 years
 //   runHistory(realm, reroll)                 // the same, run to the end; writes realm.tables, events, years and
@@ -20,6 +21,8 @@ import { DATA as NAMES } from '../../data/names.js';
 import { stream, gen, ri, rf, isqrt } from './fields.js';
 import { PEOPLES, fitField, ethicOf, ethicDistance, sharedHome, civName, siteName, oathOf, siteKind, rosterOf, placeCapital, SITE_KIND_INDEX } from './civs.js';
 import { roadsStep } from './roads.js';
+import { initFigures, founders, yearFigures, kill, heroWeight, battleDeaths, plagueDeaths, siteRuined } from './figures.js';
+import { initBeasts, yearBeasts } from './beasts.js';
 import { startFits } from './query.js';
 import { bandOf } from './biomes.js';
 
@@ -37,7 +40,7 @@ function context(realm, reroll) {
   for (const p of PEOPLES) fit[p] = fitField(realm, p);
   const evCap = G.caps.events;
   return {
-    realm, n, N, sc, R: gen(stream('history', realm.seed, reroll)), year: 0, Y: P.history, C,
+    realm, n, N, sc, R: gen(stream('history', realm.seed, reroll)), reroll, year: 0, Y: P.history, C,
     civs: [], sites: [], figures: [], wars: [], names: new Set(), fit,
     siteAt: new Uint16Array(N), claim: new Uint8Array(N), claimD: new Uint8Array(N), claimDirty: true,
     gap: new Int16Array(C * C), gapDirty: true, dist: new Int16Array(C * C), share: new Uint8Array(C * C),
@@ -80,11 +83,11 @@ function loseSite(H, s, to, how, byCiv, warId) {
   } else {
     s.was = s.kind; s.kind = 'ruin'; s.civ = null; s.razed = H.year; s.by = byCiv;
     if (how === 'razed') { log(H, E['site.razed'], byCiv, from, s.id, warId); addGrief(H, byCiv, from, REL.grief.razed); }
+    siteRuined(H, s);   // 2.3 step 10: artifacts kept there are lost there
   }
   const c = H.civs[from];
   if (!H.liveN[from]) civFalls(H, c, byCiv === null ? NONE : byCiv);
   else if (c.cap === s.id) recapital(H, c);
-  // W3.1b hook (2.3 step 10): artifacts held at a razed site become lost there.
 }
 function recapital(H, c) {
   let best = null;
@@ -181,7 +184,7 @@ function daughter(H, s) {
   return d;
 }
 
-// ---- figures (rulers; W3.1b adds the rest) ----------------------------------------------------------------------
+// ---- figures (rulers here; the rest in figures.js) ---------------------------------------------------------------
 function lifespan(people) { return (HISTORY_PEOPLES[people] || HISTORY_PEOPLES.human).lifespan; }
 /** A new ruler of civ c (2.3 step 4): a bare figure row. `parent` is the kin heir's parent figure, or -1. Returns its id or -1. */
 function crown(H, c, parent) {
@@ -191,7 +194,7 @@ function crown(H, c, parent) {
   if (parent >= 0) { const lo = H.figures[parent].born + adult; if (born < lo) born = lo; }
   const id = H.figures.length;
   H.figures.push({ id, people: c.people, sex: ri(H.R, 0, 1), born, died: null, civ: c.id, role: 'ruler',
-    nm: [ri(H.R, 0, nr.first.length - 1), ri(H.R, 0, nr.family.length - 1)], deeds: [], kin: [parent, -1] });
+    nm: [ri(H.R, 0, nr.first.length - 1), ri(H.R, 0, nr.family.length - 1)], deeds: [], kin: [parent, -1], home: c.cap, ren: 0 });
   let die = born + old + ri(H.R, 0, max - old);
   if (die <= y) die = y + 1 + ri(H.R, 0, 4);
   H.dieAt[id] = die; H.aggr[id] = ri(H.R, 0, 99) < G.ruler.aggrPct ? 1 : 0;
@@ -199,10 +202,8 @@ function crown(H, c, parent) {
   return id;
 }
 const rulerOf = (H, c) => { const r = c.rulers.length ? c.rulers[c.rulers.length - 1] : -1; return r >= 0 && H.figures[r].died === null ? r : -1; };
-function dies(H, f, cause) {
-  f.died = H.year;
-  log(H, E['fig.died'], f.id, f.civ, NONE, cause);
-}
+/** A ruler dies at home (the caller runs the succession). */
+function dies(H, f, cause) { kill(H, f, cause, f.home, null, false); }
 /** Succession after ruler r of c died (2.3 step 4): a kin heir, else a crisis that may split the civ. */
 function succeed(H, c, r) {
   const [adult] = lifespan(c.people), canHeir = H.figures[r].born + 2 * adult <= H.year;
@@ -232,6 +233,7 @@ function split(H, c) {
   addGrief(H, d.id, c.id, REL.grief.split);
   const h = crown(H, d, -1);
   if (h >= 0) log(H, E['civ.crowned'], d.id, h, d.cap);
+  founders(H, d);
 }
 
 // ---- civs ----------------------------------------------------------------------------------------------------
@@ -324,15 +326,15 @@ function battle(H, w) {
   const att = ri(H.R, 0, 1) ? w.a : w.b, def = att === w.a ? w.b : w.a, fr = front(H, def, att);
   if (!fr) return;
   const [target, src] = fr;
-  const sa = strength(H, att, target) + rf(H.R) * G.war.rnd, sd = strength(H, def, target) + 1 + hold(H, target) + rf(H.R) * G.war.rnd;
+  const sa = strength(H, att, target) + heroWeight(H, att) + rf(H.R) * G.war.rnd, sd = strength(H, def, target) + heroWeight(H, def) + 1 + hold(H, target) + rf(H.R) * G.war.rnd;
   const win = sa > sd ? att : def, lose = win === att ? def : att, lost = win === att ? target : src;
   log(H, E['war.battle'], win, lose, target.id, w.id);
   battlefield(H, target);
-  // W3.1b hook (2.3 step 5): heroes' weight in strength, deaths in battle.
   const O = G.war.outcome, roll = ri(H.R, 0, O.taken + O.razed + O.tribute - 1);
   if (roll < O.taken) loseSite(H, lost, win, 'taken', win, w.id);
   else if (roll < O.taken + O.razed) loseSite(H, lost, null, 'razed', win, w.id);
   else { log(H, E['civ.tribute'], lose, win, lost.id, w.id); addGrief(H, win, lose, REL.grief.tribute); }
+  battleDeaths(H, win, lose, target);   // 2.3 step 5: heroes die in battle
 }
 
 // ---- the yearly loop -----------------------------------------------------------------------------------------
@@ -345,6 +347,7 @@ function yearStep(H, roster) {
     const c = newCiv(H, r.people, r.kind, i);
     const f = crown(H, c, -1);
     log(H, E['civ.founded'], c.id, f < 0 ? NONE : f, c.cap);
+    founders(H, c);
   }
   // 1. growth
   const S = H.sites.length;
@@ -396,7 +399,10 @@ function yearStep(H, roster) {
     if (r < 0) { const h = crown(H, c, -1); if (h >= 0) log(H, E['civ.crowned'], c.id, h, c.cap); continue; }
     if (y >= H.dieAt[r]) { dies(H, H.figures[r], DEATH.age); succeed(H, c, r); }
   }
-  // 5-6. W3.1b hooks: figures' births, deeds and deaths; beasts.
+  // 5. figures: coming of age, births, deeds (2.5) and deaths (figures.js)
+  yearFigures(H);
+  // 6. beasts (beasts.js)
+  yearBeasts(H);
   // 7. the Hollowing
   for (let k = 0; k < H.rings.length; k++) {
     const u = rf(H.R), Ho = G.hollow;
@@ -417,6 +423,7 @@ function yearStep(H, roster) {
       for (const s of H.sites) if (live(s) && s.civ === c.id && s.size > 0) { s.size--; s.kind = siteKind(c.people, s.size); H.claimDirty = true; H.gapDirty = true; }
       const r = rulerOf(H, c);
       if (r >= 0 && ri(H.R, 0, 3) === 0) { killed = 1; dies(H, H.figures[r], DEATH.plague); succeed(H, c, r); }
+      killed += plagueDeaths(H, c);
       log(H, E['world.plague'], c.id, NONE, c.cap, killed);
     }
     if (rf(H.R) < G.famine) {
@@ -442,6 +449,12 @@ function rosterYears(H) {
  */
 export function* historyGen(realm, reroll = 0) {
   const H = context(realm, reroll), Y = H.Y;
+  H.fx = {
+    log: (...a) => log(H, ...a), addSite: (...a) => addSite(H, ...a), loseSite: (...a) => loseSite(H, ...a), succeed: (c, r) => succeed(H, c, r),
+    addGrief: (a, b, v) => addGrief(H, a, b, v), rulerOf: (c) => rulerOf(H, c), kill: (...a) => kill(H, ...a),
+    near: (a, b) => H.gap[pair(H, a, b)] <= Math.round(G.contact * H.sc),
+  };
+  initFigures(H); initBeasts(H);
   const roster = rosterYears(H);
   log(H, E['world.hollowing'], NONE, NONE, NONE, realm.falls.length);
   for (H.year = 0; H.year <= Y; H.year++) {
@@ -461,7 +474,8 @@ function finish(H) {
   for (const s of H.sites) f.site[s.y * H.n + s.x] = s.id + 1;
   const friendly = (a, b) => a === b || (H.civs[a].pacts.includes(b) && !H.war[pair(H, a, b)]);
   const roads = roadsStep(realm, H.sites, H.civs, friendly);
-  realm.tables = { civs: H.civs, sites: H.sites, figures: H.figures, beasts: [], artifacts: [], wars: H.wars, roads, hollow: Array.from(H.rings) };
+  for (const b of H.beasts) delete b.next;
+  realm.tables = { civs: H.civs, sites: H.sites, figures: H.figures, beasts: H.beasts, artifacts: H.artifacts, wars: H.wars, roads, hollow: Array.from(H.rings) };
   realm.events = new Uint8Array(H.ev.buffer.slice(0, H.evN * EVENT_BYTES));
   realm.years = H.Y;
 }

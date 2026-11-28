@@ -106,4 +106,32 @@ export const HISTORY_GEN = Object.freeze({
   road: { plain: 2, hill: 4, mount: 6, river: 1, reach: 14, perCiv: 6 },
   /** the guarantees of 1.4 that history answers for. */
   guard: { alive: { small: 3, standard: 4, large: 4 }, startReach: 10 },
+  /** figures, deeds and artifacts (2.3 steps 5 and 10, 2.5; read by js/game/realm/figures.js, which documents each key). */
+  figures: Object.freeze({
+    deedPct: 0.06, founders: 2, birthsMax: 3, target: { base: 7, perSites: 2, max: 14 }, reserve: 6, pace: 30,
+    roles: Object.freeze({ hero: 3, smith: 2, scholar: 1, bard: 1, outlaw: 1, priest: 1, envoy: 1 }),
+    deeds: Object.freeze({
+      ruler: { slew: 1, wed: 2, sang: 0, wrote: 0.5 }, hero: { slew: 4, hunt: 3, found: 1, wed: 1 }, smith: { forged: 5, wed: 1 },
+      scholar: { wrote: 5, found: 2, wed: 1 }, bard: { sang: 5, wed: 1 }, outlaw: { slew: 3, exiled: 2, found: 1 },
+      priest: { healed: 4, wrote: 1, wed: 1 }, envoy: { wed: 3, wrote: 2 },
+    }),
+    warSlew: 3, pactForge: 2, pactWed: 2, plagueHeal: 3, plagueYears: 3,
+    battle: { perHero: 1, perRen: 0.25, renMax: 8, max: 6, dieLose: 0.2, dieWin: 0.06 },
+    far: 6, found: 8, hunt: { reach: 6, slay: 0.2, perRen: 0.06, renMax: 8, wound: 0.35 },
+    ren: { slew: 2, hunt: 4, wound: 1, forged: 2, found: 2, other: 1 },
+    art: 50, artMin: 20, plague: [1, 3], kinGrief: 10,
+  }),
+  /** beasts and lairs (2.3 step 6; read by js/game/realm/beasts.js, which documents each key). */
+  beasts: Object.freeze({
+    count: Object.freeze({ low: 5, normal: 8, high: 11 }), min: 4, max: 12, first: 0.75, wake: [20, 20],
+    wild: 90, gap: 8, siteGap: 3, roam: [5, 20], reach: 4, kill: 0.35, ancient: [40, 600],
+  }),
+  /** artifact words (stored as ids, APPEND-ONLY): kinds, materials, name parts `a` + `b` (an artifact's `nm`), kind ids by role. */
+  artifacts: Object.freeze({
+    kinds: Object.freeze(['blade', 'axe', 'spear', 'hammer', 'bow', 'shield', 'helm', 'crown', 'ring', 'amulet', 'chalice', 'tome', 'harp', 'banner', 'trophy']),
+    mats: Object.freeze(['iron', 'steel', 'bronze', 'silver', 'gold', 'bone', 'oak', 'obsidian', 'emberglass', 'jade', 'moonstone', 'horn']),
+    a: Object.freeze(['Dawn', 'Grief', 'Ember', 'Hollow', 'Oath', 'Thorn', 'Ash', 'Star', 'Frost', 'Iron', 'Hearth', 'Storm', 'Gloam', 'Bright', 'Cinder', 'Vigil']),
+    b: Object.freeze(['bane', 'song', 'warden', 'keeper', 'fall', 'light', 'call', 'mourn', 'ward', 'brand', 'heart', 'tide', 'reach', 'mark']),
+    byRole: Object.freeze({ smith: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10], scholar: [11], bard: [12], priest: [10, 9], ruler: [7, 13] }),
+  }),
 });
