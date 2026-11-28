@@ -10,6 +10,9 @@
 //     tools/out/w0.json with --report-only --out=tools/out/w0.json on HEAD (--report-only: no baseline read or written).
 //   Stage w2 adds the realm rows (W2.9): the realm determinism scene and bot v4 in 12 biomes x 5 world regions x 60 days
 //     (colonybot.mjs --biomes=all, its "Stage W2" header), written to tools/out/colonybot/w2.json.
+//   Stage w3 adds the history rows (W3.10): HISTORY on, the season-tick bench, the Annals and World phone flows, the three
+//     v4 fixtures migrated into a world (colonybot.mjs --w3-fixtures) and the realm soak (--w3-soak: 5 world seeds x 120
+//     days with history against the same regions without it), written to tools/out/colonybot/w3.json.
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -124,9 +127,31 @@ const CHECKS = [
   // waiver. It starts once the Z3 soak is read (it must not share the soak's CPU) and runs beside the legacy row
   // (--quick: one hold a biome, still 60 days: survival before day 60 measures migrant timing, not the biome)
   { name: `Colony bot w2 (12 biomes x ${quick ? 1 : 5} holds x 60 days)`, starts: 'w2', file: 'tools/colonybot.mjs', args: ['--biomes=all', `--seeds=${quick ? 1 : 5}`, '--days=60', '--jobs=3', `--out=${OUT}/w2.json`], bg: true, startAfter: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, timeout: 10800000 },
+  // Stage W3 (EMBERCROWN-WORLD.md 12.5, W3.10): world history is on (js/game/core/flags.js HISTORY: new worlds get 250
+  // years, old holds a pinned world on load, W2-era worlds their history). The W3 unit tests (realm-history, -text,
+  // -colony, -raids, -relics, -tick, -upgrade, legends, migrate5) run in the Unit tests row; here the flag, the season
+  // tick bench (W3.8), the Annals World section (W3.2) and the World tab (W3.9) phone flows, the three W0 fixtures
+  // migrated into a world and continued through a season start across a save and reload (9.4), and the realm soak
+  { name: 'HISTORY on (W3.10)', starts: 'w3', fn: () => historyOn() },
+  { name: 'Bench (season tick, W3.8)', starts: 'w3', file: 'tools/bench.mjs', args: ['--scene=realmtick'] },
+  { name: 'Phone UI (Annals World section, W3.2)', starts: 'w3', file: 'tools/ui-phone.mjs', args: ['--flows=annals', `--browser=${browser}`], browser: true },
+  { name: 'Phone UI (World tab, W3.9)', starts: 'w3', file: 'tools/ui-phone.mjs', args: ['--flows=world', `--browser=${browser}`], browser: true },
+  { name: 'Migrated fixtures (three v4 holds get a world, W3.10)', starts: 'w3', file: 'tools/colonybot.mjs', args: ['--w3-fixtures'] },
   // read last: it runs beside the browser rows and the balance report
   { name: 'Legacy hashes (bot v4 seeds 1-5, W0 fixtures)', starts: 'w0', file: 'tools/gate.mjs', args: ['--legacy', `--stage=${stage}`, '--jobs=3', ...(has('--write-baseline') ? ['--write-baseline'] : [])], bg: true, startAfter: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, timeout: 5400000, skip: quick ? '--quick' : null },
+  // W3.10, the realm soak: bot v4 in 5 world seeds x 120 days with history and the season tick, against the same regions
+  // built without history (the W2 world): survival no worse by more than 10 %, save size no more than 10 % over, tick
+  // p95 < 1.2 ms (colonybot.mjs "Stage W3"). It starts once the legacy row is read, so its tick p95 shares the CPU with
+  // nothing but its own 3 jobs (as the Z3 soak's does); about 45 min (--quick: 2 worlds x 30 days)
+  { name: `Realm soak w3 (bot v4, ${quick ? 2 : 5} worlds x ${quick ? 30 : 120} days, history against W2)`, starts: 'w3', file: 'tools/colonybot.mjs', args: ['--w3-soak', `--seeds=${quick ? '1-2' : '1-5'}`, `--days=${quick ? 30 : 120}`, '--jobs=3', `--out=${OUT}/w3.json`], bg: true, startAfter: 'Legacy hashes (bot v4 seeds 1-5, W0 fixtures)', timeout: 7200000 },
 ];
+
+/** W3.10: the HISTORY flag is on from the w3 gate (js/game/core/flags.js, owner A; read as text: the gate imports no game module). */
+function historyOn() {
+  const m = readFileSync(join(ROOT, 'js/game/core/flags.js'), 'utf8').match(/^export const HISTORY = (true|false);/m);
+  const on = !!m && m[1] === 'true';
+  return { ok: on, detail: on ? 'js/game/core/flags.js HISTORY = true: new worlds get history, old holds get a world on load' : `js/game/core/flags.js HISTORY = ${m ? m[1] : '?'} (A flips it in W3.10)` };
+}
 
 // ---- Stage 2.9 checks (EMBERCROWN-FORTRESS.md 8.2) -----------------------------------------------------------------
 const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });

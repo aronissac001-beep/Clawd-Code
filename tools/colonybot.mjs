@@ -4,6 +4,7 @@
 //   node tools/colonybot.mjs --soak [--seeds=1] [--days=300] [--difficulty=warden] [--out=FILE]  (Stage 2 soak, 14.8 J)
 //   node tools/colonybot.mjs --report [--from=FILE,FILE] [--jobs=4] [--out=FILE]  (balance report, 14.4)
 //   node tools/colonybot.mjs --realm=<seed>:<rx>,<ry> | --biomes=all [--seeds=5] [--days=60] | --realm-det  (Stage W2, see "Stage W2" below)
+//   node tools/colonybot.mjs --w3-soak [--seeds=1-5] [--days=120] [--jobs=3] | --w3-fixtures  (Stage W3, see "Stage W3" below)
 //   node tools/colonybot.mjs --bot=v3 [--seeds=1-5] [--days=30] [--jobs=3] [--twice] [--out=FILE]  (Stage Z1, EMBERCROWN-FORTRESS.md 8.3 E12)
 // Bot v3 (tools/lib/bot3.mjs): v2's policy on the surface of a 128 x 128 x 20 fortress plus the deep plan (a stair
 // shaft to -6, bedrooms on -2, a workshop hall on -3, a store at the shaft foot). Exit 0 when every seed meets the
@@ -237,17 +238,20 @@ export const W2_HARSH = Object.freeze(['tundra', 'saltflat', 'ashlands', 'ruins'
 export const W2_ROWS = Object.freeze({ mild: 0.9, harsh: 0.7, days: 60, seeds: 5 });
 const W2_CHECK_DAYS = [1, 2, 5, 10, 20, 30, 60, 90, 120];
 let realmCache = null;
+/** The world of seed `wseed`: history true (built with history), 'none' (built without it: the W2 world, whatever the
+ *  HISTORY flag says; the W3.10 reference), else the shipped default (js/game/core/flags.js HISTORY). */
 async function realmOf(wseed, history = false) {
-  if (realmCache && realmCache.seed === wseed && realmCache.history === history) return realmCache.realm;
+  const mode = history === true ? 'on' : history === 'none' ? 'off' : 'def';
+  if (realmCache && realmCache.seed === wseed && realmCache.mode === mode) return realmCache.realm;
   const { buildRealm } = await import('../js/game/realm/gen.js');
-  realmCache = { seed: wseed, history, realm: buildRealm({ seed: wseed }, history ? { history: true } : undefined) };
+  realmCache = { seed: wseed, mode, realm: buildRealm({ seed: wseed }, mode === 'on' ? { history: true } : mode === 'off' ? { history: false } : undefined) };
   return realmCache.realm;
 }
 /** The founding of a realm hold for the bot: foundColony in the region, then the bot's two speed rows (bot3 foundFortress).
  *  `record` (W3.3a): the world is built with history and its decoded record sits in s.rt.realm (9.3 step 5). */
-async function realmFounder(wseed, rx, ry, record = false) {
+async function realmFounder(wseed, rx, ry, record = false, nohist = false) {
   const [{ installSim, foundColony }, { coverRebuild, skyZRebuild }] = await Promise.all([import('../js/game/core/setup.js'), import('../js/game/world/vertical.js')]);
-  const realm = await realmOf(wseed, record);
+  const realm = await realmOf(wseed, record ? true : nohist ? 'none' : false);
   return (_sd, { storyteller = null, difficulty = null } = {}) => {
     installSim({ stage: '2' });
     const s = foundColony({ name: `Bot Hold ${wseed}:${rx},${ry}`, realm, rx, ry, d: 20, storyteller, difficulty });
@@ -258,9 +262,9 @@ async function realmFounder(wseed, rx, ry, record = false) {
   };
 }
 /** bot v4 (tools/lib/bot4.mjs runBot4) on a realm hold: the same composition, founded by realmFounder. */
-async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null, record = false, onTick = null } = {}) {
+async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null, record = false, nohist = false, onTick = null } = {}) {
   const [{ runBot2 }, b3, b4, { setBotLevel }] = await Promise.all([import('./lib/bot2.mjs'), import('./lib/bot3.mjs'), import('./lib/bot4.mjs'), import('./lib/bot.mjs')]);
-  const found = await realmFounder(wseed, rx, ry, record);
+  const found = await realmFounder(wseed, rx, ry, record, nohist);
   const R = record ? await realmOf(wseed, true) : null;
   let deep = null, X3 = null, z2 = null;
   const X4 = b4.makeMeter4();
@@ -287,7 +291,10 @@ async function w2Run(spec, days) {
   let r;
   // W3.3a (spec.record): the realm caravans seen, by visit id: [tick, site, fac, barge]
   const arrivals = [], seenV = new Set();
-  const onTick = spec.record ? (s) => { const t = s.colony.trade; if (t && t.visits.length) for (const v of t.visits) if (!seenV.has(v.id)) { seenV.add(v.id); arrivals.push([s.tick, Number.isInteger(v.site) ? v.site : null, v.fac || null, v.barge === true]); } } : null;
+  const caravans = spec.record ? (s) => { const t = s.colony.trade; if (t && t.visits.length) for (const v of t.visits) if (!seenV.has(v.id)) { seenV.add(v.id); arrivals.push([s.tick, Number.isInteger(v.site) ? v.site : null, v.fac || null, v.barge === true]); } } : null;
+  // W3.10 (spec.soak): the season tick's own cost (its registered system timed in place; the sim is unchanged)
+  const season = spec.soak ? await seasonTimer() : null;
+  const onTick = caravans || season ? (s) => { if (season) season.arm(); if (caravans) caravans(s); } : null;
   if (spec.legacy !== undefined) { const { runBot4 } = await import('./lib/bot4.mjs'); r = await runBot4({ seed: spec.legacy, days, onDay }); }
   else r = await runBot4Realm({ ...spec, days, onDay, onTick });
   const m = r.metrics;
@@ -298,6 +305,7 @@ async function w2Run(spec, days) {
     alive: m.colonists.alive, total: m.colonists.total, peak: m.colonists.peak, fallen: s.colony.fallen === true, deathCauses: m.deathCauses,
     hamletDay: m.hamletDay ?? null, tickP95: Math.max(0, ...(m.series || []).map((x) => x.tickP95 || 0)), commands: r.log.length, refused: r.refused.length,
     ...(spec.record ? { w3: await w3Caravans(s, arrivals, spec.wseed) } : {}),
+    ...(spec.soak ? { soak: await w3SoakExtras(r, season, spec) } : {}),
   };
 }
 /**
@@ -408,17 +416,7 @@ async function w2Biomes() {
 async function w3Auto(wseed) {
   const days = +arg('days', 120), jobs = +arg('jobs', 3), t0 = Date.now();
   const seeds = parseSeeds(arg('seeds', '1-5'));
-  const [{ idx, isEmbarkable }, { hash32 }, { realmField }, CV, { bindRoles }] = await Promise.all([import('../js/game/realm/query.js'), import('../js/game/core/rand.js'), import('../js/game/core/setup.js'), import('../js/game/colony/caravans.js'), import('../js/game/colony/factions.js')]);
-  const realm = await realmOf(wseed, true), regions = [];
-  for (let ry = 0; ry < realm.n; ry++) for (let rx = 0; rx < realm.n; rx++) if (isEmbarkable(realm, idx(realm, rx, ry))) regions.push({ rx, ry, k: hash32(wseed, rx, ry, 'w3bot') >>> 0 });
-  regions.sort((a, b) => a.k - b.k || a.rx - b.rx || a.ry - b.ry);
-  const picks = [];
-  for (const g of regions) {
-    if (picks.length >= Math.max(...seeds)) break;
-    const probe = { realm: realmField(realm, g.rx, g.ry), rt: { realm }, colony: { factions: { league: 0, hearthwatch: 10, gutterkin: -20 } } };
-    bindRoles(probe, realm);
-    if (CV.caravanSources(probe, realm).length) picks.push(g);
-  }
+  const picks = await w3Regions(wseed, Math.max(...seeds));
   const specs = seeds.map((k) => ({ legacy: k }));
   for (const k of seeds) if (picks[k - 1]) specs.push({ wseed, rx: picks[k - 1].rx, ry: picks[k - 1].ry, record: true, k });
   const res = await w2Pool(specs, days, jobs);
@@ -445,6 +443,189 @@ async function w3Auto(wseed) {
   if (arg('out', null)) save(arg('out', null), { what: 'W3.3a: realm caravans and roles (EMBERCROWN-WORLD.md 12.5)', wseed, days, pass, refBad, results: res });
   console.log(`colonybot w3 realm ${wseed}:auto [${seeds.length} holds x ${days} days, ${((Date.now() - t0) / 60000).toFixed(1)} min]${pass ? ' - PASS' : ' - FAIL'}`);
   process.exit(pass ? 0 : 1);
+}
+/** The first `count` embarkable regions of world `wseed` (built with history) with a caravan source, in hash32(seed, rx, ry, 'w3bot') order. */
+async function w3Regions(wseed, count) {
+  const [{ idx, isEmbarkable }, { hash32 }, { realmField }, CV, { bindRoles }, { regionOpts }] = await Promise.all([import('../js/game/realm/query.js'), import('../js/game/core/rand.js'), import('../js/game/core/setup.js'), import('../js/game/colony/caravans.js'), import('../js/game/colony/factions.js'), import('../js/game/realm/region.js')]);
+  const realm = await realmOf(wseed, true), regions = [];
+  for (let ry = 0; ry < realm.n; ry++) for (let rx = 0; rx < realm.n; rx++) if (isEmbarkable(realm, idx(realm, rx, ry))) regions.push({ rx, ry, k: hash32(wseed, rx, ry, 'w3bot') >>> 0 });
+  regions.sort((a, b) => a.k - b.k || a.rx - b.rx || a.ry - b.ry);
+  const picks = [];
+  for (const g of regions) {
+    if (picks.length >= count) break;
+    const probe = { realm: realmField(realm, g.rx, g.ry), rt: { realm }, colony: { factions: { league: 0, hearthwatch: 10, gutterkin: -20 } } };
+    bindRoles(probe, realm);
+    if (CV.caravanSources(probe, realm).length) picks.push({ rx: g.rx, ry: g.ry, biome: regionOpts(realm, g.rx, g.ry).biome });
+  }
+  return picks;
+}
+
+// ---- Stage W3 (EMBERCROWN-WORLD.md 12.5, step W3.10, the w3 gate) -------------------------------------------------
+//   node tools/colonybot.mjs --w3-soak [--seeds=1-5] [--days=120] [--jobs=3] [--out=FILE]
+//   node tools/colonybot.mjs --w3-fixtures
+// --w3-soak, the realm soak: in each world seed k of --seeds (built with history, its record loaded as the loader
+// loads it, 9.3 step 5), the first embarkable region with a caravan source in hash32(k, rx, ry, 'w3bot') order, played
+// by bot v4 for --days with the season tick on (2.8); beside each, the W2 reference: the same region of the same world
+// built without history (the W2 world, whatever HISTORY says), played the same days. Oracle (W3.10): survival (the
+// mean of the colonists alive on the last day over the holds) no worse than the W2 reference's by more than 10 %;
+// save size (the mean EC3 blob on the last day) no more than 10 % over the reference's; tick p95 (each hold's last day,
+// holds run side by side) < 1.2 ms. Also enforced: every run clean, every save reloads to its hash, the season tick
+// ran every season (one step per season start), realm deltas <= 16 KB (REALM_DELTA_CAP), the five roles bound and no
+// caravan early (W3.3a). The season tick's own cost (W3.8: < 2 ms on a quiet desktop) and the worst day are info.
+// --w3-fixtures, the migrated fixtures: the three v4 fixtures of W0 (tools/fixtures/v4-z3-*) migrated as an old hold
+// is (9.4 part 2, migrate5.js migrateHold with HISTORY on): the local state is untouched (every layer, the pristine
+// CRCs, every entity but s.realm and its Annals line), the five roles are bound, the record round-trips; then each
+// continues through its next season start (at least 2 days) twice, once with a save and reload after 1 day (rt.realm
+// from the round-tripped record), to the same hash, with the season tick run and the deltas under the cap.
+export const W3_ROWS = Object.freeze({ days: 120, seeds: 5, survival: 0.10, saveKB: 0.10, tickP95: 1.2, seasonMs: 2 });
+const W3_FIXTURES = ['v4-z3-day120', 'v4-z3-flood', 'v4-z3-beast'];
+/** The season tick's registered system, timed in place (the same function runs; only a clock is read around it). */
+async function seasonTimer() {
+  const { tickSystems } = await import('../js/game/core/bus.js');
+  const now = () => performance.now();
+  const T = { ms: [], list: null, arm() {
+    const l = tickSystems();
+    if (l === T.list) return;
+    T.list = l;
+    const x = l.find((y) => y.slot === 'colony' && y.name === 'realmtick');
+    if (!x || x.fn.w3timed) return;
+    const f = x.fn, w = (st) => { const a = now(), o = f(st); if (o) T.ms.push(now() - a); return o; };
+    w.w3timed = true; x.fn = w;
+  } };
+  return T;
+}
+const p95of = (v) => { if (!v.length) return null; const a = v.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.ceil(a.length * 0.95) - 1)]; };
+/** The W3.10 extras of one soak run: save size and reload, tick p95, the season tick and the realm deltas. */
+async function w3SoakExtras(r, season, spec) {
+  const [{ saveBlob, loadBlob }, { stateHash }, { deltaBytes }] = await Promise.all([import('../js/game/save/colonysave.js'), import('../js/game/core/state.js'), import('../js/game/realm/tick.js')]);
+  const s = r.s, ser = (r.metrics.series || []).filter((x) => typeof x.tickP95 === 'number');
+  let blobKB = null, reload = null;
+  try { const b = await saveBlob(s); blobKB = +(b.length / 1024).toFixed(1); const s2 = await loadBlob(b); reload = stateHash(s2) === stateHash(s) && !!s2.realm === !!s.realm ? true : 'hash differs'; } catch (e) { reload = `error ${e.message}`; }
+  const sr = s.realm, ms = season ? season.ms : [];
+  return {
+    blobKB, reload, tickP95Last: ser.length ? ser[ser.length - 1].tickP95 : null, tickP95Worst: Math.max(0, ...ser.map((x) => x.tickP95)),
+    season: { steps: ms.length, medMs: ms.length ? +ms.slice().sort((x, y) => x - y)[(ms.length - 1) >> 1].toFixed(3) : null, p95Ms: ms.length ? +p95of(ms).toFixed(3) : null, maxMs: ms.length ? +Math.max(...ms).toFixed(3) : null },
+    realm: sr ? { year: sr.year, embarkYear: sr.embarkYear, deltaB: deltaBytes(sr), ev: (sr.ev || []).length, sites: (sr.sites || []).length, wars: (sr.wars || []).length, dead: (sr.dead || []).length } : null,
+    ref: spec.nohist === true, tick: s.tick, fallenAt: s.colony.fallen === true && Number.isFinite(s.colony.fallenAt) ? s.colony.fallenAt : null,
+  };
+}
+/** --w3-soak (see above). */
+async function w3Soak() {
+  const days = +arg('days', W3_ROWS.days), jobs = +arg('jobs', 3), t0 = Date.now();
+  const seeds = parseSeeds(arg('seeds', `1-${W3_ROWS.seeds}`));
+  const [{ SEASON_TICKS }, { TICKS_PER_DAY: D, START_TICK }, { REALM_DELTA_CAP }] = await Promise.all([import('../js/game/realm/tick.js'), import('../js/game/core/time.js'), import('../js/game/core/schema.js')]);
+  const specs = [];
+  for (const k of seeds) {
+    const [p] = await w3Regions(k, 1);
+    if (!p) { console.log(`  FAIL world ${k}: no embarkable region with a caravan source`); continue; }
+    specs.push({ wseed: k, rx: p.rx, ry: p.ry, biome: p.biome, record: true, soak: true });
+    specs.push({ wseed: k, rx: p.rx, ry: p.ry, biome: p.biome, nohist: true, soak: true });
+  }
+  const res = await w2Pool(specs, days, jobs);
+  // season starts inside the run: ticks t in (START_TICK, START_TICK + days * D] with t % SEASON_TICKS === 0
+  const seasons = Math.floor((START_TICK + days * D) / SEASON_TICKS) - Math.floor(START_TICK / SEASON_TICKS);
+  const W3 = res.filter((x) => x.record), W2 = res.filter((x) => x.nohist), bad = [];
+  for (const r of res) {
+    const tag = `${r.record ? 'W3' : 'W2'} ${r.wseed}:${r.rx},${r.ry}`;
+    if (r.failed) { bad.push(`${tag}: ${r.failed}`); continue; }
+    if (r.errors.length) bad.push(`${tag}: ${r.errors.join('; ')}`);
+    if (r.soak.reload !== true) bad.push(`${tag}: save and reload ${r.soak.reload}`);
+    if (r.record) {
+      const x = r.soak;
+      // one step per season start the hold lived to (a fallen hold: up to its fall; the run may stop there)
+      const starts = (T) => Math.floor(T / SEASON_TICKS) - Math.floor(START_TICK / SEASON_TICKS);
+      const lo = starts(Math.min(x.tick, x.fallenAt === null ? Infinity : x.fallenAt)), hi = starts(x.tick);
+      if (x.season.steps < lo || x.season.steps > hi) bad.push(`${tag}: ${x.season.steps} season steps (${lo === hi ? lo : lo + '-' + hi} season starts${x.fallenAt === null ? '' : ' before the fall'})`);
+      if (!x.realm || x.realm.deltaB > REALM_DELTA_CAP) bad.push(`${tag}: realm deltas ${x.realm ? x.realm.deltaB + ' B' : 'missing'} (cap ${REALM_DELTA_CAP})`);
+      const w = r.w3 || {};
+      if (w.bound !== 5 || w.early || (w.bad || []).length) bad.push(`${tag}: roles bound ${w.bound}/5, ${w.early} caravans early${(w.bad || []).length ? ', ' + w.bad.join('; ') : ''}`);
+    }
+  }
+  const ok = (v) => v.filter((r) => !r.failed);
+  const alive3 = meanOf(ok(W3).map((r) => r.alive)), alive2 = meanOf(ok(W2).map((r) => r.alive));
+  const kb3 = meanOf(ok(W3).map((r) => r.soak.blobKB || 0)), kb2 = meanOf(ok(W2).map((r) => r.soak.blobKB || 0));
+  const dA = alive2 ? (alive3 - alive2) / alive2 : null, dK = kb2 ? (kb3 - kb2) / kb2 : null;
+  const tick = Math.max(0, ...ok(W3).map((r) => r.soak.tickP95Last || 0)), tickWorst = Math.max(0, ...ok(W3).map((r) => r.soak.tickP95Worst || 0));
+  const sms = ok(W3).flatMap((r) => (r.soak.season.maxMs === null ? [] : [r.soak.season.maxMs])), seasonMax = sms.length ? Math.max(...sms) : null;
+  const pct = (d) => (d === null ? '?' : `${d >= 0 ? '+' : ''}${(d * 100).toFixed(1)} %`);
+  const rows = [
+    { name: `survival no worse than W2 by more than ${W3_ROWS.survival * 100} %`, ok: dA !== null && dA >= -W3_ROWS.survival, detail: `alive ${alive3} vs W2 ${alive2} (${pct(dA)})` },
+    { name: `save size no more than ${W3_ROWS.saveKB * 100} % over W2`, ok: dK !== null && dK <= W3_ROWS.saveKB, detail: `${kb3} KB vs W2 ${kb2} KB (${pct(dK)}; largest ${Math.max(0, ...ok(W3).map((r) => r.soak.blobKB || 0))} KB)` },
+    { name: `tick p95 < ${W3_ROWS.tickP95} ms (last day, holds side by side)`, ok: W3.length > 0 && tick < W3_ROWS.tickP95, detail: `${tick} ms (worst day ${tickWorst} ms)` },
+    { name: `runs clean, reload, ${seasons} season steps, deltas <= ${REALM_DELTA_CAP} B, roles and caravans`, ok: !bad.length && W3.length === seeds.length && W2.length === seeds.length, detail: bad.length ? `${bad.length} problems` : `${res.length} runs` },
+    { name: `season tick < ${W3_ROWS.seasonMs} ms (info: W3.8 benches it alone)`, ok: seasonMax !== null && seasonMax < W3_ROWS.seasonMs, info: true, detail: `max ${seasonMax} ms over ${sms.length} holds` },
+  ];
+  const pass = rows.every((x) => x.ok || x.info);
+  console.log(`Stage W3 realm soak: bot v4, ${seeds.length} world seeds x ${days} days with history (W3) against the same regions without it (W2)`);
+  for (const k of seeds) {
+    const a = res.find((r) => r.record && r.wseed === k), b = res.find((r) => r.nohist && r.wseed === k);
+    if (!a || !b) continue;
+    const f = (r) => (r.failed ? r.failed : `${r.alive}/${r.total} alive${r.fallen ? ' FALLEN' : ''}, ${r.soak.blobKB} KB, tick p95 ${r.soak.tickP95Last} ms`);
+    const x = a.soak || {}, w = a.w3 || {};
+    console.log(`  world ${k} ${a.rx},${a.ry} (${a.biome}): W3 ${f(a)}${a.failed ? '' : `; season steps ${x.season.steps} (median ${x.season.medMs} ms, max ${x.season.maxMs} ms), year ${x.realm && x.realm.year}, deltas ${x.realm && x.realm.deltaB} B (${x.realm && x.realm.ev} ev, ${x.realm && x.realm.wars} wars, ${x.realm && x.realm.dead} dead); ${w.arrivals} caravans from ${w.sites} towns`} | W2 ${f(b)}${a.deathCauses && Object.keys(a.deathCauses).length ? `; W3 deaths ${JSON.stringify(a.deathCauses)}` : ''}`);
+  }
+  for (const x of rows) console.log(`  ${x.ok ? 'ok  ' : x.info ? 'info' : 'FAIL'} ${x.name}: ${x.detail}`);
+  for (const l of bad.slice(0, 12)) console.log(`    FAIL ${l}`);
+  save(arg('out', join(OUT_DIR, 'w3.json')), { what: 'W3.10: the realm soak (EMBERCROWN-WORLD.md 12.5)', days, seeds, rows: W3_ROWS, seasons, summary: { alive3, alive2, kb3, kb2, tick, tickWorst, seasonMax }, checks: rows, pass, problems: bad, ms: Date.now() - t0, results: res });
+  console.log(`colonybot w3 soak [${seeds.length} holds x ${days} days and the W2 reference, ${((Date.now() - t0) / 60000).toFixed(1)} min]: ${rows.filter((x) => !x.info && x.ok).length}/${rows.filter((x) => !x.info).length} rows hold - ${pass ? 'PASS' : 'FAIL'}`);
+  process.exit(pass ? 0 : 1);
+}
+/** --w3-fixtures (see above). */
+async function w3Fixtures() {
+  const t0 = Date.now(), bad = [], lines = [];
+  const [{ loadBlob, saveBlob }, ST, { tick }, M5, { LAYERS }, { pristineOf }, { encodeRecord, decodeRecord }, { realmHash }, { deltaBytes, SEASON_TICKS }, { REALM_DELTA_CAP }, { installSim }, { ROLE_IDS }, { TICKS_PER_DAY: DAY, TICKS_PER_HOUR: HOUR }] = await Promise.all([
+    import('../js/game/save/colonysave.js'), import('../js/game/core/state.js'), import('../js/game/core/sim.js'), import('../js/game/core/migrate5.js'), import('../js/game/core/grid.js'), import('../js/game/save/pristine.js'),
+    import('../js/game/realm/record.js'), import('../js/game/realm/gen.js'), import('../js/game/realm/tick.js'), import('../js/game/core/schema.js'), import('../js/game/core/setup.js'), import('../js/game/colony/factions.js'), import('../js/game/core/time.js')]);
+  installSim({ stage: '2' });
+  const layers = (s) => LAYERS.map((l) => ST.valueHash(s.L[l.name])).join();
+  const entNoRealm = (s) => { const o = JSON.parse(ST.entitiesJSON(s)); delete o.realm; o.chron = o.chron.filter((e) => e[2] !== M5.CHRON_WORLD); return JSON.stringify(o); };
+  const season = await seasonTimer();
+  const run = async (s, end) => { while (s.tick < end) { season.arm(); tick(s); } };
+  for (const name of W3_FIXTURES) {
+    const f = join(HERE, 'fixtures', `${name}.ecsave`);
+    if (!existsSync(f)) { bad.push(`${name}: fixture missing`); continue; }
+    const bytes = new Uint8Array(readFileSync(f)), tf = Date.now();
+    const s = await loadBlob(bytes);
+    if (!M5.needsWorld(s, { on: true })) { bad.push(`${name}: needsWorld is false for the v4 hold`); continue; }
+    const before = { L: layers(s), ent: entNoRealm(s), pcrc: pristineOf(s).crc.join(), fac: JSON.stringify(s.colony.factions) };
+    const { realm, field } = await M5.migrateHold(s);
+    const fb = [];
+    if (layers(s) !== before.L) fb.push('a layer changed');
+    if (pristineOf(s).crc.join() !== before.pcrc) fb.push('the pristine CRCs changed');
+    if (entNoRealm(s) !== before.ent) fb.push('an entity changed');
+    if (JSON.stringify(s.colony.factions) !== before.fac) fb.push('goodwill changed');
+    if (M5.needsWorld(s, { on: true })) fb.push('needsWorld still true');
+    const bound = ROLE_IDS.filter((k) => Number.isInteger(field.bind[k])).length;
+    if (bound !== ROLE_IDS.length) fb.push(`roles bound ${bound}/${ROLE_IDS.length}`);
+    const errs = ST.checkState(s);
+    if (errs.length) fb.push(`state: ${errs.slice(0, 2).join('; ')}`);
+    const rec = await decodeRecord(await encodeRecord(realm));
+    if (realmHash(rec) !== realmHash(realm)) fb.push('the record does not round-trip');
+    // continue through the next season start (at least 2 days), twice: straight, and saved and reloaded after 1 day
+    const t1 = s.tick, end = Math.max(t1 + 2 * DAY, (Math.floor(t1 / SEASON_TICKS) + 1) * SEASON_TICKS + HOUR);
+    const n0 = season.ms.length;
+    await run(s, end);
+    const steps = season.ms.length - n0;
+    const b = await loadBlob(bytes);
+    await M5.migrateHold(b);
+    await run(b, t1 + DAY);
+    const blob = await saveBlob(b), c = await loadBlob(blob);
+    c.rt.realm = rec;   // 9.3 step 5: the loader gives the stored record back
+    if (!c.realm || ST.stateHash(c) !== ST.stateHash(b)) fb.push('the reload at +1 day changes the hash');
+    await run(c, end);
+    const hA = ST.stateHash(s), hB = ST.stateHash(c);
+    if (hA !== hB) fb.push(`save and reload: ${hB} vs ${hA} at +${((end - t1) / DAY).toFixed(2)} days`);
+    if (steps < 1) fb.push('no season step ran');
+    if (deltaBytes(s.realm) > REALM_DELTA_CAP) fb.push(`deltas ${deltaBytes(s.realm)} B`);
+    const errs2 = ST.checkState(s);
+    if (errs2.length) fb.push(`state after: ${errs2.slice(0, 2).join('; ')}`);
+    for (const x of fb) bad.push(`${name}: ${x}`);
+    if (!fb.length) lines.push(`${name}: pinned ${realm.pin.rx},${realm.pin.ry} (${field.embark.biome}), year ${field.embarkYear} -> ${s.realm.year}, liege civ ${field.civ}, roles ${bound}/5; local state untouched; ${((end - t1) / DAY).toFixed(2)} days with ${steps} season step${steps === 1 ? '' : 's'} (${s.realm.ev.length} ev, deltas ${deltaBytes(s.realm)} B), identical across a save (${(blob.length / 1024).toFixed(1)} KB) and reload: ${hA} [${((Date.now() - tf) / 1000).toFixed(0)} s]`);
+  }
+  for (const l of lines) console.log('  ok   ' + l);
+  for (const l of bad) console.log('  FAIL ' + l);
+  console.log(`colonybot w3 migrated fixtures [${W3_FIXTURES.length} v4 holds, ${((Date.now() - t0) / 1000).toFixed(0)} s]: ${bad.length ? 'FAIL' : 'PASS'}`);
+  process.exit(bad.length ? 1 : 0);
 }
 /** --realm=<seed>:<rx>,<ry>: one realm hold. */
 async function w2One() {
@@ -508,6 +689,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (arg('realm', null) !== null) await w2One();
   if (arg('biomes', null) !== null) await w2Biomes();
   if (has('--realm-det')) await w2Det();
+  // Stage W3 (W3.10): the realm soak and the migrated fixtures (see "Stage W3" above)
+  if (has('--w3-soak')) await w3Soak();
+  if (has('--w3-fixtures')) await w3Fixtures();
   if (has('--one')) {
     // a child of --jobs: one v2 seed, written to --out
     const seed = parseSeeds(arg('seeds', '1'))[0];
