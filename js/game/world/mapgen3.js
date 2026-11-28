@@ -221,7 +221,7 @@ function seaPass(L, side, R, seed, sc) {
 }
 /**
  * The river of a region (3.6): water enters on edge RG.river.in and leaves on RG.river.out, RG.river.cls sets the width.
- * Both ends on the side edges of the massif frame: the classic course along the face (as v1). Otherwise a wavy line
+ * Both ends on the side edges of the massif frame: the course along the face (as v1). Otherwise a wavy line
  * from end to end; where it crosses the massif it cuts a gorge (the channel only; the banks stay rock).
  * Without a river the course is still drawn (`centre`, for the lake and the hills) but nothing is written.
  */
@@ -234,8 +234,8 @@ function regionRiver(L, fr, thick, R, seed, sc, side) {
   if (!rvr) return { river, centre, fords: [], off, w: 0, edges: [] };
   const w = GEN3.riverWidth[rvr.cls - 1], amp = G.wave * sc;
   const e0 = edgeOf(...fr.xy(fr.A >> 1, 0)), e1 = OPP[e0];   // the frame's side edges: t = 0 and t = T - 1
-  const pts = [], classic = (rvr.in === e0 && rvr.out === e1) || (rvr.in === e1 && rvr.out === e0);
-  if (classic) {
+  const pts = [], alongFace = (rvr.in === e0 && rvr.out === e1) || (rvr.in === e1 && rvr.out === e0);
+  if (alongFace) {
     for (let t = 0; t < fr.T; t++) {
       const c = Math.min(fr.A - 4, thick[t] + off + amp * wave(t, fr.T, seed ^ 0x3c6ef372));
       const [x, y] = fr.xy(c, t);
@@ -263,9 +263,9 @@ function regionRiver(L, fr, thick, R, seed, sc, side) {
       if (d2 < best[i]) { best[i] = d2; near[i] = k; }
     }
   }
-  // fords: G.fords crossings spread along the course, G.fordWidth tiles wide (samples are 1 tile apart on the classic
+  // fords: G.fords crossings spread along the course, G.fordWidth tiles wide (samples are 1 tile apart on the along-face
   // course and about half a tile on the line)
-  const nf = ri(R, G.fords[0], G.fords[1]), fords = [], fordK = (G.fordWidth >> 1) * (classic ? 1 : 2);
+  const nf = ri(R, G.fords[0], G.fords[1]), fords = [], fordK = (G.fordWidth >> 1) * (alongFace ? 1 : 2);
   for (let k = 0; k < nf; k++) fords.push(Math.max(2, Math.min(np - 3, Math.round(((k + 1) * np) / (nf + 1)) + ri(R, -Math.round(np / 12), Math.round(np / 12)))));
   const isFord = (k) => fords.some((f) => Math.abs(k - f) <= fordK);
   for (let i = 0; i < PLANE; i++) {

@@ -106,6 +106,7 @@ async function runViewport(vp) {
     // ---- (1) title > New colony > game in < 3 s
     const t0 = Date.now();
     await page.locator('[data-act=new]').tap();
+    await page.waitForTimeout(150); if (await page.locator('[data-act=quick]').count()) await page.locator('[data-act=quick]').first().tap();   // W2: New hold > Quick start
     await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ec && window.__ec.state);
     await page.waitForSelector('.ec-bottom');
     flows.newColonyMs = Date.now() - t0;

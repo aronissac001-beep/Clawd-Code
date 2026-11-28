@@ -125,6 +125,7 @@ for (const vp of VPS) {
       await tapSel('[data-act=title-settings]'); await shot('title-settings');
       await tapSel('[data-act=title-back]');
       await tapSel('[data-act=new]');
+      await page.waitForTimeout(150); if (await page.locator('[data-act=quick]').count()) await tapSel('[data-act=quick]');   // W2: New hold > Quick start
       await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell, null, { timeout: 15000 });
       await page.waitForTimeout(300);
       // the fixture (debug only): Stage 2 content through the sim's own APIs

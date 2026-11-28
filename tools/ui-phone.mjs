@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { serve } from './lib/static-server.mjs';
 import { launch, browserArg, UNAVAILABLE } from './lib/browsers.mjs';
+import { REALM } from '../js/game/core/flags.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, 'out', 'ui-phone');
@@ -146,6 +147,8 @@ async function tapAt(page, x, y) {
   await page.waitForTimeout(120);
 }
 async function tap(page, sel, text = null) { const p = await find(page, sel, text); if (!p) return null; await tapAt(page, p.x, p.y); return p; }
+/** Tap New hold; with REALM on it opens the World step, so tap Quick start there until the game shell is up (W2.9). */
+async function tapNew(page) { const p = await tap(page, '[data-act=new]'); if (!p) return null; for (let k = 0; k < 20; k++) { if (await page.evaluate(() => !!(window.__ecUI && window.__ecUI.shell))) break; const q = await find(page, '[data-act=quick]'); if (q) { await tapAt(page, q.x, q.y); break; } await page.waitForTimeout(100); } return p; }
 /** A one-finger drag on the world canvas between two screen points, in `steps` frames. */
 async function dragWorld(page, a, b, steps = 12) {
   await page.evaluate(async ([a, b, steps]) => {
@@ -514,7 +517,7 @@ async function runViewport(vp) {
 
   // 1: title > New colony > game in < 3 s
   const t0 = Date.now();
-  const newBtn = await tap(page, '[data-act=new]');
+  const newBtn = await tapNew(page);
   let inGame = false;
   if (newBtn) {
     try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); inGame = true; } catch (_) { /* timed out */ }
@@ -819,6 +822,7 @@ async function runOmenClock(vp) {
   const rectDrag = async (r) => { await focus(r); await run(100); await dragSync(await tileAtScreen(r.x0, r.y0), await tileAtScreen(r.x1, r.y1)); };
   const steps = [];
   await tapSync('[data-act=new]');
+  for (let k = 0; k < 20; k++) { if (await page.evaluate(() => !!(window.__ecUI && window.__ecUI.shell))) break; if (await tapSync('[data-act=quick]')) break; await page.waitForTimeout(100); }   // W2: New hold > Quick start
   let t = 0;
   while (t < 10000 && !(await page.evaluate(() => !!(window.__ecUI && window.__ecUI.shell)))) { await run(100); t += 100; }
   const t0 = await page.evaluate(() => Date.now());
@@ -915,7 +919,7 @@ async function runCards(vp, want) {
   await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
   await page.evaluate(() => { try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('ec2.seen.')) localStorage.removeItem(k); } } catch (_) { /* none */ } });
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
   await page.evaluate(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
   const land = vp.width > vp.height;
@@ -1112,7 +1116,7 @@ async function runSheets(vp) {
   const done = async () => { await bctx.close(); return { vp: vp.name, flows, screens, problems: [...errs, ...problems] }; };
   await page.goto(srv.url + '?debug=1' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
   await page.evaluate(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
   const land = vp.width > vp.height;
@@ -1297,7 +1301,7 @@ async function runIaPeople(vp) {
   const press = async (sel) => { const p = await find(page, sel); if (!p) return null; await holdAt(page, p.x, p.y, 620); return p; };
   await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
   await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
   await page.waitForTimeout(300);
@@ -1481,7 +1485,7 @@ async function runFront(vp) {
   // F1: the first run
   const a0 = await acts();
   await screen('first');
-  const firstOk = !a0.includes('continue') && !a0.includes('holds') && !a0.includes('worlds') && a0.includes('new') && a0.includes('import');
+  const firstOk = !a0.includes('continue') && !a0.includes('holds') && a0.includes('worlds') === REALM && a0.includes('new') && a0.includes('import');
   let taps = 0, entered = false;
   const t0 = Date.now();
   if (await tapT('[data-act=new]')) { taps++; entered = await inGame(); }
@@ -1528,7 +1532,7 @@ async function runFront(vp) {
   // F5: Worlds behind REALM (debug URL)
   await page.goto(srv.url + '?debug=1&realm=1' + (vp.safe ? '&safe=' + vp.safe : '')); await page.waitForTimeout(700);
   const a2 = await acts();
-  flow('F5', 'Worlds only with REALM', !a1.includes('worlds') && !a0.includes('worlds') && a2.includes('worlds'), `default [${a1.includes('worlds') ? 'shown' : 'hidden'}], ?realm=1 [${a2.includes('worlds') ? 'shown' : 'hidden'}]`);
+  flow('F5', 'Worlds only with REALM', a1.includes('worlds') === REALM && a0.includes('worlds') === REALM && a2.includes('worlds'), `default [${a1.includes('worlds') ? 'shown' : 'hidden'}], ?realm=1 [${a2.includes('worlds') ? 'shown' : 'hidden'}]`);
   return done();
 }
 if (flowsArg === 'front') {
@@ -1622,7 +1626,7 @@ async function runIa(vp) {
   };
   await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
   await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; });
   await page.waitForTimeout(300);
@@ -1819,7 +1823,7 @@ async function runA11y(vp) {
   });
   await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   try { await page.waitForFunction(() => window.__ecUI && window.__ecUI.shell && window.__ecUI.shell.renderer && window.__ecUI.shell.renderer.frames > 1, null, { timeout: 8000 }); } catch (_) { problems.push('no game'); return done(); }
   await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; if (sh.guide && sh.guide.el) sh.guide.el.hidden = true; if (sh.prompts) sh.prompts.hide(); });
   await page.waitForTimeout(300);
@@ -1960,7 +1964,7 @@ async function runCoach(vp) {
   const endTool = async () => { if (await find(page, '[data-act=done]')) await tap(page, '[data-act=done]'); if (await tool()) await ev(() => window.__ecUI.shell.ctx.endTool()); await page.waitForTimeout(80); };
   await page.goto(srv.url + '?debug=1&shell=2' + (vp.safe ? '&safe=' + vp.safe : ''));
   await page.waitForTimeout(700);
-  if (!(await tap(page, '[data-act=new]'))) { problems.push('no New colony button'); return done(); }
+  if (!(await tapNew(page))) { problems.push('no New colony button'); return done(); }
   if (!(await ready())) { problems.push('no game'); return done(); }
   await ev(() => { const sh = window.__ecUI.shell; sh.setSpeed(0); sh.loop.timeScale = 0; });
   await page.waitForTimeout(1200);

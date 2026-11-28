@@ -8,6 +8,8 @@
 //     W0 gate after W0.5, and each re-baselining step: W4.8, W5.1, W5.9). It also writes the bot report (survival, tier
 //     and rank days, idle share, haul latency, tick p95) to --out (default tools/out/gate/legacy.json); W0.1 wrote
 //     tools/out/w0.json with --report-only --out=tools/out/w0.json on HEAD (--report-only: no baseline read or written).
+//   Stage w2 adds the realm rows (W2.9): the realm determinism scene and bot v4 in 12 biomes x 5 world regions x 60 days
+//     (colonybot.mjs --biomes=all, its "Stage W2" header), written to tools/out/colonybot/w2.json.
 // Exit 0 when every enforced check passes. A browser check whose browser is not installed reports
 // UNAVAILABLE (a failure with --strict); --browser=chromium runs the browser checks in Chromium as
 // a stand-in for WebKit (reported as such). Checks that start at a later stage are listed as
@@ -109,9 +111,19 @@ const CHECKS = [
   { name: 'Mapgen3 region inputs (12 biomes x 20 seeds, W2.3)', starts: 'w2', node: ['--test', 'tools/tests/mapgen3-region.test.mjs'] },
   { name: 'Phone UI (world map, W2.6)', starts: 'w2', file: 'tools/ui-phone.mjs', args: ['--flows=worldmap', `--browser=${browser}`], browser: true },
   { name: 'Phone UI (worlds and embark, W2.7a)', starts: 'w2', file: 'tools/ui-phone.mjs', args: ['--flows=worlds', `--browser=${browser}`], browser: true },
+  // Stage W2 (EMBERCROWN-WORLD.md 12.4, W2.9): REALM is on (js/game/core/flags.js). The realm determinism scene: a world
+  // region founded twice, bot v4 in it twice, its save (EC3 with s.realm) reloaded and continued a day, and a realm-less
+  // hold still hashing as baseline-w0 (colonybot.mjs --realm-det)
+  { name: 'Realm determinism (W2.9)', starts: 'w2', file: 'tools/colonybot.mjs', args: ['--realm-det', `--days=${quick ? 2 : 6}`] },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
+  // Stage W2 (W2.9): bot v4 in world regions, 12 biomes x 5 holds x 60 days, against the W0 reference (bot v4 on
+  // realm-less seeds 1-5 for 60 days, its hashes checked against baseline-w0.json): greenvale, elderwood, shore, fen and
+  // moor keep >= 90 % of W0's survival, the harsh seven >= 70 %; a biome below its row is a balance request to G, not a
+  // waiver. It starts once the Z3 soak is read (it must not share the soak's CPU) and runs beside the legacy row
+  // (--quick: one hold a biome, still 60 days: survival before day 60 measures migrant timing, not the biome)
+  { name: `Colony bot w2 (12 biomes x ${quick ? 1 : 5} holds x 60 days)`, starts: 'w2', file: 'tools/colonybot.mjs', args: ['--biomes=all', `--seeds=${quick ? 1 : 5}`, '--days=60', '--jobs=3', `--out=${OUT}/w2.json`], bg: true, startAfter: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, timeout: 10800000 },
   // read last: it runs beside the browser rows and the balance report
   { name: 'Legacy hashes (bot v4 seeds 1-5, W0 fixtures)', starts: 'w0', file: 'tools/gate.mjs', args: ['--legacy', `--stage=${stage}`, '--jobs=3', ...(has('--write-baseline') ? ['--write-baseline'] : [])], bg: true, startAfter: `Z3 soak (bot v4, ${quick ? 60 : 300} days, seeds 1-5)`, timeout: 5400000, skip: quick ? '--quick' : null },
 ];

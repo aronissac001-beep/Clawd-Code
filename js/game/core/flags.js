@@ -17,3 +17,9 @@ export function fortressRequested(search = '') {
 // SHELL2: the new shell (EMBERCROWN-WORLD.md 8.1, Stage W1): the 5-slot bar, the People, Hold and World sheets.
 // UI only, never read by the sim. On since W1.10 (the w1 gate); before it the debug URL ?shell=2 turned it on (js/ui/peopleui.js SHELL2_ON).
 export const SHELL2 = true;
+
+// REALM: the world map and embark (EMBERCROWN-WORLD.md G1, G8, 3, Stage W2). Entry points only: on the title, New hold
+// opens the World step and Worlds lists the saved worlds (js/ui/front.js realmOn); a new hold is founded in a region
+// (setup.js foundColony({ realm, rx, ry })). Never read by the sim: a hold that carries s.realm is read from its save,
+// whatever this says (G31). On since W2.9 (the w2 gate); before it the debug URL ?realm=1 turned it on.
+export const REALM = true;

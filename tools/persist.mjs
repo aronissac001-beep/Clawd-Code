@@ -61,6 +61,7 @@ const inGame = (page) => page.waitForFunction(() => window.__ecUI && window.__ec
 async function newColony(page, n = 1200, save = true) {
   await page.goto(URL0); await ready(page);
   if (!(await tapSel(page, '[data-act=new]'))) return null;
+  await page.waitForTimeout(150); if (await page.locator('[data-act=quick]').count()) await tapSel(page, '[data-act=quick]');   // W2: New hold > Quick start
   if (!(await inGame(page))) return null;
   return page.evaluate(async ([n, save]) => {
     const ec = window.__ec, sh = window.__ecUI.shell;
@@ -138,7 +139,7 @@ async function evict(kind) {
   const alerts = await page.evaluate(() => window.__ec.app.alerts.map((x) => x.kind));
   await page.screenshot({ path: join(OUT, `evict-${kind}.png`) });
   let canFound = null;
-  if (kind === 'both') canFound = !!(await tapSel(page, '[data-act=new]')) && (await inGame(page));
+  if (kind === 'both') canFound = !!(await tapSel(page, '[data-act=new]')) && (await page.waitForTimeout(150), (await page.locator('[data-act=quick]').count()) ? !!(await tapSel(page, '[data-act=quick]')) : true) && (await inGame(page));
   await ctx.close();
   return { a, r, before, after, contEnabled, entered, offersImport, alerts, errs, canFound };
 }

@@ -3,6 +3,7 @@
 //                            [--json] [--out=FILE] [--verbose] [--twice]
 //   node tools/colonybot.mjs --soak [--seeds=1] [--days=300] [--difficulty=warden] [--out=FILE]  (Stage 2 soak, 14.8 J)
 //   node tools/colonybot.mjs --report [--from=FILE,FILE] [--jobs=4] [--out=FILE]  (balance report, 14.4)
+//   node tools/colonybot.mjs --realm=<seed>:<rx>,<ry> | --biomes=all [--seeds=5] [--days=60] | --realm-det  (Stage W2, see "Stage W2" below)
 //   node tools/colonybot.mjs --bot=v3 [--seeds=1-5] [--days=30] [--jobs=3] [--twice] [--out=FILE]  (Stage Z1, EMBERCROWN-FORTRESS.md 8.3 E12)
 // Bot v3 (tools/lib/bot3.mjs): v2's policy on the surface of a 128 x 128 x 20 fortress plus the deep plan (a stair
 // shaft to -6, bedrooms on -2, a workshop hall on -3, a store at the shaft foot). Exit 0 when every seed meets the
@@ -217,12 +218,213 @@ function printSummary(rows) {
   for (const x of rows) console.log(`  ${x.ok ? 'ok  ' : x.enforced ? 'FAIL' : 'miss'} [${x.owner}] ${x.name.padEnd(w)}  ${x.detail}`);
 }
 
+// ---- Stage W2 (EMBERCROWN-WORLD.md 12.4, step W2.9): bot v4 in world regions -------------------------------------
+//   node tools/colonybot.mjs --realm=<worldSeed>:<rx>,<ry> [--days=60] [--twice]      one hold founded in that region
+//   node tools/colonybot.mjs --biomes=all|<id,id> [--seeds=5] [--days=60] [--jobs=3] [--out=FILE]
+//   node tools/colonybot.mjs --realm-det [--days=6]                                   the realm determinism scene
+// A realm hold is founded as the game founds it (setup.js foundColony({ realm, rx, ry }): the region's hold seed (G2),
+// opts.region into mapgen3 (GEN3 v2), s.realm) and played by bot v4's whole policy (runBot4's composition, with this
+// founding in place of foundFortress). --biomes picks, for each of the 12 region biomes, 5 holds: in the first 5
+// worlds (world seed 1 up) that have an embarkable region of that biome, the region first in hash32(seed, rx, ry,
+// 'w2bot') order. The W0 reference is bot v4 on realm-less holds, seeds 1-5, for the same days; its hashes at the
+// checkpoint days must equal tools/out/baseline-w0.json (the legacy-hash rule), so it is the W0 run itself.
+// Oracle (12.4 W2.9): survival = the mean of the colonists alive at the last day over a biome's 5 holds, against the
+// same mean of the W0 reference: greenvale, elderwood, shore, fen and moor within 10 % of W0 (>= 90 %), the harsh
+// seven >= 70 %. A biome below its row fails the run (a balance request to G, never a waiver). Exit 0 when every
+// row holds and every run plays clean.
+export const W2_MILD = Object.freeze(['greenvale', 'elderwood', 'shore', 'fen', 'moor']);
+export const W2_HARSH = Object.freeze(['tundra', 'saltflat', 'ashlands', 'ruins', 'highcrag', 'redscar', 'taiga']);
+export const W2_ROWS = Object.freeze({ mild: 0.9, harsh: 0.7, days: 60, seeds: 5 });
+const W2_CHECK_DAYS = [1, 2, 5, 10, 20, 30, 60, 90, 120];
+let realmCache = null;
+async function realmOf(wseed) {
+  if (realmCache && realmCache.seed === wseed) return realmCache.realm;
+  const { buildRealm } = await import('../js/game/realm/gen.js');
+  realmCache = { seed: wseed, realm: buildRealm({ seed: wseed }) };
+  return realmCache.realm;
+}
+/** The founding of a realm hold for the bot: foundColony in the region, then the bot's two speed rows (bot3 foundFortress). */
+async function realmFounder(wseed, rx, ry) {
+  const [{ installSim, foundColony }, { coverRebuild, skyZRebuild }] = await Promise.all([import('../js/game/core/setup.js'), import('../js/game/world/vertical.js')]);
+  const realm = await realmOf(wseed);
+  return (_sd, { storyteller = null, difficulty = null } = {}) => {
+    installSim({ stage: '2' });
+    const s = foundColony({ name: `Bot Hold ${wseed}:${rx},${ry}`, realm, rx, ry, d: 20, storyteller, difficulty });
+    if (!s.rt.cover) s.rt.cover = coverRebuild(s);
+    if (!s.rt.skyZ) s.rt.skyZ = skyZRebuild(s);
+    return s;
+  };
+}
+/** bot v4 (tools/lib/bot4.mjs runBot4) on a realm hold: the same composition, founded by realmFounder. */
+async function runBot4Realm({ wseed, rx, ry, days = W2_ROWS.days, onDay = null } = {}) {
+  const [{ runBot2 }, b3, b4, { setBotLevel }] = await Promise.all([import('./lib/bot2.mjs'), import('./lib/bot3.mjs'), import('./lib/bot4.mjs'), import('./lib/bot.mjs')]);
+  const found = await realmFounder(wseed, rx, ry);
+  let deep = null, X3 = null, z2 = null;
+  const X4 = b4.makeMeter4();
+  const r = await runBot2({
+    seed: wseed, days, difficulty: b4.DIFFICULTY4,
+    onDay: (s, d, row) => { X4.onDay(s, d); if (onDay) onDay(s, d, row); },
+    found,
+    wrap: (s, base) => { deep = b3.makeDeep(s, base); X3 = b3.makeMeter3(s); z2 = b4.makeZ2(s, deep, base); return z2; },
+    onTick: (s) => { X3.onTick(s); },
+  });
+  r.z1 = b3.evaluate3(r.s, r, X3.X, deep, days);
+  r.z2 = b4.evaluate4(r.s, r, X4, z2, days);
+  r.deepNotes = deep.D3.notes.concat(z2.Z.notes);
+  r.bot = 'v4';
+  setBotLevel(0);
+  return r;
+}
+/** One W2 run in this process: a realm hold (spec { wseed, rx, ry, biome }) or the W0 reference (spec { legacy: seed }). */
+async function w2Run(spec, days) {
+  const [{ stateHash }] = await Promise.all([import('../js/game/core/state.js')]);
+  const marks = new Set(W2_CHECK_DAYS.filter((d) => d <= days).concat([days]));
+  const hashes = {};
+  const onDay = (s, d) => { if (marks.has(d)) hashes[d] = stateHash(s); };
+  let r;
+  if (spec.legacy !== undefined) { const { runBot4 } = await import('./lib/bot4.mjs'); r = await runBot4({ seed: spec.legacy, days, onDay }); }
+  else r = await runBot4Realm({ ...spec, days, onDay });
+  const m = r.metrics;
+  const errors = m.checks.filter((c) => !c.ok && !c.info && !c.na && /exception|state valid/.test(c.name)).map((c) => `${c.name}: ${c.detail}`);
+  const s = r.s;
+  return {
+    ...spec, days, hash: r.hash, hashes, ms: r.ms, errors, holdSeed: s.seed >>> 0, realm: s.realm ? { wid: s.realm.wid, rx: s.realm.rx, ry: s.realm.ry, biome: s.realm.embark && s.realm.embark.biome } : null,
+    alive: m.colonists.alive, total: m.colonists.total, peak: m.colonists.peak, fallen: s.colony.fallen === true, deathCauses: m.deathCauses,
+    hamletDay: m.hamletDay ?? null, tickP95: Math.max(0, ...(m.series || []).map((x) => x.tickP95 || 0)), commands: r.log.length, refused: r.refused.length,
+  };
+}
+/** The 5 holds of each biome (see the header). */
+async function w2Picks(biomes, per) {
+  const [{ idx, isEmbarkable }, { regionOpts }, { hash32 }] = await Promise.all([import('../js/game/realm/query.js'), import('../js/game/realm/region.js'), import('../js/game/core/rand.js')]);
+  const want = new Map(biomes.map((b) => [b, []]));
+  for (let wseed = 1; wseed <= 60 && [...want.values()].some((a) => a.length < per); wseed++) {
+    const realm = await realmOf(wseed), best = new Map();
+    for (let ry = 0; ry < realm.n; ry++) for (let rx = 0; rx < realm.n; rx++) {
+      if (!isEmbarkable(realm, idx(realm, rx, ry))) continue;
+      const b = regionOpts(realm, rx, ry).biome;
+      if (!want.has(b) || want.get(b).length >= per) continue;
+      const k = hash32(wseed, rx, ry, 'w2bot') >>> 0, o = best.get(b);
+      if (!o || k < o.k) best.set(b, { k, rx, ry });
+    }
+    for (const [b, o] of best) want.get(b).push({ biome: b, wseed, rx: o.rx, ry: o.ry });
+  }
+  return want;
+}
+/** Run specs in `jobs` child processes (each spec is its own deterministic run); results in spec order. */
+async function w2Pool(specs, days, jobs) {
+  const results = new Array(specs.length);
+  mkdirSync(OUT_DIR, { recursive: true });
+  let next = 0;
+  const one = (k) => new Promise((resolve) => {
+    const file = join(OUT_DIR, `.w2-${process.pid}-${k}.json`);
+    const p = spawn(process.execPath, [fileURLToPath(import.meta.url), '--w2-one', `--spec=${JSON.stringify(specs[k])}`, `--days=${days}`, `--out=${file}`], { stdio: ['ignore', 'ignore', 'inherit'] });
+    p.on('exit', (code) => { try { results[k] = JSON.parse(readFileSync(file, 'utf8')); unlinkSync(file); } catch (e) { results[k] = { ...specs[k], days, failed: `child exit ${code}: ${e.message}` }; } resolve(); });
+  });
+  const worker = async () => { while (next < specs.length) { const k = next++; await one(k); if (has('--progress')) process.stderr.write(`  [w2] ${k + 1}/${specs.length} ${JSON.stringify(specs[k])}\n`); } };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, specs.length)) }, worker));
+  return results;
+}
+const meanOf = (v) => (v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : null);
+/** --biomes: the W2 gate rows (12 biomes x 5 holds x 60 days against the W0 reference). */
+async function w2Biomes() {
+  const { REALM_BIOMES } = await import('../js/data/realm/biomes.js');
+  const all12 = REALM_BIOMES.filter((b) => b.embark).map((b) => b.id);
+  const a = arg('biomes', 'all'), biomes = a === 'all' ? all12 : a.split(',').filter(Boolean);
+  for (const b of biomes) if (!all12.includes(b)) { console.error(`colonybot: unknown biome ${b} (${all12.join(', ')})`); process.exit(2); }
+  const per = +arg('seeds', W2_ROWS.seeds), days = +arg('days', W2_ROWS.days), jobs = +arg('jobs', 3), t0 = Date.now();
+  const picks = await w2Picks(biomes, per);
+  const specs = [];
+  for (let k = 1; k <= 5; k++) specs.push({ legacy: k });
+  for (const b of biomes) specs.push(...picks.get(b));
+  const res = await w2Pool(specs, days, jobs);
+  const ref = res.filter((r) => r.legacy !== undefined), holds = res.filter((r) => r.legacy === undefined);
+  // the reference is W0 itself: its checkpoint hashes equal baseline-w0.json (12.1)
+  let base = null; try { base = JSON.parse(readFileSync(join(HERE, 'out', 'baseline-w0.json'), 'utf8')); } catch (_) { base = null; }
+  const refBad = [];
+  for (const r of ref) {
+    if (r.failed) { refBad.push(`seed ${r.legacy}: ${r.failed}`); continue; }
+    for (const [d, h] of Object.entries(r.hashes)) { const want = base && base.bot && base.bot[r.legacy] && base.bot[r.legacy][d]; if (want !== undefined && want !== h) refBad.push(`seed ${r.legacy} day ${d}: ${h} (baseline-w0 ${want})`); }
+  }
+  const w0Alive = meanOf(ref.filter((r) => !r.failed).map((r) => r.alive));
+  const rows = [];
+  for (const b of biomes) {
+    const R = holds.filter((r) => r.biome === b), ok = R.filter((r) => !r.failed);
+    const alive = meanOf(ok.map((r) => r.alive)), ratio = w0Alive ? +(alive / w0Alive).toFixed(3) : null;
+    const harsh = !W2_MILD.includes(b), need = harsh ? W2_ROWS.harsh : W2_ROWS.mild;
+    const clean = R.length === per && ok.length === per && ok.every((r) => !r.errors.length && r.realm && r.realm.biome === b);
+    rows.push({ biome: b, kind: harsh ? 'harsh' : 'mild', need, holds: R.map((r) => `${r.wseed}:${r.rx},${r.ry}`), alive, ratio, standing: ok.filter((r) => r.alive > 0 && !r.fallen).length, of: R.length, clean, ok: clean && ratio !== null && ratio >= need, deaths: ok.reduce((m, r) => { for (const [c, n] of Object.entries(r.deathCauses || {})) m[c] = (m[c] || 0) + n; return m; }, {}), tickP95: Math.max(0, ...ok.map((r) => r.tickP95 || 0)), problems: R.flatMap((r) => (r.failed ? [r.failed] : r.errors)).slice(0, 4) });
+  }
+  const pass = !refBad.length && ref.length === 5 && rows.every((x) => x.ok);
+  const json = { what: 'W2.9: bot v4 in world regions against the W0 reference (EMBERCROWN-WORLD.md 12.4)', days, per, rows: W2_ROWS, w0: { seeds: ref.map((r) => r.legacy), alive: ref.map((r) => r.alive), aliveMean: w0Alive, hashesMatchBaseline: !refBad.length, problems: refBad }, biomes: rows, pass, ms: Date.now() - t0, results: res };
+  if (arg('out', null)) save(arg('out', null), json);
+  console.log(`W0 reference (bot v4, realm-less seeds 1-5, ${days} days): alive ${ref.map((r) => r.alive).join(', ')} (mean ${w0Alive}); hashes ${refBad.length ? 'DIFFER from baseline-w0.json: ' + refBad.slice(0, 3).join('; ') : 'identical to baseline-w0.json'}`);
+  for (const x of rows) console.log(`  ${x.ok ? 'ok  ' : 'FAIL'} ${x.biome.padEnd(9)} ${x.kind.padEnd(5)} alive ${String(x.alive).padStart(5)} = ${x.ratio === null ? '?' : (x.ratio * 100).toFixed(0) + ' %'} of W0 (needs >= ${x.need * 100} %), ${x.standing}/${x.of} standing, tick p95 ${x.tickP95} ms, holds ${x.holds.join(' ')}${Object.keys(x.deaths).length ? ', deaths ' + JSON.stringify(x.deaths) : ''}${x.problems.length ? ', ' + x.problems.join('; ') : ''}${!x.clean ? ' (not clean)' : ''}`);
+  const low = rows.filter((x) => x.clean && !x.ok);
+  if (low.length) console.log(`  balance request to G (12.4 W2.9): ${low.map((x) => `${x.biome} at ${(x.ratio * 100).toFixed(0)} %`).join(', ')}`);
+  console.log(`colonybot w2 [${biomes.length} biomes x ${per} holds x ${days} days, ${((Date.now() - t0) / 60000).toFixed(1)} min]: ${rows.filter((x) => x.ok).length}/${rows.length} biome rows hold${pass ? ' - PASS' : ' - FAIL'}`);
+  process.exit(pass ? 0 : 1);
+}
+/** --realm=<seed>:<rx>,<ry>: one realm hold. */
+async function w2One() {
+  const m = String(arg('realm', '')).match(/^(\d+):(\d+),(\d+)$/);
+  if (!m) { console.error('colonybot: --realm=<worldSeed>:<rx>,<ry>'); process.exit(2); }
+  const spec = { wseed: +m[1], rx: +m[2], ry: +m[3] }, days = +arg('days', W2_ROWS.days);
+  const realm = await realmOf(spec.wseed);
+  const [{ checkRegion }, { regionOpts }] = await Promise.all([import('../js/game/core/setup.js'), import('../js/game/realm/region.js')]);
+  try { checkRegion(realm, spec.rx, spec.ry); } catch (e) { console.error(`colonybot: ${e.message}`); process.exit(2); }
+  spec.biome = regionOpts(realm, spec.rx, spec.ry).biome;
+  const r = await w2Run(spec, days);
+  let same = null;
+  if (has('--twice')) { const r2 = await w2Run(spec, days); same = r2.hash === r.hash && JSON.stringify(r2.hashes) === JSON.stringify(r.hashes); }
+  if (arg('out', null)) save(arg('out', null), { ...r, twice: same });
+  if (has('--json')) console.log(JSON.stringify(r));
+  const ok = !r.errors.length && same !== false;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} realm ${spec.wseed}:${spec.rx},${spec.ry} (${spec.biome}, hold seed ${r.holdSeed}): ${days} days in ${r.ms} ms, ${r.commands} commands (${r.refused} refused), ${r.alive}/${r.total} alive (peak ${r.peak})${r.fallen ? ', FALLEN' : ''}, hash ${r.hash}${same === null ? '' : same ? ', twice identical' : ', twice DIFFERENT'}${r.errors.length ? ', ' + r.errors.join('; ') : ''}`);
+  process.exit(ok ? 0 : 1);
+}
+/**
+ * --realm-det: the realm determinism scene. A hold in world 1 is founded twice (identical hashes); bot v4 plays it
+ * --days days twice (identical hashes at every day); at the end its save (EC3 with s.realm) reloads to the same hash and
+ * both copies continue one game day to the same hash; and a realm-less hold of seed 1 still hashes as baseline-w0 day 1.
+ */
+async function w2Det() {
+  const days = +arg('days', 6), t0 = Date.now(), bad = [], lines = [];
+  const [{ stateHash }, { tick }, { saveBlob, loadBlob }, { regionOpts }] = await Promise.all([import('../js/game/core/state.js'), import('../js/game/core/sim.js'), import('../js/game/save/colonysave.js'), import('../js/game/realm/region.js')]);
+  const picks = await w2Picks(['moor'], 1), p = picks.get('moor')[0];
+  const found = await realmFounder(p.wseed, p.rx, p.ry);
+  const a = found(), b = found();
+  if (stateHash(a) !== stateHash(b)) bad.push('two foundings of one region differ'); else lines.push(`founded ${p.wseed}:${p.rx},${p.ry} (${regionOpts(await realmOf(p.wseed), p.rx, p.ry).biome}) twice: ${stateHash(a)}`);
+  const run = async () => { const hs = []; const r = await runBot4Realm({ ...p, days, onDay: (s) => hs.push(stateHash(s)) }); return { r, hs }; };
+  const x = await run(), y = await run();
+  const diff = x.hs.findIndex((h, k) => h !== y.hs[k]);
+  if (diff >= 0 || x.hs.length !== y.hs.length) bad.push(`bot runs differ from day ${diff + 1}`); else lines.push(`bot v4 ${days} days twice: identical at ${x.hs.length} days (${x.r.hash})`);
+  const blob = await saveBlob(x.r.s), s2 = await loadBlob(blob);
+  if (!s2.realm || stateHash(s2) !== stateHash(x.r.s)) bad.push(`reload: ${s2.realm ? 'hash differs' : 's.realm lost'}`);
+  else {
+    const end = x.r.s.tick + 14400;
+    while (x.r.s.tick < end) tick(x.r.s);
+    while (s2.tick < end) tick(s2);
+    if (stateHash(s2) !== stateHash(x.r.s)) bad.push('save and reload then 1 day: hashes differ'); else lines.push(`save (${(blob.length / 1024).toFixed(1)} KB) and reload, then 1 day: identical (${stateHash(s2)})`);
+  }
+  let base = null; try { base = JSON.parse(readFileSync(join(HERE, 'out', 'baseline-w0.json'), 'utf8')); } catch (_) { base = null; }
+  if (base) { const r = await w2Run({ legacy: 1 }, 1); if (r.hashes[1] !== base.bot[1][1]) bad.push(`realm-less seed 1 day 1: ${r.hashes[1]} (baseline-w0 ${base.bot[1][1]})`); else lines.push(`realm-less seed 1 day 1 hashes as baseline-w0 (${r.hashes[1]})`); }
+  for (const l of lines) console.log('  ok   ' + l);
+  for (const l of bad) console.log('  FAIL ' + l);
+  console.log(`colonybot realm determinism [${((Date.now() - t0) / 1000).toFixed(0)} s]: ${bad.length ? 'FAIL' : 'PASS'}`);
+  process.exit(bad.length ? 1 : 0);
+}
+
 // ---- CLI -------------------------------------------------------------------------------------------
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const stage = arg('stage', '2');
   const jobs = +arg('jobs', 1);
   const out = arg('out', null);
   const storyteller = arg('storyteller', null);
+  // Stage W2 (W2.9): realm holds, the biome rows and the realm determinism scene (see "Stage W2" above)
+  if (has('--w2-one')) { save(out, await w2Run(JSON.parse(arg('spec', '{}')), +arg('days', W2_ROWS.days))); process.exit(0); }
+  if (arg('realm', null) !== null) await w2One();
+  if (arg('biomes', null) !== null) await w2Biomes();
+  if (has('--realm-det')) await w2Det();
   if (has('--one')) {
     // a child of --jobs: one v2 seed, written to --out
     const seed = parseSeeds(arg('seeds', '1'))[0];
