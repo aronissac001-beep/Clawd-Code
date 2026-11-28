@@ -71,6 +71,7 @@ import { installSim, foundColony, FORTRESS_D } from './game/core/setup.js';
 import { fortressRequested, FORTRESS } from './game/core/flags.js';
 import { migrateWorld } from './game/core/migrate4.js';
 import { saveBlob, loadBlob, snapshot, isDeep } from './game/save/colonysave.js';
+import { upgradeHold } from './game/save/realmstore.js';
 import { buildPristine, attachPristine, pristineOf } from './game/save/pristine.js';
 import {
   listColonies, refreshColonies, readSlots, writeSlot, quickSave, promoteQuick, cardOf, persistState,
@@ -133,6 +134,7 @@ export async function continueColony(id) {
       const s = await loadBlob(slot.bytes, { pristine: pristineResolver(id) });
       s.id = id;  // the slot names the colony (an import under a new id keeps the blob's bytes)
       const deepened = await upgradeWorld(s);
+    try { await upgradeHold(s, { colonyId: id, frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); } catch (_) { /* the hold loads as it was (9.4) */ }
       setOpen(s);
       // the migrated hold is saved as EC3 at once, into the older slot: the newer one keeps the EC2 blob until
       // this write is verified (writeSlot reads it back), so a failed migration loses nothing (5.3)
@@ -238,6 +240,7 @@ export async function recoverCopy(id, which) {
   const s = await loadBlob(copy.bytes, { pristine: pristineResolver(id) });
   s.id = id;
   await upgradeWorld(s);   // an EC2 copy (made before the switch) gets its depth first (5.3)
+  try { await upgradeHold(s, { colonyId: id, frame: () => new Promise((r) => requestAnimationFrame(() => r())), now: () => performance.now(), budgetMs: 30 }); } catch (_) { /* the hold loads as it was (9.4) */ }
   if (!isFallen(s)) {
     const card = listColonies().find((c) => c.id === id) || {};
     // a copy from before the hold fell: the Chronicle says so, so the record stays honest (1.3)

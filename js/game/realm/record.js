@@ -12,14 +12,28 @@
 //   decodeRecord(bytes)          async -> the realm object of gen.js createRealm (realmHash equal to the encoded one);
 //                                throws "damaged" when any section's CRC differs
 //   recordFits(header, ref)      does a record header fit a hold's reference { wid, crc? } (9.2: wid and all 3 CRCs)
+// W3.7, the recVersion path (history for W2-era worlds):
+//   recVersion 1   W2.2: a world written before history existed (empty tables, no events, years 0)
+//   recVersion 2   W3.7: the same layout; TABLES `head` may carry `base`, the 3 CRCs of the history-less record a
+//                  W2-era world grew from, so a hold that still references the old CRCs finds the grown record
+//   hasHistory(realm) / needsHistory(realm)   has the world its years of history / is it a world that should get them
+//   historyLater(realm, settled)  generator ({ phase: 'history', year, of }): a NEW realm, the stored fields with the
+//                                 history of 2.3 run over them (re-rolled as createRealm does), the regions `settled`
+//                                 (indices: the embarked holds') held settled and empty (gen.js historyAround), and
+//                                 `base` = the old record's CRCs; the old realm is not touched
+//   grewFrom(realm, ref)          is `realm` the grown form of the record `ref` ({ wid, crc }) references?
+// A record is rewritten only by this path (9.2), and only from a history-less one.
 // The CRCs are over the raw sections, so a regeneration with the current generator is accepted only when it rebuilds
 // the same bytes (9.2 fallback order). `head` keeps what the realm object holds beside its fields and tables.
 import { crc32, deflateRaw, inflateRaw, rleEncode, rleDecode, hasDeflate, COMP } from '../save/codec.js';
-import { LAYERS } from './gen.js';
+import { LAYERS, historyAround } from './gen.js';
 import { allocFields } from './fields.js';
+import { checkHistory } from './history.js';
+import { GEN } from '../../data/realm/params.js';
 
 export const REC_MAGIC = Object.freeze([0x45, 0x43, 0x52, 0x00]);
-export const REC_VERSION = 1;
+/** 1: W2.2 (no history); 2: W3.7 (TABLES head may carry `base`). Readers take every version up to this one. */
+export const REC_VERSION = 2;
 export const REC_HEADER_BYTES = 33;
 export const EVENT_BYTES = 12;
 export const DAMAGED_TEXT = 'This world record is damaged.';
@@ -27,6 +41,7 @@ export const DAMAGED_TEXT = 'This world record is damaged.';
 export const BYTES_PER_REGION = LAYERS.reduce((k, name) => k + (name === 'site' ? 2 : 1), 0);
 
 const te = new TextEncoder(), td = new TextDecoder();
+const isCrc3 = (a) => Array.isArray(a) && a.length === 3 && a.every((c) => Number.isInteger(c));
 
 /** The FIELDS section: every layer in LAYERS order. */
 export function fieldsBytes(realm) {
@@ -44,6 +59,7 @@ export function fieldsBytes(realm) {
 export function tablesText(realm) {
   const head = { v: realm.v, gv: realm.gv, seed: realm.seed, params: realm.params, sides: realm.sides, seaLevel: realm.seaLevel,
     bands: realm.bands, plates: realm.plates, hotspots: realm.hotspots, falls: realm.falls, warnings: realm.warnings, rerolls: realm.rerolls };
+  if (isCrc3(realm.base)) head.base = realm.base.map((c) => c >>> 0);   // only a grown record (W3.7): other TABLES bytes are as before
   return JSON.stringify({ head, tables: realm.tables });
 }
 /** The EVENTS section: a packed Uint8Array of 12-byte rows (W3.1), or the empty list of an unsettled world. */
@@ -131,7 +147,7 @@ function build(h, parts) {
   return {
     v: hd.v, gv: h.genVersion, wid: h.wid, seed: hd.seed, n, params: hd.params, sides: hd.sides, seaLevel: hd.seaLevel, bands: hd.bands, fields: f,
     plates: hd.plates, hotspots: hd.hotspots, falls: hd.falls, tables: doc.tables, events: parts.events.length ? parts.events.slice() : [],
-    warnings: hd.warnings, rerolls: hd.rerolls, years: h.years,
+    warnings: hd.warnings, rerolls: hd.rerolls, years: h.years, ...(isCrc3(hd.base) ? { base: hd.base.map((c) => c >>> 0) } : {}),
   };
 }
 async function rawOf(bytes, h) {
@@ -160,4 +176,47 @@ export async function recordOk(bytes) { try { await decodeRecord(bytes); return 
 export async function recordSizes(realm) {
   const p = recordParts(realm), bytes = await encodeRecord(realm), raw = p.fields.length + 8 + p.tables.length + p.events.length;
   return { fields: p.fields.length, tables: p.tables.length, events: p.events.length, raw, record: bytes.length, comp: bytes[16] };
+}
+
+// ---- W3.7: history for W2-era worlds (the recVersion path) ---------------------------------------------------
+const evLen = (ev) => (ev && ev.length) | 0;
+/** Has the world its history (a W3 world, or one grown by historyLater)? */
+export const hasHistory = (realm) => !!realm && ((realm.years | 0) > 0 || evLen(realm.events) > 0 || !!(realm.tables && realm.tables.civs && realm.tables.civs.length));
+/** Is it a world without history that should have it (a W2-era record, or one made while HISTORY was dark)? */
+export const needsHistory = (realm) => !!realm && !hasHistory(realm) && ((realm.params && realm.params.history) | 0) > 0;
+/** Is `realm` the grown form of the record `ref` ({ wid, crc }) references (its `base` is ref's CRCs)? */
+export function grewFrom(realm, ref) {
+  return !!realm && !!ref && isCrc3(realm.base) && isCrc3(ref.crc) && (realm.wid >>> 0) === (ref.wid >>> 0) && realm.base.every((c, k) => (c >>> 0) === (ref.crc[k] >>> 0));
+}
+const copy = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+/** A history-less copy of a realm: its fields copied layer by layer, empty tables and events, the head deep-copied. */
+function bareCopy(old) {
+  const f = allocFields(old.n);
+  for (const name of LAYERS) f[name].set(old.fields[name]);
+  return {
+    v: old.v, gv: old.gv, wid: old.wid >>> 0, seed: old.seed, n: old.n, params: copy(old.params), sides: copy(old.sides), seaLevel: old.seaLevel,
+    bands: copy(old.bands), fields: f, plates: copy(old.plates), hotspots: copy(old.hotspots), falls: copy(old.falls),
+    tables: { civs: [], sites: [], figures: [], beasts: [], artifacts: [], wars: [] }, events: [], warnings: copy(old.warnings || []), rerolls: old.rerolls,
+  };
+}
+/**
+ * History for a stored world without it (W3.7): over a copy of its fields, with the regions `settled` (region
+ * indices, the embarked holds') settled and empty, re-rolled as createRealm does (checkHistory, GEN.guarantee.rerolls,
+ * warnings 'history.<rule>'). So the result equals createRealm(params, { history: true, settled }) whenever the
+ * stored fields are the current generator's. Yields historyGen's steps; returns the new realm with `base`.
+ */
+export function* historyLater(old, settled = []) {
+  if (!needsHistory(old)) throw new Error('historyLater: this world has its history already');
+  const base = recordParts(old).crc.map((c) => c >>> 0), realm = bareCopy(old), N = realm.n * realm.n;
+  const held = [...new Set(settled.filter((i) => Number.isInteger(i) && i >= 0 && i < N))];
+  let hr = 0, hf;
+  for (;;) {
+    yield* historyAround(realm, held, hr);
+    hf = checkHistory(realm);
+    if (!hf.length || hr >= GEN.guarantee.rerolls) break;
+    hr++;
+  }
+  for (const fl of hf) realm.warnings.push({ rule: 'history.' + fl.rule, detail: fl.detail });
+  realm.base = base;
+  return realm;
 }

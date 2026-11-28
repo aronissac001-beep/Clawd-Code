@@ -26,6 +26,8 @@ import { installRenown, renownSystem } from './renown.js';
 import { installDiscovery } from './verbs/discovery.js';
 import { installWinch } from './verbs/winch.js';
 import { installAddons } from '../work/addons.js';
+import { installRealmTick } from '../realm/tick.js';
+import { installNews } from './news.js';
 
 export * as wealth from './wealth.js';
 export * as tiers from './tiers.js';
@@ -68,5 +70,6 @@ export function installColony({ tiers = false, research = false, charters = fals
     installRenown(); reg('colony', 'renown', renownSystem, 145);
     installLegends(); onTap(legendTap); reg('colony', 'legends', legendSystem, 146);
     installDiscovery(); installWinch(); installAddons();
+    installRealmTick(); installNews();               // 'realmtick' at 104, 'news' at 147 (2.8)
   }
 }

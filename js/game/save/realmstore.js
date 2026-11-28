@@ -18,13 +18,32 @@
 //   World index (`meta`, key world:<wid>; ec2.w.<wid> in the fallback): { wid, name, size, year, holds: [[slot, rx, ry]] }
 //   readWorld(wid) / listWorlds() / writeWorld(row) / noteHold(wid, slot, rx, ry, info) / dropHold(slot)
 //   rebuildWorldIndex()              -> [row]   from the colony cards' and slots' realm fields (when the rows are lost)
+// W3.7, history for W2-era worlds (the one rewrite of a record, 9.2):
+//   holdNeedsHistory(s, { on })      a hold founded in a world before history (s.realm, embarkYear 0), HISTORY on
+//   growRealm(realm, { holds, frame, now, budgetMs, progress })
+//                                    -> { realm, bytes }   record.js historyLater over the stored fields with every
+//                                       embarked hold's region settled and empty (the world index, the colony cards
+//                                       and `holds` [[rx, ry]]), chunked like migrate5.migrateHold, then written over
+//                                       the old record (writeRealm: read back, CRC-checked) and the row's year set
+//   adoptHistory(s, realm)           the hold takes the grown record: s.realm.crc, embarkYear = the history's years,
+//                                       year = embarkYear + the hold's game years, the five roles bound as in 9.4
+//                                       step 4 (factions.js bindRoles; goodwill untouched), the liege, s.rt.realm.
+//                                       Nothing else in the state changes.
+//   upgradeHold(s, { colonyId, embedded, frame, now, budgetMs, progress, on })
+//                                    -> null (nothing to do) | { from: 'grown' | 'grew' | 'missing', realm }
+//       the loader's one call, after loadBlob and before play: the store's record already grown by another hold
+//       of the world ('grown': resolveRealm serves it by its `base`), else the hold's record grown now ('grew');
+//       a missing record changes nothing (the hold loads as today, 9.2).
 import { idbGet, idbKeys, idbPutMany, idbDelete } from './idb.js';
 import { toBase64, fromBase64, blobKind, decodeAny, unframePayload3, FLAG_REALM } from './codec.js';
 import { storeBackend as B, listColonies, readSlot, readDawn } from './slots.js';
 import { peekEntities } from './colonysave.js';
 import { REALM_TEXT } from './backups.js';
-import { encodeRecord, decodeRecord, readRecordHeader, recordFits, recordParts, refOfHeader, isRecord } from '../realm/record.js';
+import { encodeRecord, decodeRecord, readRecordHeader, recordFits, recordParts, refOfHeader, isRecord, needsHistory, hasHistory, grewFrom, historyLater } from '../realm/record.js';
 import { buildRealm } from '../realm/gen.js';
+import { HISTORY } from '../core/flags.js';
+import { yearOf } from '../core/time.js';
+import { bindRoles } from '../colony/factions.js';
 
 export const realmKey = (wid) => `ec2.r.${wid >>> 0}`;
 export const worldKey = (wid) => `world:${wid >>> 0}`;
@@ -100,7 +119,15 @@ export async function resolveRealm({ ref, colonyId = null, embedded = null, para
     const r = await tryRecord(stored, ref);
     if (r) { confirmed.set(r.wid, crcKey(readRecordHeader(stored).crc)); return { realm: r, bytes: stored, from: 'store' }; }
     storeState = 'damaged';
-    try { const h = readRecordHeader(stored); if (h.wid === (ref.wid >>> 0) && Array.isArray(ref.crc)) { await decodeRecord(stored); storeState = 'other'; } } catch (_) { storeState = 'damaged'; }
+    try {
+      const h = readRecordHeader(stored);
+      if (h.wid === (ref.wid >>> 0) && Array.isArray(ref.crc)) {
+        const g = await decodeRecord(stored);
+        storeState = 'other';
+        // W3.7: another hold of this world grew the record; this hold still references the history-less one
+        if (grewFrom(g, ref)) { confirmed.set(g.wid, crcKey(h.crc)); return { realm: g, bytes: stored, from: 'store', grown: true }; }
+      }
+    } catch (_) { storeState = 'damaged'; }
   }
   let realm = null, bytes = null, from = null;
   if ((realm = await tryRecord(embedded, ref))) { bytes = embedded; from = 'embedded'; }
@@ -208,3 +235,66 @@ export async function deleteRealm(wid, { force = false } = {}) {
 
 /** The reference a hold keeps (s.realm.wid and the 3 CRCs) for a record. */
 export const refOfRecord = (bytes) => refOfHeader(readRecordHeader(bytes));
+
+// ---- W3.7: history for W2-era worlds --------------------------------------------------------------------------
+/** A hold founded in a world before history (embarkYear 0) that should take it: HISTORY on (or `on`), not fallen. */
+export function holdNeedsHistory(s, { on = HISTORY === true } = {}) {
+  const r = s && s.realm;
+  return !!(on && r && Number.isInteger(r.wid) && Array.isArray(r.crc) && (r.embarkYear | 0) === 0 && !(s.colony && s.colony.fallen === true));
+}
+/** The regions [rx, ry] of every hold embarked in world `wid`: its index row, the colony cards, then `extra`. */
+async function heldRegions(wid, extra = []) {
+  const out = [], row = await readWorld(wid);
+  if (row) for (const h of row.holds) out.push([h[1], h[2]]);
+  for (const c of listColonies()) if (Number.isInteger(c.wid) && (c.wid >>> 0) === (wid >>> 0)) out.push([c.rx | 0, c.ry | 0]);
+  for (const h of extra) if (Array.isArray(h)) out.push([h[0] | 0, h[1] | 0]);
+  return out;
+}
+/** Grow a history-less world (record.js historyLater), chunked, and write it over its record. Returns { realm, bytes } (realm decoded from the bytes written). */
+export async function growRealm(old, { holds = [], frame = null, now = null, budgetMs = 30, progress = null } = {}) {
+  if (!needsHistory(old)) throw new Error('growRealm: this world has its history already');
+  const n = old.n, settled = [];
+  for (const [rx, ry] of await heldRegions(old.wid, holds)) if (rx >= 0 && ry >= 0 && rx < n && ry < n) settled.push(ry * n + rx);
+  const it = historyLater(old, settled);
+  let t0 = now ? now() : 0, r;
+  for (;;) {
+    r = it.next();
+    if (r.done) break;
+    if (progress) progress(r.value);
+    if (frame && (!now || now() - t0 >= budgetMs)) { await frame(); if (now) t0 = now(); }
+  }
+  const w = await writeRealm(r.value);
+  const realm = await decodeRecord(w.bytes);
+  const row = await readWorld(realm.wid);
+  if (row) { row.year = Math.max(row.year | 0, realm.years | 0); await writeWorld(row); }
+  return { realm, bytes: w.bytes };
+}
+/** The hold takes its world's grown record (see the head of this file). Returns s.realm. */
+export function adoptHistory(s, realm) {
+  if (!s || !s.realm || !realm || !hasHistory(realm) || (realm.wid >>> 0) !== (s.realm.wid >>> 0)) throw new Error('adoptHistory: not this hold\'s world, or a world without history');
+  const f = s.realm, years = realm.years | 0;
+  f.crc = recordParts(realm).crc.map((c) => c >>> 0);
+  f.embarkYear = years;
+  f.year = years + yearOf(s.tick);
+  if (!s.rt) s.rt = {};
+  s.rt.realm = realm;
+  f.civ = null; f.bind = {};
+  const bind = bindRoles(s, realm);   // hearthwatch: the nearest human kingdom in reach (9.4 step 4), goodwill untouched
+  f.civ = bind && Number.isInteger(bind.hearthwatch) ? bind.hearthwatch : null;
+  return f;
+}
+/** The loader's call for W3.7 (see the head of this file). */
+export async function upgradeHold(s, { colonyId = (s && s.id) || null, embedded = null, frame = null, now = null, budgetMs = 30, progress = null, on } = {}) {
+  if (!holdNeedsHistory(s, on === undefined ? {} : { on })) return null;
+  const ref = { wid: s.realm.wid >>> 0, crc: s.realm.crc.map((c) => c >>> 0), params: s.realm.params || null };
+  const got = await resolveRealm({ ref, colonyId, embedded });
+  if (!got.realm) return { from: 'missing', realm: null, text: got.text };
+  let realm = got.realm, from = 'grown';
+  if (!got.grown) {
+    if (!needsHistory(realm)) return hasHistory(realm) ? (adoptHistory(s, realm), { from: 'store', realm }) : null;
+    ({ realm } = await growRealm(realm, { holds: [[s.realm.rx | 0, s.realm.ry | 0]], frame, now, budgetMs, progress }));
+    from = 'grew';
+  }
+  adoptHistory(s, realm);
+  return { from, realm };
+}

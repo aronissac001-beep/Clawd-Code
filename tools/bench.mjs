@@ -26,6 +26,9 @@
 //   particles (W1.8; tools/lib/bench-particles.mjs) the pixel FX particles: no arc( / fillText in particles.js,
 //           0 bytes allocated per frame by update + draw at 900 particles (node), draw time <= the W0 engine
 //           at 900 particles (Chromium, 390 x 664 x 3); its failures fail the run even without --enforce
+//   realmtick (W3.8; EMBERCROWN-WORLD.md 2.8) the season tick (js/game/realm/tick.js seasonStep) on 3 worlds with
+//           history x 4 of their busiest regions x 30 seasons (300 days), after one warm-up season: p95 < 2 ms
+//           desktop (2.8's < 5 ms on an A15) and the four delta arrays <= 16 KB at the end; only when named
 //   Scenes may also be named with --scene=a,b.
 // Default: save tick trunc bot, plus maze from Stage 1b.
 import { syntheticColony } from './lib/synthetic.mjs';
@@ -189,6 +192,37 @@ if (scenes.includes('maze3d') || scenes.includes('miners6')) {
     for (const f of fails) fail(f);
     for (const w of warns) out.warnings.push(w);
   }
+}
+
+if (scenes.includes('realmtick')) {
+  const [{ installSim, foundColony, realmField }, { buildRealm }, { isEmbarkable }, T, { REALM_DELTA_CAP }] = await Promise.all([
+    import('../js/game/core/setup.js'), import('../js/game/realm/gen.js'), import('../js/game/realm/query.js'), import('../js/game/realm/tick.js'), import('../js/game/core/schema.js')]);
+  const times = [];
+  let worstBytes = 0, holds = 0;
+  for (let w = 1; w <= 3; w++) {
+    const R = buildRealm({ seed: w }, { history: true }), busy = [];
+    for (let i = 0; i < R.n * R.n; i++) {
+      if (!isEmbarkable(R, i)) continue;
+      const x = i % R.n, y = (i / R.n) | 0;
+      let k = 0;
+      for (const t of R.tables.sites) if (t.razed === null && Math.max(Math.abs(t.x - x), Math.abs(t.y - y)) <= 16) k++;
+      busy.push([k, i]);
+    }
+    busy.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    for (const [, i] of busy.filter((_, j) => j % 97 === 0).slice(0, 4)) {
+      installSim({ stage: '2', reset: true, checks: false });
+      const s = foundColony({ seed: `BENCH-RT:${w}:${i}`, name: 'Bench Hold' });
+      s.realm = realmField(R, i % R.n, (i / R.n) | 0); s.rt.realm = R; holds++;
+      const warm = JSON.parse(JSON.stringify(s.realm));
+      s.tick = T.SEASON_TICKS; T.realmTickSystem(s); s.realm = warm;   // warm-up: the travel field and the JIT
+      for (let t = T.SEASON_TICKS; t <= 300 * 14400; t += T.SEASON_TICKS) { s.tick = t; const t0 = performance.now(); T.realmTickSystem(s); times.push(ms(t0)); }
+      worstBytes = Math.max(worstBytes, T.deltaBytes(s.realm));
+    }
+  }
+  const r = { holds, ticks: times.length, p95ms: +p95(times).toFixed(3), meanMs: +(times.reduce((a, b) => a + b, 0) / times.length).toFixed(3), maxMs: +Math.max(...times).toFixed(3), worstDeltaBytes: worstBytes };
+  out.scenes.realmtick = r;
+  if (!(r.p95ms < 2)) fail(`realmtick: season tick p95 ${r.p95ms} ms >= 2 ms`);
+  if (worstBytes > REALM_DELTA_CAP) fail(`realmtick: deltas ${worstBytes} B > ${REALM_DELTA_CAP} B after 300 days`);
 }
 
 let hardFail = false;
