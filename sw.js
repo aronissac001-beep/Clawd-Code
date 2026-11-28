@@ -74,6 +74,7 @@ const FILES = [
   './js/data/text/legends.js',
   './js/data/text/letters.js',
   './js/data/text/nemesis.js',
+  './js/data/text/realm.js',
   './js/data/text/thoughts.js',
   './js/data/thoughts.js',
   './js/data/tiers.js',

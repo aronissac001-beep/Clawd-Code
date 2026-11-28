@@ -12,6 +12,11 @@
 // Stage 2: the pool is limited to raiders of the colony's tier (stats.js `tier`); a horde or breach
 // of 100+ points gets an elite leader (warden affix; it may become a nemesis); a warband always has
 // a captain; a nemesis-led raid is led by the nemesis (its kind, its affixes).
+// W3.4 (EMBERCROWN-WORLD.md 2.7 raids row): a raid whose cause is a civ (causes.js civ rows, only while the realm
+// record is loaded) has its budget scaled by the civ's living sites (causes.js civSizePct), draws the raider rows of
+// the civ's people when G has them (PEOPLE_RAIDERS), enters from the side where the civ lives (causes.js civSide) and
+// is led by a named living figure (plan.civ, plan.fig; the leader foe carries st.fig, raiders.js). A nemesis that came
+// from a figure keeps leading as that figure. Realm-less holds and holds without the record plan exactly as before.
 
 import { dayOf, DAYS_PER_YEAR } from '../core/time.js';
 import { W, H, D, idx, TER } from '../core/grid.js';
@@ -23,8 +28,19 @@ import { stage2 } from '../people/defs.js';
 import { bal, def, all } from './defs.js';
 import { EDGES, incidentDef } from './incidents.js';
 import { foeStats } from './stats.js';
-import { nemesisById } from './nemesis.js';
-import { breachSeeps, passagesOf, openedCaverns, dormantRows } from './causes.js';
+import { nemesisById, realmRecord, nemFigOf } from './nemesis.js';
+import { breachSeeps, passagesOf, openedCaverns, dormantRows, civOfCause, civSides, civSizePct, raidLeader } from './causes.js';
+
+/** The raider rows each people sends (4.5 new raider rows; the composer uses only those js/data/raiders.js defines). */
+export const PEOPLE_RAIDERS = Object.freeze({
+  human: ['crown_levy', 'crown_knight'], wendrel: ['wendrel_outrider'], sylvari: ['rootwarden_archer', 'rootwarden_warden'],
+  kilnfolk: ['slagguard'], tarnfolk: ['netcaster'], greyborn: ['ash_zealot'],
+});
+/** The civ a raid entry comes from ({ R, id, civ }) when its cause is a civ and the realm record is loaded, else null. */
+export function raidCivOf(s, entry) {
+  const id = civOfCause(entry && entry.cause), R = id !== null ? realmRecord(s) : null;
+  return R && R.tables.civs[id] ? { R, id, civ: R.tables.civs[id] } : null;
+}
 
 /** Defence adjustment percent from the last majors in s.st.history (9.2). */
 export function defenceAdjPct(s) {
@@ -170,11 +186,14 @@ export function breachEntry(s) {
  *  ids to compose from instead of the incident's pool (the scripted first horde is Husks only, 9.1). */
 export function planRaid(s, entry, pts = threatPoints(s), only = null) {
   const inc = incidentDef(entry.inc);
+  const rc = only ? null : raidCivOf(s, entry);
+  if (rc) pts = Math.floor((pts * civSizePct(s, rc.R, rc.id)) / 100);   // W3.4: the civ's size
   const budget = Math.max(inc && inc.pts ? inc.pts.min : 0, Math.floor((pts * (inc && inc.pts ? inc.pts.mult : 100)) / 100));
   const room = Math.max(0, bal('threat').maxHostiles - hostilesOnMap(s));
   const S2 = stage2() && !only;
   const tags = (inc && inc.tags) || [];
   let pool = only ? all('raider').filter((r) => only.includes(r.id)) : raiderPool(inc, s);
+  if (rc) { const own = (PEOPLE_RAIDERS[rc.civ.people] || []).filter((id) => def('raider', id) && !pool.some((r) => r.id === id) && foeStats(id).compose !== false && foeStats(id).tier <= (s.colony.tier | 0)); if (own.length) pool = pool.concat(own.map((id) => def('raider', id))); }
   // (Z3.1) the deep: an opened cavern's pack, or the Lamplost (their own scavengers once G adds them; Gutterkin
   // thieves' stats until then)
   const deep = D > 1 && S2 && DEEP_INCIDENTS.includes(entry.inc);
@@ -205,15 +224,24 @@ export function planRaid(s, entry, pts = threatPoints(s), only = null) {
   const { members, spent } = composeRaid(s, pool, Math.max(0, left), Math.max(0, room - lead.length));
   const all_ = lead.concat(members);
   let side = entry.side || EDGES[nextU32(s, 'story') % 4], i = null;
+  const civSd = rc ? civSides(s, rc.R, rc.id) : [];
+  if (civSd.length) side = civSd[0];   // W3.4: from where the civ lives
   if (S2 && tags.includes('breach')) { const d = D > 1 ? breachEntry(s) : deepestTile(s); if (d >= 0) { side = 'deep'; i = d; } }
   if (deep) { const d = deepEntry(s, entry, cav); if (d >= 0) { side = 'deep'; i = d; } }
   if (i === null) {
     if (side === 'deep') side = 'n';
     i = edgeTile(s, side);
+    for (let k = 1; i === null && k < civSd.length; k++) { side = civSd[k]; i = edgeTile(s, side); }   // W3.4: the diagonal's other side
     for (let k = 0; i === null && k < 4; k++) { side = EDGES[k]; i = edgeTile(s, side); }
   }
   const plan = { pts: spent + (budget - Math.max(0, left)), edge: { side, i: i === null ? 0 : i }, goal: goalOf(inc), members: all_, nem: nem ? nem.id : null };
   if (deep && cav) plan.cav = cav;
+  if (rc) {
+    // W3.4: the civ and its named leader (a nemesis from a figure stays that figure)
+    plan.civ = rc.id;
+    const nf = nem ? nemFigOf(s, nem.id) : null, lf = nf ? rc.R.tables.figures[nf[1]] : raidLeader(s, rc.R, rc.id);
+    if (lf) plan.fig = lf.id;
+  }
   if (lead.length) { plan.lead = 0; if (aff && aff.length) plan.aff = aff; }
   return plan;
 }

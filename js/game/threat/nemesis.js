@@ -14,6 +14,11 @@
 //   once, and its next return is not counted against it).
 // The returns count and the title live in the entity (returns, epithet); s.st.nemTitle = [nemId]
 // marks those that took a title.
+// W3.4 (EMBERCROWN-WORLD.md 2.7, raids row): a raid from a civ is led by a living world figure (the leader foe
+// carries st.fig and st.civ). When that leader becomes a nemesis, the record takes the figure's name, an epithet of
+// its civ and one affix per FIG_DEEDS_PER_AFFIX of its past deeds (at most 2); s.st.nemFig = [[nemId, figId, civId]]
+// keeps the link (the world key wf<figId>). The realm record itself is read from s.rt.realm (9.3 step 5, class
+// "input"), only when its wid matches s.realm.wid; a hold without one never reaches this path.
 
 import { newNemesis } from '../core/schema.js';
 import { nextId, colById } from '../core/state.js';
@@ -24,8 +29,29 @@ import { BUS } from '../core/bus.js';
 import { addChron } from '../colony/chronicle.js';
 import { bal, variants, def } from './defs.js';
 import { sendLetter, textOf } from './letters.js';
+import { DATA as NAMES } from '../../data/names.js';
 
 export const AFFIXES = Object.freeze(['armoured', 'swift', 'rallying', 'burning']);
+
+// ---- the realm record (W3.4) ------------------------------------------------------------------------------
+/** The hold's decoded realm record with history (s.rt.realm, wid-checked), or null: the legacy paths run. */
+export function realmRecord(s) {
+  const R = s && s.realm && s.rt ? s.rt.realm : null;
+  if (!R || (R.wid >>> 0) !== (s.realm.wid >>> 0) || !R.tables || !Array.isArray(R.tables.civs) || !R.tables.civs.length) return null;
+  return R;
+}
+const NAME_ROWS = Object.freeze(Object.fromEntries(NAMES.names.map((r) => [r.id, r])));
+/** A world figure's name ('first family' from its people's name table; W3.2 may give a richer one). */
+export function figureName(f) {
+  if (!f || !Array.isArray(f.nm)) return 'a stranger';
+  const r = NAME_ROWS[f.people] || NAME_ROWS.human, a = r.first[f.nm[0] % r.first.length], b = r.family[(f.nm[1] | 0) % r.family.length];
+  return b ? `${a} ${b}` : a;
+}
+/** A civ's name as a sentence noun: 'the Ashfen Clans', 'the Kingdom of Merwick'. */
+export const civLabel = (c) => (!c ? 'raiders' : c.name.startsWith('the ') ? c.name : `the ${c.name}`);
+export const FIG_DEEDS_PER_AFFIX = 2;
+/** The world link of a nemesis ([nemId, figId, civId]) or null. */
+export const nemFigOf = (s, nemId) => ((s.st && s.st.nemFig) || []).find((r) => r[0] === nemId) || null;
 const pickText = (s, id, fallback) => { const v = variants(id); return v.length ? v[nextU32(s, 'names') % v.length] : fallback; };
 
 /** The major a nemesis of this kind leads when it returns. */
@@ -76,12 +102,18 @@ export function makeNemesis(s, foe, { grudge = grudgeOf(foe), scar = scarOf(foe)
     emit(s, 'nemesis', { nemId: old.id, what: 'retired' });
   }
   const seasons = 1 + (nextU32(s, 'story') % 2);
-  const nm = naming(s, foe.kind || 'husk', scar);
+  // W3.4: a leader who is a world figure keeps its own name; its past deeds seed the affixes
+  const R = foe.st && Number.isInteger(foe.st.fig) ? realmRecord(s) : null, fig = R ? R.tables.figures[foe.st.fig] || null : null;
+  const civ = fig && R.tables.civs[fig.civ] ? R.tables.civs[fig.civ] : null;
+  const nm = fig ? { name: figureName(fig), epithet: `of ${civLabel(civ)}` } : naming(s, foe.kind || 'husk', scar);
+  const seed = fig ? AFFIXES.slice(0, Math.min(2, Math.floor((fig.deeds || []).length / FIG_DEEDS_PER_AFFIX))) : [];
   const n = newNemesis(nextId(s, 'nem'), {
-    name: nm.name, epithet: nm.epithet, kind: foe.kind, affixes: [],
+    name: nm.name, epithet: nm.epithet, kind: foe.kind, affixes: seed,
     scar, grudge, returns: 0, nextTick: s.tick + seasons * DAYS_PER_SEASON * TICKS_PER_DAY,
   });
   s.st.nemeses.push(n);
+  if (fig) (s.st.nemFig || (s.st.nemFig = [])).push([n.id, fig.id, fig.civ]);
+  if (s.st.nemFig) s.st.nemFig = s.st.nemFig.filter((r) => s.st.nemeses.some((x) => x.id === r[0]));
   emit(s, 'nemesis', { nemId: n.id, what: 'made' });
   const c = grudge !== null ? colById(s, grudge) : null;
   sendLetter(s, 'nemesis', { title: fullName(n), text: textOf('nem_made', { nemesis: fullName(n), target: c ? c.name : 'the hold' }, '{nemesis} escaped.'), data: { nemId: n.id } });

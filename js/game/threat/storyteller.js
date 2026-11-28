@@ -55,10 +55,10 @@ import { incidentDef, incidentList, logicOf, newEntry, inSeason, isHostile, EDGE
 import { selectCast } from './cast.js';
 import { planRaid } from './raidplan.js';
 import { ensureRaid, spawnRaid, raidById, setStage } from './raiders.js';
-import { dueNemeses, incidentFor, nemesisById } from './nemesis.js';
+import { dueNemeses, incidentFor, nemesisById, realmRecord } from './nemesis.js';
 import { warningBonusH } from '../defence/towers.js';
 import { sendLetter, expireLetters, fillText } from './letters.js';
-import { causedWeight, causeWeight, causeFor, causeLine, causesHour, needsCause, withCause } from './causes.js';
+import { causedWeight, causeWeight, causeFor, causeLine, causesHour, needsCause, withCause, isCivCause, civOfCause, civSide } from './causes.js';
 import { legendEvent } from '../colony/legends.js';
 
 const T = () => bal('threat');
@@ -89,6 +89,7 @@ export function scheduleIncident(s, incId, warnTick, arriveTick, init = {}) {
     const c = causeFor(s, inc, nem) || causeFor(s, inc);
     if (c) { e.cause = c; e.why = causeLine(s, c); }
   }
+  if (e.side && isCivCause(e.cause)) { const R = realmRecord(s), cs = R && civSide(s, R, civOfCause(e.cause)); if (cs) e.side = cs; }   // W3.4: a civ raid comes from its side
   s.st.queue.push(e);
   s.st.queue.sort((x, y) => x.arriveTick - y.arriveTick || x.id - y.id);
   return e;

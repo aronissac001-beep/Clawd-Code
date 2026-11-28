@@ -1,5 +1,5 @@
 // Gate check "Phone UI" (doc 14.4, enforced from Stage 1a; owner J; the flows are I's 14.6 acceptance).
-//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|worldmap|worlds|all] [--a11y] [--json]
+//   node tools/ui-phone.mjs [--browser=webkit|chromium] [--vp=name,...] [--flows=title|sheets|ia-people|ia|cards,settings|front|coach|a11y|w1|worldmap|worlds|embark|annals|all] [--a11y] [--json]
 // W1.10 (EMBERCROWN-WORLD.md 12.3): the new shell is on (flags.js SHELL2). --flows=w1 runs every W1 group (the gate's
 // w1 row); the W1 groups and the Stage 1a/1b flows run at the eight W1 viewports (W1_VPS: the six below plus
 // landscape-left and -right, ?safe=); in the new shell the 1a/1b flows tap Build, Mark (Orders, Zones), People, Hold, World.
@@ -93,6 +93,11 @@ if (flowsArg === 'worlds') {
 if (flowsArg === 'embark') {
   const { runEmbarkFlows } = await import('./ui-phone-embark.mjs');
   process.exit(await runEmbarkFlows({ which, only, viewports: VIEWPORTS, overlay: arg('overlay', null) }));
+}
+// --flows=annals (W3.2): the Annals' World section, its links and Show on map (tools/ui-phone-annals.mjs)
+if (flowsArg === 'annals') {
+  const { runAnnalsFlows } = await import('./ui-phone-annals.mjs');
+  process.exit(await runAnnalsFlows({ which, only, viewports: VIEWPORTS }));
 }
 const browser = await launch(which);
 if (!browser) { console.log(`ui-phone [${which}]: UNAVAILABLE - Playwright ${which} is not installed; try --browser=chromium`); process.exit(UNAVAILABLE); }

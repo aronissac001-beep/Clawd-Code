@@ -9,7 +9,8 @@
 //     flee?: true (it breaks off alone: a thief with loot, a wounded elite), carry?: Bundle (stolen goods),
 //     dig?: [tile, ticks] (a delver digging rock), down?: true (a downed reaver: capturable, it does
 //     not move or fight), by?: [[colId, dmg]] and wk?: [[woundKind, dmg]] (who hurt it and how: the
-//     nemesis grudge and scar), born?: tick (beasts wander off a day after) }.
+//     nemesis grudge and scar), born?: tick (beasts wander off a day after),
+//     fig?: figure id and civ?: civ id (W3.4: the named world figure leading a civ's raid) }.
 // Movement (foeMoveSystem, slot 'movement' after B's movers), in s.foes order:
 //   - a downed foe and the Rift (stats `still`) do not move;
 //   - a retreating raid, or a fleeing foe, walks the 'edge' field and leaves the map on an edge tile
@@ -106,6 +107,7 @@ export function addMember(s, r, plan, rid, k = 0, nem = null, at = null) {
   const lead = plan.lead === k && !at;
   if (lead) { st.lead = true; if (plan.aff && plan.aff.length) st.aff = plan.aff.slice(); }
   if (nem && nem.affixes.length) st.aff = nem.affixes.slice();
+  if (Number.isInteger(plan.fig) && !at && k === (Number.isInteger(plan.lead) ? plan.lead : 0)) { st.fig = plan.fig; st.civ = plan.civ; }   // W3.4: the named leader
   if (stage2()) st.born = s.tick;
   const init = { raid: r.id, x: ctrW(x), y: ctrW(y), hp: { hp: 1, max: 1 }, nem: nem ? nem.id : null, st };
   if (D > 1) init.z = at && at.length > 2 ? at[2] : (plan.edge.i / PLANE) | 0;   // 2.10: the entry's level
