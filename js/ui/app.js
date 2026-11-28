@@ -36,7 +36,7 @@ export function foundNew(seed = randomSeedText(), opts = {}) {
   const room = colonyRoom ? colonyRoom() : null;
   if (room) throw new Error(room);
   const d = fortressRequested(typeof location !== 'undefined' ? location.search : '') ? FORTRESS_D : 1;   // Stage Z1: ?fortress=1 (flags.js)
-  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d });
+  const s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d, realm: opts.realm || null, rx: opts.rx, ry: opts.ry, prep: opts.prep || null });
   app.s = s; app.log = [];
   saveNow('new').catch(() => null);
   return s;

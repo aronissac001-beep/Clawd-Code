@@ -89,6 +89,29 @@ export const WORLD = Object.freeze({
     frostKillBelow: 8,      // annual crops die when the tile is this many degrees under their minTemp
     lightningPct: 15, lightningFar: 20,   // a drought day may set a tree alight (percent), at least this far from the Hearth
     freezeSeason: 3,        // shallow water freezes to ice in Deepcold and thaws in Thaw
+    // Regional climate (EMBERCROWN-WORLD.md 6.2, W2.4; read by weather.js, temperature.js and plants.js). A hold's
+    // daytime outdoor base on a day is its season point eased by day: point[k] = mean + amp * curve[k] + tilt[k],
+    // reached at the middle of season k and blended linearly toward the next season's point. A hold with a realm
+    // reads { mean, amp, rain, winter, season } from s.realm.embark.climate (js/game/realm/region.js) with the
+    // `realm` tilt and easing; a realm-less hold uses the greenvale row, which gives today's table exactly
+    // (Thaw 10, Highsun 22, Ashfall 8, Deepcold -6, flat within a season: ease 0).
+    //   limits: the season points are clamped to [lo, hi] C;
+    //   winter (taiga): the Deepcold point is at most this many C;
+    //   growMin: the growing season is the set of days whose daytime base is at least this (grain and flax);
+    //   season > 0 (tundra): the growing season is exactly `season` days, centred on mid-Highsun; season < 0
+    //     (highcrag): it is `-season` % shorter than the region's own numbers give; either way the days inside
+    //     the window are raised to growMin and the days outside it are held under growMin;
+    //   rainRef: the realm `rain` (0-255) that keeps today's rain chances; rain falls as snow on a day whose base
+    //     is at most snowMax; droughts scale by (2 * rainRef - rain) / rainRef; open water freezes on a day whose
+    //     base is at most freezeMax and thaws on the first day above it (realm holds; legacy: by season).
+    climate: {
+      curve: [0, 1, 0, -1],
+      rows: { greenvale: { mean: 8, amp: 14, tilt: [2, 0, 0, 0], ease: 0 } },
+      realm: { tilt: [0, 0, 0, 0], ease: 1 },
+      limits: [-30, 36],
+      growMin: 4,
+      rainRef: 120, rainMax: 60, snowMax: 0, freezeMax: 0,
+    },
   },
   // Fire (5.1, 7.x, 9.7): flames live on tiles; each step (every `every` ticks) a flame burns `burnPerStep`
   // of its fuel, damages what stands there and may spread to each flammable 8-neighbour with

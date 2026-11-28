@@ -36,6 +36,11 @@
 //   is lost unless it is harvested or roofed and warmed); `dark` plants (glowcaps) grow only on unlit
 //   tiles (rt.light 0).
 //   All writes go through terrain.js (setPlant / setGrowth).
+//   Regional climate (W2.4; EMBERCROWN-WORLD.md 6.2): growth keeps reading tempAt, which now follows the hold's
+//   climate, so the growing season is the days whose daytime base reaches WORLD.weather.climate.growMin:
+//     growingSeason(s)        { days, first, last } of the year (greenvale and realm-less holds: 30, Thaw to Ashfall;
+//                             tundra: 15); first is -1 when there is none
+//     inGrowingSeason(s, t)   true on a day of the growing season (for the UI and the bot)
 //
 // Levels (Stage Z1 E4; EMBERCROWN-FORTRESS.md 2.9). At D > 1 plants grow on any level with soil or cave loam;
 // "open sky" means cover 0 (vertical.coverAt). The round-robin walks the sorted list of clusters (16 x 16 x
@@ -67,7 +72,7 @@ import { plantDef, isTreeCode, plantCode, stoneId } from './defs.js';
 import { FL } from './pass.js';
 import { setPlant, setGrowth, tempAt } from './terrain.js';
 import { worldStage2 } from './worldrec.js';
-import { growthPct } from './weather.js';
+import { growthPct, growingSeasonOf, seasonBase } from './weather.js';
 import { WORLD, GEN3 } from '../../data/worldgen.js';
 import { installSeeps } from './seeps.js';
 
@@ -331,3 +336,8 @@ export function installPlants() {
   if (tickSystems().some((x) => x.slot === 'plants' && x.name === 'growth')) return;
   registerSystem('plants', 'growth', plantsSystem, 0);
 }
+
+/** The hold's growing season: { days, first, last } (days of the year). */
+export const growingSeason = (s) => growingSeasonOf(s);
+/** True on a day of the hold's growing season (daytime base >= WORLD.weather.climate.growMin). */
+export const inGrowingSeason = (s, tick = s.tick) => seasonBase(s, tick) >= WORLD.weather.climate.growMin;

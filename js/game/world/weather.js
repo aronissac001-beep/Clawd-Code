@@ -21,6 +21,15 @@
 //   pools under the mountain stay liquid at 12 C); on the first
 //   tick of Thaw every ice tile thaws (terrain.setTerrain, so walk costs and regions follow). The
 //   record keeps the season index it froze for, so a save in Deepcold does not freeze twice.
+//
+//   Regional climate (EMBERCROWN-WORLD.md 6.2, W2.4; data WORLD.weather.climate). climateOf(s) is the realm
+//   embark climate (s.realm.embark.climate: { mean, amp, rain, winter, season, ... }) or null for a realm-less
+//   hold. climateTable(c) is a pure function of it: the 4 season points, the daytime base of every day of the
+//   year (eased by day for a realm hold; the greenvale row, flat per season, for null: today's table exactly)
+//   and the growing season { days, first, last }. seasonBase(s, tick) is what temperature.js adds the night and
+//   the weather to. A realm hold also rolls its weather by climate: rain chances scale with `rain`, droughts
+//   with dryness, rain falls as snow on a day whose base is at most snowMax, and open water freezes on the
+//   first day at or under freezeMax and thaws on the first day above it. A realm-less hold runs today's code.
 
 import { TICKS_PER_HOUR, TICKS_PER_DAY, DAYS_PER_YEAR, DAYS_PER_SEASON, dayOf, hourOf, seasonOf } from '../core/time.js';
 import { N, D, PLANE, TER, ROOF } from '../core/grid.js';
@@ -38,6 +47,56 @@ const WX = WORLD.weather;
 export const WEATHER_KINDS = Object.freeze(Object.keys(WX.kinds));
 export const WEATHER_NAMES = Object.freeze({ clear: 'Clear', rain: 'Rain', snow: 'Snow', coldsnap: 'Cold snap', drought: 'Drought' });
 const ROLL_HOUR = 6;
+
+// ---- Regional climate (6.2, W2.4) ----------------------------------------------------------------------------
+const CL = WX.climate;
+const clampC = (v) => (v < CL.limits[0] ? CL.limits[0] : v > CL.limits[1] ? CL.limits[1] : v);
+/** The climate record of a hold (s.realm.embark.climate), or null: a realm-less hold uses the greenvale row. */
+export const climateOf = (s) => (s && s.realm && s.realm.embark && s.realm.embark.climate) || null;
+const grows = (v) => v >= CL.growMin;
+function buildTable(c) {
+  const row = c ? { mean: c.mean | 0, amp: c.amp | 0, tilt: CL.realm.tilt, ease: CL.realm.ease } : CL.rows.greenvale;
+  const pts = [0, 1, 2, 3].map((k) => clampC(row.mean + row.amp * CL.curve[k] + row.tilt[k]));
+  if (c && typeof c.winter === 'number' && pts[3] > c.winter) pts[3] = clampC(c.winter | 0);
+  const P = DAYS_PER_SEASON, Y = DAYS_PER_YEAR, day = new Int8Array(Y);
+  for (let d = 0; d < Y; d++) {
+    if (!row.ease) { day[d] = pts[Math.floor(d / P) % 4]; continue; }
+    // in half days: the day's middle (2d + 1) between the middles of seasons k and k + 1 (2kP + P)
+    const x2 = 2 * d + 1, k = Math.floor((x2 - P) / (2 * P)), t = x2 - (2 * k * P + P);
+    const a = ((k % 4) + 4) % 4, b = (a + 1) % 4;
+    day[d] = Math.floor((pts[a] * (2 * P - t) + pts[b] * t + P) / (2 * P));
+  }
+  // the growing season knob: a window of `target` days centred on mid-Highsun
+  let natural = 0;
+  for (let d = 0; d < Y; d++) if (grows(day[d])) natural++;
+  const sk = c ? c.season | 0 : 0;
+  const target = sk > 0 ? Math.min(Y, sk) : sk < 0 ? natural - Math.round((natural * Math.min(100, -sk)) / 100) : -1;
+  if (target >= 0) {
+    const first = Math.floor((3 * P) / 2) - (target >> 1);
+    for (let d = 0; d < Y; d++) {
+      const inside = (((d - first) % Y) + Y) % Y < target;
+      day[d] = inside ? Math.max(day[d], CL.growMin) : Math.min(day[d], CL.growMin - 1);
+    }
+  }
+  let days = 0, first = -1;
+  for (let d = 0; d < Y; d++) if (grows(day[d])) { days++; if (first < 0 && !grows(day[(d + Y - 1) % Y])) first = d; }
+  if (days === Y) first = 0;
+  const last = days ? (first + days - 1) % Y : -1;
+  return Object.freeze({ points: Object.freeze(pts), day, grow: Object.freeze({ days, first, last }) });
+}
+const LEGACY_TABLE = buildTable(null);
+const tables = new WeakMap();
+/** The climate table of climate record `c` (null: the greenvale row): { points, day: Int8Array(DAYS_PER_YEAR), grow }. */
+export function climateTable(c) {
+  if (!c || typeof c !== 'object') return LEGACY_TABLE;
+  let t = tables.get(c);
+  if (!t) { t = buildTable(c); tables.set(c, t); }
+  return t;
+}
+/** Daytime outdoor base (C) of the hold's climate at a tick, before the night and the weather. */
+export const seasonBase = (s, tick = s.tick) => climateTable(climateOf(s)).day[dayOf(tick) % DAYS_PER_YEAR];
+/** The growing season of the hold: { days, first, last } (days of the year; first -1 when there is none). */
+export const growingSeasonOf = (s) => climateTable(climateOf(s)).grow;
 
 /** The weather in force now ('clear' once a spell has run out, or before Stage 2). */
 export function weatherKind(s, tick = s.tick) {
@@ -77,13 +136,20 @@ export function setWeather(s, kind, hours) {
 }
 
 /** The natural roll for a day: { kind, hours } (a pure function of the seed and the day). */
-export function rollWeather(seed, day) {
+export function rollWeather(seed, day, climate = null) {
   const season = Math.floor(day / DAYS_PER_SEASON) % 4;
   const r = (salt) => hash3(seed, day, salt) % 100;
   const span = (lo, hi, salt) => lo + (hash3(seed, day, salt) % (hi - lo + 1));
+  let drought = WX.droughtPct[season], rain = WX.rainPct[season], snow = season === 3;
+  if (climate) {
+    const wet = Math.max(0, Math.min(2 * CL.rainRef, climate.rain | 0));
+    drought = Math.floor((drought * (2 * CL.rainRef - wet)) / CL.rainRef);
+    rain = Math.min(CL.rainMax, Math.floor((rain * wet) / CL.rainRef));
+    snow = climateTable(climate).day[day % DAYS_PER_YEAR] <= CL.snowMax;
+  }
   if (r(1) < WX.coldSnapPct[season]) return { kind: 'coldsnap', hours: 24 * span(WX.coldSnapD[0], WX.coldSnapD[1], 11) };
-  if (r(2) < WX.droughtPct[season]) return { kind: 'drought', hours: 24 * span(WX.droughtD[0], WX.droughtD[1], 12) };
-  if (r(3) < WX.rainPct[season]) return { kind: season === 3 ? 'snow' : 'rain', hours: span(WX.rainH[0], WX.rainH[1], 13) };
+  if (r(2) < drought) return { kind: 'drought', hours: 24 * span(WX.droughtD[0], WX.droughtD[1], 12) };
+  if (r(3) < rain) return { kind: snow ? 'snow' : 'rain', hours: span(WX.rainH[0], WX.rainH[1], 13) };
   return { kind: 'clear', hours: 0 };
 }
 
@@ -99,7 +165,7 @@ export function weatherSystem(s) {
     wx.day = day;
     const cur = weatherKind(s);
     if (cur !== 'coldsnap' && cur !== 'drought') {
-      const roll = rollWeather(s.seed >>> 0, day);
+      const roll = rollWeather(s.seed >>> 0, day, climateOf(s));
       if (roll.kind !== 'clear' || cur !== 'clear') setWeather(s, roll.kind, roll.hours);
     }
   }
@@ -127,8 +193,21 @@ const seasonIndex = (tick) => Math.floor(dayOf(tick) / DAYS_PER_YEAR) * 4 + seas
 /** Freeze shallow water in the freeze season and thaw it at Thaw (once per season). Returns tiles changed. */
 export function freezeWater(s) {
   if (!worldStage2() || !setTerrainFn) return 0;
-  const w = ensureWorld(s), season = seasonOf(s.tick), key = seasonIndex(s.tick);
+  const w = ensureWorld(s), season = seasonOf(s.tick), key = seasonIndex(s.tick), c = climateOf(s);
   let n = 0;
+  if (c) {
+    // a realm hold freezes by its climate: on the first day at or under freezeMax, and thaws on the first day above
+    const cold = seasonBase(s) <= CL.freezeMax;
+    if (cold && w.frozen < 0) {
+      w.frozen = key;
+      for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.SHALLOW && skyOpen(s, i)) { setTerrainFn(s, i, TER.ICE); n++; }
+    } else if (!cold && w.frozen >= 0) {
+      w.frozen = -2;
+      for (let i = 0; i < N; i++) if (s.L.terrain[i] === TER.ICE) { setTerrainFn(s, i, TER.SHALLOW); n++; }
+    }
+    if (n) emitIf(s, 'season', { season, frozen: cold, tiles: n });
+    return n;
+  }
   if (season === WX.freezeSeason) {
     if (w.frozen === key) return 0;
     w.frozen = key;

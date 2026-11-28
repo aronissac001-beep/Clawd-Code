@@ -37,7 +37,12 @@ import { DONE_LEN } from '../../data/deeds-col.js';
 // 4 (the fortress switch, Stage Z1 E13, EMBERCROWN-FORTRESS.md 5.4; migrations[2] in state.js): the world has
 // depth. The ENTITIES step only marks the save (meta.world4); js/main.js runs core/migrate4.js migrateWorld on a
 // loaded colony with one plane, which then saves as EC3. Tool-made D = 1 states also carry v 4 (no field differs).
-export const STATE_VERSION = 4;
+// 5 (EMBERCROWN-WORLD.md 9.1, 9.4 part 1; step W2.8; migrations[3] in state.js, core/migrate5.js): the hold has
+// a place in a world. The ENTITIES JSON gains `realm` (REALM_FIELD below): null for a hold with no world (every
+// v4 save after part 1; W3.6 part 2 gives it one), else the hold's region, its liege, its years, its opts.region
+// (`embark`) and its post-embark deltas. The weather record stays v1 and RUNTIME has no `air` until W5.1 and
+// W5.9 (their re-baselines, 12.1); migrate5.js holds the v1 -> v2 weather step for them. EC3 stays format 3.
+export const STATE_VERSION = 5;
 /** Difficulties (doc 9.1, amended by EMBERCROWN-FORTRESS.md F9), easiest first. */
 export const DIFFICULTIES = Object.freeze(['hearthkeeper', 'warden', 'steadfast', 'hard']);
 export const DEFAULT_DIFFICULTY = 'steadfast';
@@ -240,8 +245,46 @@ export const DEPTH_KEYS = Object.freeze(['d', 'zS']);
 /**
  * Optional root keys (Z2): `legend`, the Annals records (colony/legends.js, one compact string), created on the
  * first hourly legend pass. Saved and hashed only while non-empty, so a state without records keeps its bytes.
+ * State v5: `realm` (below), saved and hashed only while non-null.
  */
-export const OPTIONAL_KEYS = Object.freeze(['legend']);
+export const OPTIONAL_KEYS = Object.freeze(['legend', 'realm']);
+/**
+ * `realm` (state v5, EMBERCROWN-WORLD.md 9.1): an optional root key. Absent or null = a hold with no world (a
+ * legacy hold: it saves and hashes exactly as a v4 state, 12.1 legacy-hash rule). Set by setup.js foundColony
+ * for a hold founded in a world (newRealmField). Plain JSON only:
+ *   v, wid, seed, gv, params, crc       world identity; crc = the record's 3 section CRCs (realm/record.js), the
+ *                                       reference the load fallback order checks (9.2)
+ *   rx, ry, civ, embarkYear, year       the region, the liege civ id (null: an unsettled world), world years
+ *   embark                              opts.region (realm/region.js regionOpts), so a debug build regenerates the hold
+ *   prep                                the preparation choices (3.5), or null
+ *   bind                                role key -> civ id (G7); {} until W3
+ *   stand                               [[civ, goodwill, flags]] of the c<n> civs
+ *   sites, wars, dead, ev               post-embark deltas (2.8; total cap REALM_DELTA_CAP bytes)
+ */
+export const REALM_FIELD_V = 1;
+export const REALM_DELTA_CAP = 16384;
+export const REALM_KEYS = Object.freeze(['v', 'wid', 'seed', 'gv', 'params', 'crc', 'rx', 'ry', 'civ', 'embarkYear', 'year',
+  'embark', 'prep', 'bind', 'stand', 'sites', 'wars', 'dead', 'ev']);
+/** Errors of a `realm` root value ([] for null or a valid record). */
+export function checkRealmField(r) {
+  if (r === null || r === undefined) return [];
+  if (typeof r !== 'object' || Array.isArray(r)) return ['realm not an object'];
+  const errs = [], u32 = (v) => Number.isInteger(v) && v >= 0 && v <= 0xffffffff, int = Number.isInteger;
+  for (const k of REALM_KEYS) if (!(k in r)) errs.push(`realm.${k} missing`);
+  for (const k of Object.keys(r)) if (!REALM_KEYS.includes(k)) errs.push(`realm.${k} not in schema`);
+  if (!u32(r.wid) || !u32(r.seed)) errs.push('realm.wid / realm.seed');
+  if (!Array.isArray(r.crc) || r.crc.length !== 3 || !r.crc.every(u32)) errs.push('realm.crc');
+  if (!int(r.rx) || !int(r.ry) || r.rx < 0 || r.ry < 0) errs.push('realm.rx / realm.ry');
+  if (!int(r.embarkYear) || !int(r.year) || r.year < r.embarkYear) errs.push('realm.embarkYear / realm.year');
+  if (!r.embark || typeof r.embark !== 'object') errs.push('realm.embark');
+  if (!r.bind || typeof r.bind !== 'object' || Array.isArray(r.bind)) errs.push('realm.bind');
+  for (const k of ['stand', 'sites', 'wars', 'dead', 'ev']) if (!Array.isArray(r[k])) errs.push(`realm.${k} not an array`);
+  if (!errs.length) {
+    const delta = JSON.stringify([r.sites, r.wars, r.dead, r.ev]).length;
+    if (delta > REALM_DELTA_CAP) errs.push(`realm deltas ${delta} B > ${REALM_DELTA_CAP}`);
+  }
+  return errs;
+}
 
 export function newColonyRecord() {
   return {

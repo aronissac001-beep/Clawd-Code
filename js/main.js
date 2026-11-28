@@ -113,7 +113,7 @@ export function newColony(seed = randomSeedText(), opts = {}) {
   const full = colonyRoom(); if (full) throw new Error(full);
   ensureSim();
   const d = fortressRequested(IN_BROWSER ? location.search : '') ? FORTRESS_D : 1;   // Stage Z1: ?fortress=1 (flags.js)
-  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d });
+  app.s = foundColony({ seed, name: opts.name || 'The Hold', start: opts.start || null, difficulty: opts.difficulty || null, storyteller: opts.storyteller || null, d, realm: opts.realm || null, rx: opts.rx, ry: opts.ry, prep: opts.prep || null });
   // a world with depth keeps its pristine world from this moment (EMBERCROWN-FORTRESS.md 5.1): built once,
   // before any tick, and stored before the first EC3 save (writeNow)
   if (isDeep(app.s) && !pristineOf(app.s)) attachPristine(app.s, buildPristine(app.s, { worldKind: WORLD_KIND.NATIVE, genVersion: app.s.genVersion | 0 }));
