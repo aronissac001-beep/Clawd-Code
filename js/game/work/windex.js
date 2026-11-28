@@ -232,7 +232,23 @@ export function collect(s, col, lists, accept, k = WORK.candidatesK) {
  * goal mode ADJ_STAIR).
  * @returns {{ i: number, d: number }} i = -1 and d = Infinity when there is none
  */
-export function standSpot(s, col, tiles, { onTarget = false, mode = 'adj' } = {}) {
+export function standSpot(s, col, tiles, opts = {}) {
+  if (!spotMemo) return standSpotNow(s, col, tiles, opts);
+  const m = opts.mode === 'above' ? 1 : opts.mode === 'adjStair' ? 2 : 0, o = opts.onTarget ? 1 : 0;
+  const key = tiles.length === 1 ? tiles[0] * 8 + m * 2 + o : `${tiles.join(',')}|${m}|${o}`;
+  let v = spotMemo.get(key);
+  if (!v) { v = standSpotNow(s, col, tiles, opts); spotMemo.set(key, v); }
+  return { i: v.i, d: v.d };
+}
+// (PERF) Within one tryGiver (think.js: one giver's candidates, then valid and make of each until a job begins) the
+// colonist is fixed and nothing is written (claims are only taken by a successful beginJob, which ends it), so the
+// same tiles give the same standing spot: a bench's spot was found three times (candidates, valid, craftJob). The memo
+// lives for one tryGiver and nothing of it is saved.
+let spotMemo = null;
+/** Open a standSpot memo scope (returns the outer one, for endSpotScope). */
+export function beginSpotScope() { const prev = spotMemo; spotMemo = new Map(); return prev; }
+export function endSpotScope(prev) { spotMemo = prev; }
+function standSpotNow(s, col, tiles, { onTarget = false, mode = 'adj' } = {}) {
   const from = colTile(col);
   const comp = compOf(s, from, 0);
   let best = -1, bd = Infinity;

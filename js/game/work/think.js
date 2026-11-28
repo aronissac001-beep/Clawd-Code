@@ -28,6 +28,7 @@ import { URGENT_RESCUE_GIVER, URGENT_TEND_GIVER } from './givers/care.js';
 import { able } from '../people/health.js';
 import { needsBed } from '../people/needjobs.js';
 import { worldStage2 } from '../world/worldrec.js';
+import { beginSpotScope, endSpotScope } from './windex.js';
 
 /** The 'think' tick system. */
 export function thinkTick(s) {
@@ -56,6 +57,10 @@ export function thinkTick(s) {
 
 /** Try one giver: its candidates nearest-first; the first valid one whose claims are free starts. */
 export function tryGiver(s, col, g) {
+  const prev = beginSpotScope();
+  try { return tryGiverNow(s, col, g); } finally { endSpotScope(prev); }
+}
+function tryGiverNow(s, col, g) {
   const cands = g.candidates(s, col, WORK.candidatesK) || [];
   for (const t of cands) {
     const key = g.keyOf ? g.keyOf(t) : typeof t === 'number' ? t : -1;

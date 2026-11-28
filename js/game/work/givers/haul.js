@@ -5,18 +5,21 @@
 import { idx, inB } from '../../core/grid.js';
 import { getItem, stackAt, stacksInCluster } from '../items.js';
 import { collect } from '../windex.js';
-import { haulable, haulCandidate, haulJob, staleHauls, URGENT_H } from '../haul.js';
+import { haulable, haulCandidate, haulJob, staleHauls, scanHauls, URGENT_H } from '../haul.js';
+
+/** The Haul giver's scan (PERF: run inside scanHauls, which shares needsHaulQuick answers between alike stacks). */
+function haulScan(s, col, k) {
+  // Stage 2: stacks that waited STALE_H hours come first, oldest first (haul.js)
+  const stale = [];
+  for (const id of staleHauls(s)) { const t = haulCandidate(s, col, id); if (t) stale.push(t); if (stale.length >= 4) break; }
+  const near = collect(s, col, (c) => stacksInCluster(s, c), (id) => haulCandidate(s, col, id), k);
+  if (!stale.length) return near;
+  return stale.concat(near.filter((t) => !stale.some((x) => x.id === t.id))).slice(0, k);
+}
 
 export const HAUL_GIVER = Object.freeze({
   id: 'haul', work: 'haul', order: 0,
-  candidates(s, col, k) {
-    // Stage 2: stacks that waited STALE_H hours come first, oldest first (haul.js)
-    const stale = [];
-    for (const id of staleHauls(s)) { const t = haulCandidate(s, col, id); if (t) stale.push(t); if (stale.length >= 4) break; }
-    const near = collect(s, col, (c) => stacksInCluster(s, c), (id) => haulCandidate(s, col, id), k);
-    if (!stale.length) return near;
-    return stale.concat(near.filter((t) => !stale.some((x) => x.id === t.id))).slice(0, k);
-  },
+  candidates(s, col, k) { return scanHauls(() => haulScan(s, col, k)); },
   valid(s, col, t) {
     const it = getItem(s, t.id);
     if (!haulable(s, col, it)) return false;
@@ -36,8 +39,10 @@ export const HAUL_GIVER = Object.freeze({
 export const URGENT_HAUL_GIVER = Object.freeze({
   ...HAUL_GIVER, id: 'urgentHaul',
   candidates(s, col, k) {
-    const out = [];
-    for (const id of staleHauls(s, URGENT_H)) { const t = haulCandidate(s, col, id); if (t) out.push(t); if (out.length >= k) break; }
-    return out;
+    return scanHauls(() => {
+      const out = [];
+      for (const id of staleHauls(s, URGENT_H)) { const t = haulCandidate(s, col, id); if (t) out.push(t); if (out.length >= k) break; }
+      return out;
+    });
   },
 });

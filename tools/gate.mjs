@@ -104,6 +104,7 @@ const CHECKS = [
   { name: 'Render (art contact sheet, W1.5)', starts: 'w1', file: 'tools/render-check.mjs', args: ['--scene=art', `--browser=${browser}`], browser: true },
   { name: 'Bench (pixel FX particles, W1.8)', starts: 'w1', file: 'tools/bench.mjs', args: ['--scene=particles'] },
   { name: 'Phone UI (W1 shell flows, 8 viewports)', starts: 'w1', file: 'tools/ui-phone.mjs', args: ['--flows=w1', `--browser=${browser}`], browser: true, timeout: 3600000 },
+  { name: 'Realm (200 seeds, timing, engines)', starts: 'w2', file: 'tools/check-realm.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Persistence', starts: '1a', file: 'tools/persist.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Render memory and battery', starts: '1a', file: 'tools/render-check.mjs', args: [`--browser=${browser}`], browser: true },
   { name: 'Balance report', starts: '2', file: 'tools/colonybot.mjs', args: ['--report', `--from=${OUT}/stage2.json,${OUT}/soak.json`, '--jobs=4', `--out=${OUT}/balance.json`, ...(quick ? ['--no-soak'] : [])], owner: 'F', skip: quick ? '--quick' : null },
