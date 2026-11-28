@@ -72,6 +72,8 @@ export const DATA_FILES = Object.freeze([
   { path: 'traders.js', owner: 'G' },
   { path: 'deeds.js', owner: 'G' },
   { path: 'heraldry.js', owner: 'G', reuse: true },
+  { path: 'realm/biomes.js', owner: 'G', reuse: true },
+  { path: 'realm/params.js', owner: 'G', reuse: true },
   { path: 'text/letters.js', owner: 'G' },
   { path: 'text/thoughts.js', owner: 'G' },
   { path: 'text/chronicle.js', owner: 'G' },

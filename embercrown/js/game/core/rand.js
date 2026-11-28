@@ -14,6 +14,9 @@ export function hashString(str) {
   return h >>> 0;
 }
 
+/** hash32(...parts) of EMBERCROWN-WORLD.md G2: hashString(parts.join(':')), integers in base 10. */
+export const hash32 = (...parts) => hashString(parts.join(':'));
+
 /** A seed (number or text) as a u32. */
 export const seedOf = (seed) => (typeof seed === 'number' ? seed >>> 0 : hashString(String(seed)));
 

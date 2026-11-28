@@ -21,7 +21,9 @@
 //   paintShadowN(g, tx, ty) / paintBlight(g, tx, ty, v)  overlays (rock to the north; blight)
 //   paintShimmer(g, tx, ty, frame)                       water shimmer (per frame, frame 0 | 1)
 //   paintGround(g, key, tx, ty, opt)                     any ground / floor key by name (the contact sheet)
-//   rockColour(mat, known) / floorColour(key, mat) / terrainColour(t)   flat colours (tile-colour texture, minimap)
+//   rockColour(mat, known) / floorColour(key, mat) / terrainColour(t, set?)   flat colours (tile-colour texture, minimap)
+//   groundSetOf(s) / GROUND_SET_IDS / groundSetTerrains(set)   W2.5 biome ground sets (fen, moor, taiga, tundra,
+//                                                         saltflat, redscar, shore, highcrag; 'default' for the rest)
 
 import { TILE, W, H, TER, ROOF } from '../../game/core/grid.js';
 import { hash2 } from '../rng.js';
@@ -63,8 +65,11 @@ export function floorColour(key, mat = 3) {
   const n = typeof mat === 'number' ? stoneName(mat) : mat || 'granite';
   return STONE_RAMP[n] ? STONE_RAMP[n].r[bodyIx(n) - 1] : RAMP.granite[0];
 }
-/** Flat colour of a surface terrain id (the tile-colour texture). */
-export function terrainColour(t) { return (SURF[t] || SURF[TER.VOID]).base; }
+/** Flat colour of a surface terrain id (the tile-colour texture); set: a biome ground set id (groundSetOf(s)). */
+export function terrainColour(t, set) {
+  const row = set && SETS[set] ? SETS[set][t] : null;
+  return row ? row[0] : (SURF[t] || SURF[TER.VOID]).base;
+}
 
 // ---- Rock ---------------------------------------------------------------------------------------------
 function rockCanvas(name, mask, v) {
@@ -267,14 +272,89 @@ function drawSurface(p, t, v) {
       break;
   }
 }
-const surfCanvas = (t, v) => tileCanvas(`s:${t}:${v}`, (p) => drawSurface(p, t, v));
+// ---- Biome ground sets (W2.5, EMBERCROWN-WORLD.md 7.2 item 4) ---------------------------------------------
+// A hold founded in a world region paints its surface with the region biome's set: the palette id of
+// js/data/realm/biomes.js read from s.realm.embark.biome (3.6). The 4 biomes of today (greenvale, elderwood,
+// ruins, ashlands) and every hold with no world keep the default set: their tiles and cache keys are unchanged.
+// A set replaces the painter of a few soft terrains; the rest fall back to the default painter, and the
+// fringe priorities stay the same (only the texture changes, never what creeps over what).
+const PEB = (p, R, n, c, c2) => { for (let k = 0; k < n; k++) { const x = 1 + ri(R, 13), y = 1 + ri(R, 13); p.px(x, y, c); if (c2) p.px(x + 1, y, c2); } };
+const any3 = (p, R, n, c, y0 = 0, y1 = 16) => { for (let k = 0; k < n; k++) p.px(ri(R, 16), y0 + ri(R, y1 - y0), c); };
+const reed = (p, R, n, stalk, head) => { for (let k = 0; k < n; k++) { const x = 1 + ri(R, 14), y = 4 + ri(R, 8), h = 3 + ri(R, 3); p.vl(x, y, h, stalk); p.px(x, y - 1, head); } };
+const tuft = (p, R, n, c, cd) => { for (let k = 0; k < n; k++) { const x = 1 + ri(R, 13), y = 2 + ri(R, 12); p.px(x, y, c); p.px(x + 1, y - 1, c); p.px(x + 2, y, c); if (cd) p.px(x + 1, y + 1, cd); } };
+/** set id -> { terrain id -> [base colour, painter(p, R, v)] }. */
+const SETS = {
+  fen: {
+    [TER.GRASS]: [PAL.moss1, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss1); any3(p, R, 16, PAL.moss0); any3(p, R, 6, PAL.moss2); reed(p, R, 2, PAL.moss2, PAL.umber2); p.hl(2 + ri(R, 10), 4 + ri(R, 10), 2, PAL.water); }],
+    [TER.MEADOW]: [PAL.moss2, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss2); any3(p, R, 14, PAL.moss1); any3(p, R, 5, PAL.tan); reed(p, R, 2, PAL.moss3, PAL.tan); }],
+    [TER.DIRT]: [PAL.umber0, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber0); any3(p, R, 18, PAL.umber1); any3(p, R, 5, PAL.moss1); p.hl(1 + ri(R, 11), 3 + ri(R, 10), 3, PAL.umber1); }],
+    [TER.RICH]: [PAL.umber0, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber0); p.dither(0, 0, 16, 16, PAL.umber1, 3); any3(p, R, 6, PAL.moss1); any3(p, R, 2, PAL.water); }],
+    [TER.MARSH]: [PAL.moss1, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss1); any3(p, R, 10, PAL.moss0); for (let k = 0; k < 2; k++) { const x = 1 + ri(R, 10), y = 2 + ri(R, 12); p.hl(x, y, 4, PAL.water); p.px(x + 1, y, PAL.shallow); } reed(p, R, 4, PAL.moss3, PAL.umber2); }],
+  },
+  moor: {
+    [TER.GRASS]: [PAL.moss1, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss1); any3(p, R, 14, PAL.moss0); any3(p, R, 8, PAL.umber1); tuft(p, R, 3, PAL.plum1, PAL.moss0); any3(p, R, 3, PAL.rose); }],
+    [TER.MEADOW]: [PAL.plum1, (p, R) => { p.rect(0, 0, 16, 16, PAL.plum1); any3(p, R, 18, PAL.plum0); any3(p, R, 10, PAL.rose); any3(p, R, 8, PAL.moss1); }],
+    [TER.DIRT]: [PAL.umber1, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber1); any3(p, R, 14, PAL.umber0); PEB(p, R, 3, PAL.slate2, PAL.slate1); any3(p, R, 3, PAL.plum0); }],
+  },
+  taiga: {
+    [TER.GRASS]: [PAL.leaf, (p, R) => { p.rect(0, 0, 16, 16, PAL.leaf); any3(p, R, 18, PAL.moss0); any3(p, R, 5, PAL.moss2); for (let k = 0; k < 3; k++) { const x = 1 + ri(R, 13), y = 1 + ri(R, 14); p.hl(x, y, 2, PAL.umber2); } }],
+    [TER.MEADOW]: [PAL.moss2, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss2); any3(p, R, 22, PAL.leaf); any3(p, R, 6, PAL.moss1); any3(p, R, 4, PAL.plum1); any3(p, R, 2, PAL.violet); }],
+    [TER.DIRT]: [PAL.umber1, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber1); any3(p, R, 12, PAL.umber0); for (let k = 0; k < 6; k++) { const x = ri(R, 14), y = ri(R, 16); p.hl(x, y, 2, k & 1 ? PAL.umber2 : PAL.tan); } }],
+  },
+  tundra: {
+    [TER.GRASS]: [PAL.slate2, (p, R) => { p.rect(0, 0, 16, 16, PAL.slate2); any3(p, R, 14, PAL.slate1); p.dither(0, 0, 16, 16, PAL.frost, 2); PEB(p, R, 3, PAL.moss3, PAL.gold); any3(p, R, 3, PAL.moss2); }],
+    [TER.MEADOW]: [PAL.slate3, (p, R) => { p.rect(0, 0, 16, 16, PAL.slate3); any3(p, R, 12, PAL.slate2); PEB(p, R, 4, PAL.moss3, PAL.gold); any3(p, R, 4, PAL.frost); }],
+    [TER.DIRT]: [PAL.umber1, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber1); any3(p, R, 10, PAL.slate1); for (let k = 0; k < 3; k++) { const x = 2 + ri(R, 11), y = 2 + ri(R, 11); p.px(x, y, PAL.frost); p.px(x - 1, y, PAL.slate3); p.px(x + 1, y, PAL.slate3); p.px(x, y - 1, PAL.slate3); p.px(x, y + 1, PAL.slate3); } }],
+    [TER.SAND]: [PAL.slate3, (p, R) => { p.rect(0, 0, 16, 16, PAL.slate3); any3(p, R, 14, PAL.slate2); any3(p, R, 8, PAL.frost); any3(p, R, 3, PAL.slate1); }],
+  },
+  saltflat: {
+    [TER.SAND]: [PAL.frost, (p, R, v) => { p.rect(0, 0, 16, 16, PAL.frost); any3(p, R, 10, PAL.bone); let x = ri(R, 6), y = 0; for (let k = 0; k < 16; k++) { p.px(x, y, PAL.slate3); y++; if (R() < 0.45) x++; } p.hl(0, 5 + (v & 3) * 2, 6 + ri(R, 6), PAL.slate3); any3(p, R, 3, PAL.sand); }],
+    [TER.DIRT]: [PAL.tan, (p, R) => { p.rect(0, 0, 16, 16, PAL.tan); any3(p, R, 12, PAL.umber3); any3(p, R, 5, PAL.sand); let x = 2 + ri(R, 4), y = 2 + ri(R, 4); for (let k = 0; k < 9; k++) { p.px(x, y, PAL.umber2); x++; if (R() < 0.5) y++; } }],
+    [TER.GRASS]: [PAL.tan, (p, R) => { p.rect(0, 0, 16, 16, PAL.tan); any3(p, R, 10, PAL.umber3); any3(p, R, 4, PAL.sand); tuft(p, R, 2, PAL.moss2, PAL.moss1); }],
+  },
+  redscar: {
+    [TER.DIRT]: [PAL.umber2, (p, R, v) => { p.rect(0, 0, 16, 16, PAL.umber2); for (let y = (v & 1) * 2; y < 16; y += 5) { p.hl(0, y, 16, PAL.ember0); p.dither(0, y + 1, 16, 1, PAL.ember1, 8); } any3(p, R, 6, PAL.tan); }],
+    [TER.SAND]: [PAL.tan, (p, R) => { p.rect(0, 0, 16, 16, PAL.tan); any3(p, R, 12, PAL.umber3); any3(p, R, 6, PAL.ember1); any3(p, R, 3, PAL.sand); }],
+    [TER.GRASS]: [PAL.umber2, (p, R) => { p.rect(0, 0, 16, 16, PAL.umber2); any3(p, R, 12, PAL.umber1); any3(p, R, 4, PAL.ember1); tuft(p, R, 2, PAL.moss2, PAL.moss1); }],
+  },
+  shore: {
+    [TER.SAND]: [PAL.sand, (p, R) => { p.rect(0, 0, 16, 16, PAL.sand); any3(p, R, 12, PAL.tan); any3(p, R, 4, PAL.peach); any3(p, R, 1, PAL.teal); any3(p, R, 1, PAL.leaf); any3(p, R, 1, PAL.shallow); any3(p, R, 2, PAL.bone); }],
+    [TER.GRASS]: [PAL.sand, (p, R) => { p.rect(0, 0, 16, 16, PAL.sand); any3(p, R, 8, PAL.tan); for (let k = 0; k < 4; k++) { const x = 1 + ri(R, 13), y = 3 + ri(R, 11); p.vl(x, y, 3, PAL.moss2); p.px(x + 1, y - 1, PAL.moss3); } }],
+    [TER.MARSH]: [PAL.moss1, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss1); any3(p, R, 10, PAL.moss0); any3(p, R, 6, PAL.frost); p.hl(1 + ri(R, 10), 3 + ri(R, 10), 4, PAL.water); reed(p, R, 2, PAL.moss2, PAL.tan); }],
+  },
+  highcrag: {
+    [TER.GRASS]: [PAL.moss3, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss3); any3(p, R, 16, PAL.moss2); PEB(p, R, 2, PAL.slate3, PAL.slate2); any3(p, R, 2, PAL.bone); any3(p, R, 1, PAL.violet); }],
+    [TER.MEADOW]: [PAL.moss3, (p, R) => { p.rect(0, 0, 16, 16, PAL.moss3); any3(p, R, 12, PAL.moss2); any3(p, R, 3, PAL.violet); any3(p, R, 3, PAL.bone); any3(p, R, 2, PAL.gold); }],
+    [TER.DIRT]: [PAL.slate2, (p, R) => { p.rect(0, 0, 16, 16, PAL.slate2); any3(p, R, 14, PAL.slate1); PEB(p, R, 4, PAL.slate3, PAL.stone1); any3(p, R, 3, PAL.umber1); }],
+  },
+};
+/** The ground set ids (the default first): the contact sheet and render-check --scene=biomes draw them all. */
+export const GROUND_SET_IDS = Object.freeze(['default', ...Object.keys(SETS)]);
+/** The terrains a set repaints (in TER order). */
+export const groundSetTerrains = (set) => (SETS[set] ? Object.keys(SETS[set]).map(Number) : []);
+let BIOME_PAL = null; // realm biome index -> palette id (built on first use from js/data/realm/biomes.js)
+/** The ground set of a hold: s.realm.embark.biome (an id or a realm biome index; 3.6), else 'default'. */
+export function groundSetOf(s) {
+  const e = s && s.realm && s.realm.embark, b = e ? e.biome : undefined;
+  if (b === undefined || b === null) return 'default';
+  if (typeof b === 'number') { const row = BIOME_PAL && BIOME_PAL[b]; return row && SETS[row] ? row : 'default'; }
+  return SETS[b] ? b : 'default';
+}
+/** Install the realm biome table (index -> palette id) so a numeric s.realm.embark.biome resolves; art/atlas.js calls it. */
+export function setBiomePalettes(list) { BIOME_PAL = list ? list.map((r) => r.palette) : null; }
+const surfCanvas = (t, v, set = 'default') => {
+  const row = set !== 'default' && SETS[set] ? SETS[set][t] : null;
+  if (!row) return tileCanvas(`s:${t}:${v}`, (p) => drawSurface(p, t, v));
+  return tileCanvas(`s:${set}:${t}:${v}`, (p) => row[1](p, rng(t * 13 + set.length, v, 97 + set.charCodeAt(0)), v));
+};
 
 /**
  * A ragged fringe of terrain `t` creeping in from side `side` (0 N, 1 E, 2 S, 3 W): the source
  * tile's own pixels within a depth of 1-4 px from that edge; over water a row of foam follows it.
  */
-function fringeCanvas(t, side, v, water) {
-  return tileCanvas(`fr:${t}:${side}:${v}:${water ? 1 : 0}`, (p, g) => {
+function fringeCanvas(t, side, v, water, set = 'default') {
+  const sk = set !== 'default' && SETS[set] && SETS[set][t] ? `${set}:` : '';
+  return tileCanvas(`fr:${sk}${t}:${side}:${v}:${water ? 1 : 0}`, (p, g) => {
     const R = rng(t * 7 + side, v, 53);
     const depth = new Int8Array(16);
     let d = 1 + ri(R, 3);
@@ -287,7 +367,7 @@ function fringeCanvas(t, side, v, water) {
       else if (side === 3) g.fillRect(0, i, k, 1); else g.fillRect(16 - k, i, k, 1);
     }
     g.globalCompositeOperation = 'source-in';
-    g.drawImage(surfCanvas(t, v), 0, 0);
+    g.drawImage(surfCanvas(t, v, set), 0, 0);
     g.globalCompositeOperation = 'source-over';
     p.fs = null;
     if (!water) return;
@@ -306,8 +386,8 @@ function fringeCanvas(t, side, v, water) {
  */
 export function paintSurfaceTile(g, s, tx, ty, detail = true) {
   const L = s.L, i = ty * W + tx, t = L.terrain[i];
-  const v = variant(tx, ty);
-  put(g, surfCanvas(SURF[t] ? t : TER.VOID, v), tx, ty);
+  const v = variant(tx, ty), set = groundSetOf(s);
+  put(g, surfCanvas(SURF[t] ? t : TER.VOID, v, set), tx, ty);
   const me = SURF[t] ? SURF[t].pri : 0;
   if (!me && t !== TER.TILLED) return;
   if (!detail) return;
@@ -317,7 +397,7 @@ export function paintSurfaceTile(g, s, tx, ty, detail = true) {
     if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
     const u = L.terrain[ny * W + nx], o = SURF[u];
     if (!o || o.pri <= me || !me) continue;
-    put(g, fringeCanvas(u, side, variant(nx, ny, 3) & 1, wat && !isWater(u)), tx, ty);
+    put(g, fringeCanvas(u, side, variant(nx, ny, 3) & 1, wat && !isWater(u), set), tx, ty);
   }
 }
 /** The shadow a rock (or a built wall's mass) casts on the open tile south of it. */

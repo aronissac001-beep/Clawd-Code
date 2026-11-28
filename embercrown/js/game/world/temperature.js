@@ -2,7 +2,9 @@
 // Stage 2: the weather offset (weather.js: cold snap -15 C, rain -2, drought +4) and the ice house.
 //
 //   Outdoor base: the season's constant (Thaw 10, Highsun 22, Ashfall 8, Deepcold -6 C) plus -4 C at
-//   night, plus the weather offset. Under a rock roof (roof 2 or 3) the base blends toward 12 C,
+//   night, plus the weather offset. W2.4 (EMBERCROWN-WORLD.md 6.2): the season constant is the hold's climate,
+//   weather.seasonBase: a realm hold's season points eased by day (the base can change at midnight, also a
+//   multiple of 600 ticks); a realm-less hold's greenvale row, which is the table above exactly. Under a rock roof (roof 2 or 3) the base blends toward 12 C,
 //   reaching it at depth 5 (so a cold snap barely reaches a hold dug deep).
 //   Ice house (3.6, 7.4): a room holding a finished ice house is held at ICE.under (-2 C) when the
 //   room lies at depth >= ICE.depth (8) underground. (Stocked with ice it would hold ICE.stocked, -5 C,
@@ -37,14 +39,14 @@ import { W, H, N, D, PLANE, zS, ROOF, TER } from '../core/grid.js';
 import { bandOfRel, TEMP3, FLUID } from '../../data/levels.js';
 import { coverRebuild } from './vertical.js';
 import { emberVoxels } from './pass.js';
-import { seasonOf, phaseOf } from '../core/time.js';
+import { phaseOf } from '../core/time.js';
 import { registerRebuild } from '../core/rtcontract.js';
 import { registerEndOfTick, registerSystem, tickSystems } from '../core/bus.js';
 import { structDef, sizeOf } from './defs.js';
 import { occRebuild, walkRebuild, depthRebuild } from './pass.js';
 import { roomsBuild } from './rooms.js';
 import { isBurning } from './fuel.js';
-import { weatherOffset } from './weather.js';
+import { weatherOffset, seasonBase } from './weather.js';
 import { TEMP as BAL } from '../../data/balance.js';
 
 /** Tuning: read from js/data/balance.js TEMP (G's numbers), with the doc values as the fallback. */
@@ -57,9 +59,12 @@ export const TEMP = Object.freeze({
 /** Ice house tuning (3.6). */
 export const ICE = Object.freeze({ def: 'icehouse', depth: 8, under: -2, stocked: -5, item: 'ice' });
 
-/** Outdoor base temperature (C) at a tick; with the colony state `s`, the weather offset too. */
+/**
+ * Outdoor base temperature (C) at a tick: the hold's climate (weather.seasonBase: the realm embark climate, or the
+ * greenvale row, which is TEMP.SEASON exactly), the night, and with the colony state `s` the weather offset too.
+ */
 export function outdoorTemp(tick, s = null) {
-  return TEMP.SEASON[seasonOf(tick)] + (phaseOf(tick) === 'night' ? TEMP.NIGHT : 0) + (s ? weatherOffset(s, tick) : 0);
+  return seasonBase(s, tick) + (phaseOf(tick) === 'night' ? TEMP.NIGHT : 0) + (s ? weatherOffset(s, tick) : 0);
 }
 /** The band row of level z (C5 v3 levelBand). */
 export const levelBand = (z) => bandOfRel(z - zS);

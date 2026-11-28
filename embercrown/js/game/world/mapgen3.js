@@ -27,13 +27,20 @@
 //   regenerate3(header)         the regeneration fallback (registered with pristine.setRegenerator at import)
 //   bandFill(L, baseMask, seed) step 2 alone (levels 0..zS-1); generateBelow(L, baseMask, seed, ctx) steps 2-6 and 8
 //   baseMaskOf(...)             the W x H u8 mask (bits 0-2 height, bit 3 water, bit 4 massif) of 5.4
+//   previewSurface(seed, opts)  step 1 alone (surfacePass with its re-rolls): the zS plane and a colour-index plane for
+//                               the region card (EMBERCROWN-WORLD.md 3.7); equal to generate3's zS plane tile by tile
+// GEN3 v2 (EMBERCROWN-WORLD.md 3.6, W2.3): opts.region (js/game/realm/region.js regionOpts) drives the massif side
+// (n, e, s or w) and thickness, the heights, the river's entry and exit edges and width, the lakes, the sea band of a
+// shore, the soils and aquifer, the stone provinces and ore weights, the ember layer, springs, blight, ruins, dens and
+// beasts, and the biome's knob row (GEN3.biomes). Without opts.region the v1 path runs unchanged: same streams, same
+// draws, same world (the legacy-hash rule, 12.1).
 // No map-sized buffers at import (D1): everything is allocated per call.
 
 import { W, H, D, N, PLANE, zS, TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, TER_FLOOR, idx, setMapSize, allocLayers } from '../core/grid.js';
 import { rint, rnd, hashString } from '../core/rand.js';
 import { newBuilding } from '../core/schema.js';
 import { initRuntime } from '../core/state.js';
-import { GEN, GEN3, DATA as GEN_DATA } from '../../data/worldgen.js';
+import { GEN, GEN3, WORLD, DATA as GEN_DATA } from '../../data/worldgen.js';
 import { chamfer } from './pass.js';
 import { stoneId, depositId, plantCode, structDef, sizeOf } from './defs.js';
 import { installWorld } from './terrain.js';
@@ -110,13 +117,15 @@ function quantile(vals, q) {
 function frameOf(side) {
   if (side === 'e') return { A: W, T: H, xy: (a, t) => [W - 1 - a, t], at: (x, y) => [W - 1 - x, y] };
   if (side === 'w') return { A: W, T: H, xy: (a, t) => [a, t], at: (x, y) => [x, y] };
+  if (side === 's') return { A: H, T: W, xy: (a, t) => [t, H - 1 - a], at: (x, y) => [H - 1 - y, x] };
   return { A: H, T: W, xy: (a, t) => [t, a], at: (x, y) => [y, x] }; // 'n'
 }
 
 // ---- Step 1: the massif and its guarantee -------------------------------------------------------------
 function massifPass(L, fr, R, seed, sc, minThick) {
   const G = GEN.massif;
-  const mean = (ri(R, G.thickPct[0], G.thickPct[1]) * fr.A) / 100;
+  const tp = RG ? RG.massif : G.thickPct;
+  const mean = (ri(R, tp[0], tp[1]) * fr.A) / 100;
   const amp = (G.wavePct * Math.max(W, H)) / 100;
   const thick = new Float64Array(fr.T);
   for (let t = 0; t < fr.T; t++) thick[t] = Math.max(minThick, mean + amp * wave(t, fr.T, seed));
@@ -189,9 +198,145 @@ function lakePass(L, fr, centre, R, seed, sc) {
   }
   return { x: cx, y: cy, r };
 }
-function hillPass(L, fr, centre, R, seed, sc, mask) {
-  const G = GEN.hills;
-  const n = ri(R, G.count[0], G.count[1]), out = [];
+// ---- GEN3 v2 surface passes (EMBERCROWN-WORLD.md 1.3, 3.6): the sea band, the region river, rock outcrops, ravines ----
+const OPP = Object.freeze({ n: 's', s: 'n', e: 'w', w: 'e' });
+const edgeLen = (e) => (e === 'n' || e === 's' ? W : H);
+const edgePoint = (e, p) => (e === 'n' ? [p, 0] : e === 's' ? [p, H - 1] : e === 'w' ? [0, p] : [W - 1, p]);
+/** The edge ('n', 'e', 's', 'w') a border cell lies on, or '' (corners count for their row). */
+const edgeOf = (x, y) => (y === 0 ? 'n' : y === H - 1 ? 's' : x === 0 ? 'w' : x === W - 1 ? 'e' : '');
+/** The sea of a shore region along edge `side`: deep water, a shallow strip, then a beach of sand and salt marsh. */
+function seaPass(L, side, R, seed, sc) {
+  const S = GEN3.sea, fr = frameOf(side), base = ri(R, Math.round(S.deep[0] * sc), Math.round(S.deep[1] * sc));
+  const sea = new Uint8Array(PLANE);
+  for (let t = 0; t < fr.T; t++) {
+    const d = Math.max(2, Math.round(base + 3 * sc * wave(t, fr.T, seed ^ 0x2545f491)));
+    for (let a = 0; a < d + S.shallow + S.beach && a < fr.A; a++) {
+      const [x, y] = fr.xy(a, t), i = ix(x, y);
+      if (L.terrain[i] === TER.ROCK) continue;
+      if (a < d + S.shallow) { L.terrain[i] = a < d ? TER.DEEP : TER.SHALLOW; sea[i] = 1; }
+      else if (L.terrain[i] === TER.GRASS) L.terrain[i] = vnoise(x, y, 4, seed ^ 0x6c62272e) * 100 < RG.marshPct ? TER.MARSH : TER.SAND;
+    }
+  }
+  return { sea, width: base };
+}
+/**
+ * The river of a region (3.6): water enters on edge RG.river.in and leaves on RG.river.out, RG.river.cls sets the width.
+ * Both ends on the side edges of the massif frame: the course along the face (as v1). Otherwise a wavy line
+ * from end to end; where it crosses the massif it cuts a gorge (the channel only; the banks stay rock).
+ * Without a river the course is still drawn (`centre`, for the lake and the hills) but nothing is written.
+ */
+function regionRiver(L, fr, thick, R, seed, sc, side) {
+  const G = GEN.river, rvr = RG.river;
+  const off = ri(R, Math.round(G.offFace[0] * sc), Math.round(G.offFace[1] * sc));
+  const centre = new Float64Array(fr.T);
+  for (let t = 0; t < fr.T; t++) centre[t] = Math.min(fr.A - 4, thick[t] + off);
+  const river = new Uint8Array(PLANE);
+  if (!rvr) return { river, centre, fords: [], off, w: 0, edges: [] };
+  const w = GEN3.riverWidth[rvr.cls - 1], amp = G.wave * sc;
+  const e0 = edgeOf(...fr.xy(fr.A >> 1, 0)), e1 = OPP[e0];   // the frame's side edges: t = 0 and t = T - 1
+  const pts = [], alongFace = (rvr.in === e0 && rvr.out === e1) || (rvr.in === e1 && rvr.out === e0);
+  if (alongFace) {
+    for (let t = 0; t < fr.T; t++) {
+      const c = Math.min(fr.A - 4, thick[t] + off + amp * wave(t, fr.T, seed ^ 0x3c6ef372));
+      const [x, y] = fr.xy(c, t);
+      pts.push(x, y);
+    }
+  } else {
+    const end = (e) => {
+      if (e === e0 || e === e1) { const t = e === e0 ? 0 : fr.T - 1; return fr.xy(Math.round(centre[t]), t); }
+      const len = edgeLen(e);
+      return edgePoint(e, ri(R, Math.round(len * 0.3), Math.round(len * 0.7)));
+    };
+    const [sx, sy] = end(rvr.in), [ex, ey] = end(rvr.out), dx = ex - sx, dy = ey - sy;
+    const m = Math.max(Math.abs(dx), Math.abs(dy), 1), ns = 2 * m + 2, px = -dy / m, py = dx / m;
+    for (let k = 0; k <= ns; k++) {
+      const u = k / ns, wv = amp * wave(u * m, m, seed ^ 0x3c6ef372) * 4 * u * (1 - u);
+      pts.push(sx + dx * u + px * wv, sy + dy * u + py * wv);
+    }
+  }
+  const np = pts.length >> 1, best = new Float64Array(PLANE).fill(1e9), near = new Int32Array(PLANE).fill(-1);
+  const r0 = w / 2, rr = r0 + 2, lo2 = r0 * r0, mid2 = (r0 + 1) * (r0 + 1), hi2 = rr * rr;
+  for (let k = 0; k < np; k++) {
+    const qx = pts[2 * k], qy = pts[2 * k + 1];
+    for (let y = Math.max(0, Math.floor(qy - rr)); y <= Math.min(H - 1, Math.ceil(qy + rr)); y++) for (let x = Math.max(0, Math.floor(qx - rr)); x <= Math.min(W - 1, Math.ceil(qx + rr)); x++) {
+      const d2 = (x - qx) * (x - qx) + (y - qy) * (y - qy), i = ix(x, y);
+      if (d2 < best[i]) { best[i] = d2; near[i] = k; }
+    }
+  }
+  // fords: G.fords crossings spread along the course, G.fordWidth tiles wide (samples are 1 tile apart on the along-face
+  // course and about half a tile on the line)
+  const nf = ri(R, G.fords[0], G.fords[1]), fords = [], fordK = (G.fordWidth >> 1) * (alongFace ? 1 : 2);
+  for (let k = 0; k < nf; k++) fords.push(Math.max(2, Math.min(np - 3, Math.round(((k + 1) * np) / (nf + 1)) + ri(R, -Math.round(np / 12), Math.round(np / 12)))));
+  const isFord = (k) => fords.some((f) => Math.abs(k - f) <= fordK);
+  for (let i = 0; i < PLANE; i++) {
+    const d2 = best[i];
+    if (d2 > hi2) continue;
+    const t = L.terrain[i];
+    if (t === TER.ROCK) { if (d2 <= lo2) { L.terrain[i] = isFord(near[i]) ? TER.SHALLOW : TER.DEEP; river[i] = 1; } continue; }
+    if (d2 <= lo2) { L.terrain[i] = isFord(near[i]) ? TER.SHALLOW : TER.DEEP; river[i] = 1; }
+    else if (d2 <= mid2) { if (t !== TER.DEEP) L.terrain[i] = TER.SHALLOW; river[i] = 1; }
+    else if (t === TER.GRASS) L.terrain[i] = TER.SAND;
+  }
+  const edges = [];
+  for (let i = 0; i < PLANE; i++) { if (!river[i]) continue; const e = edgeOf(i % W, (i / W) | 0); if (e && !edges.includes(e)) edges.push(e); }
+  return { river, centre, fords, off, w, edges: edges.sort() };
+}
+/** Small rock outcrops on open grass (moor: "rock clusters up"); rock of height 1, mask 2 like the hills. */
+function rockPass(L, R, seed, mask, count) {
+  const G = GEN3.rocks, n = ri(R, count[0], count[1]);
+  let made = 0;
+  for (let t = 0; t < 300 && made < n; t++) {
+    const r = ri(R, G.r[0], G.r[1]), cx = ri(R, r + 3, W - r - 4), cy = ri(R, r + 3, H - r - 4);
+    let ok = true;
+    for (let dy = -r - 2; dy <= r + 2 && ok; dy++) for (let dx = -r - 2; dx <= r + 2 && ok; dx++) if (L.terrain[ix(cx + dx, cy + dy)] !== TER.GRASS) ok = false;
+    if (!ok) continue;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r * r + (hash2(cx + dx, cy + dy, seed ^ 0x9e3779b1) < 0.5 ? 1 : 0)) continue;
+      const i = ix(cx + dx, cy + dy);
+      L.terrain[i] = TER.ROCK; mask[i] = 2;
+    }
+    made++;
+  }
+  return made;
+}
+/**
+ * Ravines (redscar): one-level channels cut in the open valley. The zS cells become AIR (RAMP_TOP at both ends); the
+ * floor at zS - 1 is written by generate3 after the column fill (DIRT, RAMP under the ends). Returns { cells, ends, n }.
+ */
+function ravinePass(L, R, seed, sc, count) {
+  const G = GEN3.ravine, n = ri(R, count[0], count[1]), cells = [], ends = [];
+  const waterD = new Uint8Array(PLANE);
+  for (let i = 0; i < PLANE; i++) waterD[i] = TER_WATER[L.terrain[i]] || L.terrain[i] === TER.MARSH || L.terrain[i] === TER.ROCK ? 0 : 255;
+  chamfer(waterD, 0, 0, W - 1, H - 1, 255);
+  const DX8 = [0, 1, 1, 1, 0, -1, -1, -1], DY8 = [-1, -1, 0, 1, 1, 1, 0, -1];
+  let made = 0;
+  for (let tries = 0; tries < 80 && made < n; tries++) {
+    const len = Math.max(8, Math.round(ri(R, G.len[0], G.len[1]) * sc)), wd = ri(R, G.width[0], G.width[1]);
+    let x = ri(R, 4, W - 5), y = ri(R, 4, H - 5), d = ri(R, 0, 7);
+    if (waterD[ix(x, y)] < 4) continue;
+    const seg = [];
+    for (let k = 0; k < len; k++) {
+      if (x < 3 || y < 3 || x > W - 4 || y > H - 4 || waterD[ix(x, y)] < 3) break;
+      const i = ix(x, y), j = (d & 1) || d === 0 || d === 4 ? ix(x + 1, y) : ix(x, y + 1);
+      if (L.terrain[i] !== TER.GRASS) break;
+      seg.push(i);
+      if (wd > 1 && L.terrain[j] === TER.GRASS && waterD[j] >= 3) seg.push(j);
+      L.terrain[i] = TER.AIR; if (wd > 1 && L.terrain[j] === TER.GRASS && waterD[j] >= 3) L.terrain[j] = TER.AIR;
+      const h = hash2(k, made, seed ^ 0x45d9f3b);
+      if (h < 0.18) d = (d + 1) & 7; else if (h > 0.82) d = (d + 7) & 7;
+      x += DX8[d]; y += DY8[d];
+    }
+    if (seg.length < len >> 1) { for (const i of seg) L.terrain[i] = TER.GRASS; continue; }
+    const a = seg[0], b = seg[seg.length - 1];
+    L.terrain[a] = TER.RAMP_TOP; L.terrain[b] = TER.RAMP_TOP; ends.push(a, b);
+    cells.push(...seg);
+    made++;
+  }
+  return { cells, ends, n: made };
+}
+function hillPass(L, fr, centre, R, seed, sc, mask, count = null) {
+  const G = GEN.hills, cn = count || G.count;
+  const n = ri(R, cn[0], cn[1]), out = [];
   const waterD = new Uint8Array(PLANE);
   for (let i = 0; i < PLANE; i++) waterD[i] = TER_WATER[L.terrain[i]] || L.terrain[i] === TER.MARSH ? 0 : 255;
   chamfer(waterD, 0, 0, W - 1, H - 1, 255);
@@ -231,8 +376,9 @@ function soilPass(L, R, seed, waterNear) {
   };
   // marsh near water first, then meadows, rich soil and dirt patches
   for (const i of open) if (waterNear[i] > 0 && waterNear[i] <= 3 && nv(i, 3, seed ^ 0x7137449) > 0.56) L.terrain[i] = TER.MARSH;
-  paint(GEN.meadowPct, 11, seed ^ 0x2f13, TER.MEADOW);
-  paint(GEN.richPct, 5, seed ^ 0x8e1b, TER.RICH);
+  if (RG && RG.sandPct) paint(RG.sandPct, 9, seed ^ 0x3a11, TER.SAND);
+  paint(RG ? RG.meadowPct : GEN.meadowPct, 11, seed ^ 0x2f13, TER.MEADOW);
+  paint(RG ? RG.richSoilPct : GEN.richPct, 5, seed ^ 0x8e1b, TER.RICH);
   paint(5, 6, seed ^ 0x4d6a, TER.DIRT);
   void R;
 }
@@ -241,7 +387,7 @@ function forestPass(L, R, seed) {
   for (let i = 0; i < PLANE; i++) { const t = L.terrain[i]; if (t === TER.GRASS || t === TER.MEADOW || t === TER.DIRT || t === TER.RICH) open.push(i); }
   if (!open.length) return 0;
   const vals = open.map((i) => fbm(i % W, (i / W) | 0, 14, seed ^ 0x510e527f));
-  const th = quantile(vals, 1 - GEN.forestPct / 100);
+  const th = quantile(vals, 1 - (RG ? RG.forestPct : GEN.forestPct) / 100);
   const oak = plantCode('oak'), pine = plantCode('pine');
   let trees = 0;
   for (let k = 0; k < open.length; k++) {
@@ -249,7 +395,7 @@ function forestPass(L, R, seed) {
     const inForest = vals[k] >= th;
     const p = hash2(x, y, seed ^ 0x9b05);
     if (inForest ? p < 0.55 : p < 0.018) {
-      const kind = vnoise(x, y, 10, seed ^ 0x1f83) > 0.55 ? pine : oak;
+      const kind = (RG && RG.pines) || vnoise(x, y, 10, seed ^ 0x1f83) > 0.55 ? pine : oak;
       if (!kind) continue;
       L.plant[i] = kind;
       L.growth[i] = hash2(x, y, seed ^ 0x77) < 0.85 ? 255 : 110 + ri(R, 0, 140);
@@ -387,10 +533,66 @@ function mats() {
   MATS = m;
   return m;
 }
-/** The GEN3.stone row name holding relative level r. */
+/** The stone row name (GEN3.stone, or the region's table) holding relative level r. */
 function stoneRowName(r) {
-  for (const [name, row] of Object.entries(GEN3.stone)) if (r >= row.rel[0] && r <= row.rel[1]) return name;
+  for (const [name, row] of Object.entries(STONE())) if (r >= row.rel[0] && r <= row.rel[1]) return name;
   return r > 0 ? 'outer' : 'hollow';
+}
+
+// ---- GEN3 v2: the region inputs (EMBERCROWN-WORLD.md 3.6) ------------------------------------------------------------
+// RG is the resolved opts.region of the world being generated, or null on the v1 path. generate3 and previewSurface set
+// it for the length of one synchronous call and restore it after, so bandFill and generateBelow called on their own (the
+// v3 -> v4 migration, the regeneration of a v1 world) always run the v1 path.
+let RG = null;
+const H3 = () => (RG ? RG.heights : GEN3.heights);
+const STONE = () => (RG ? RG.stone : GEN3.stone);
+const clampI = (v, a, b) => (v < a ? a : v > b ? b : v);
+const intOr = (v, d) => (typeof v === 'number' && v === v ? Math.round(v) : d);
+const pairOr = (v, d) => (Array.isArray(v) && v.length === 2 && v[0] <= v[1] ? [intOr(v[0], d[0]), intOr(v[1], d[1])] : d);
+const scalePct = (k, pct) => Math.round((k * pct) / 100);
+/** opts.region (a plain object, js/game/realm/region.js) -> the knobs the passes read; unknown or bad fields fall back to today's. */
+export function resolveRegion(region) {
+  const r = region || {}, B = GEN3.biomes[r.biome] || {}, sides = GEN.massif.regionSides;
+  const side = sides.includes(r.side) ? r.side : 'n';
+  const mp = clampI(intOr(r.massifPct, 30), GEN3.massifPct[0], GEN3.massifPct[1]);
+  const heights = { ...GEN3.heights, max: clampI(intOr(r.heights, GEN3.heights.max), 2, GEN3.heights.max), perLevel: B.heightsPerLevel || GEN3.heights.perLevel };
+  const rv = r.river;
+  const river = rv && sides.includes(rv.in) && sides.includes(rv.out) && rv.in !== rv.out ? { in: rv.in, out: rv.out, cls: clampI(intOr(rv.cls, 1), 1, 3) } : null;
+  const emberRel = r.ember && r.ember.rel === -11 ? -11 : -12;
+  // the stone table: the province's swaps by band; a shallow ember layer (rel -11) trades places with the underdeep stone
+  const stone = {};
+  for (const [name, row] of Object.entries(GEN3.stone)) {
+    const sw = r.stones && Array.isArray(r.stones[name]) && r.stones[name].length ? r.stones[name].slice(0, 2) : null;
+    stone[name] = { ...row, stones: sw || row.stones };
+  }
+  if (emberRel === -11) { stone.underdeep = { ...stone.underdeep, rel: [-12, -12] }; stone.ember = { ...stone.ember, rel: [-11, -11] }; }
+  const veinRel = {};
+  if (emberRel === -11) for (const v of GEN3.veins) if (v.rel[0] === -11 && v.rel[1] === -11) veinRel[v.id] = [-12, -12];
+  const ores = {};
+  if (r.ores) for (const [k, v] of Object.entries(r.ores)) ores[k] = Math.max(100, intOr(v, 100));
+  const rich = clampI(intOr(r.caverns, 1), 0, 2), richPct = [50, 100, 150][rich];
+  const blight = clampI(intOr(r.blight, WORLD.blight.startPct), 0, 30);
+  const soil = r.soil || {};
+  const sea = B.sea && sides.includes(r.sea) && r.sea !== side ? r.sea : null;
+  return {
+    biome: GEN3.biomes[r.biome] ? r.biome : 'greenvale', side, massif: [clampI(mp - 3, GEN3.massifPct[0], GEN3.massifPct[1]), clampI(mp + 3, GEN3.massifPct[0], GEN3.massifPct[1])], massifPct: mp,
+    heights, river, sea, lakes: clampI(intOr(B.lakes, 1) + (r.lake ? 1 : 0), 0, 3),
+    aquiferPct: clampI(intOr(r.aquiferPct, GEN3.soil.aquiferNearPct), 0, 100),
+    soil: { clay: clampI(intOr(soil.clay, GEN3.soil.topClayPct), 0, 90), sand: clampI(intOr(soil.sand, 0), 0, 90) },
+    ember: { pools: pairOr(r.ember && r.ember.pools, GEN3.ember.pools), rel: emberRel }, springs: pairOr(r.springs, GEN3.springs.count), seeps: pairOr(r.seeps, GEN3.seeps),
+    stone, veinRel, ores, blight, blightCalls: Math.round(blight / WORLD.blight.startPct),
+    wildPct: 50 + ((clampI(intOr(r.wild, 85), 0, 255) * 150) / 255 | 0), richPct, glowPct: (6 * richPct) / 100,
+    ruins: clampI(intOr(B.ruins, 3) + (Array.isArray(r.ruins) ? r.ruins.length : 0), 0, 8),
+    relics: Array.isArray(r.relics) ? r.relics : [], lairs: Array.isArray(r.lairs) ? r.lairs : [],
+    forestPct: intOr(B.forestPct, GEN.forestPct), meadowPct: intOr(B.meadowPct, GEN.meadowPct), richSoilPct: intOr(B.richPct, GEN.richPct),
+    pines: !!B.pines, hills: B.hills || null, rocks: B.rocks || null, ravines: B.ravines || null, sandPct: intOr(B.sandPct, 0), marshPct: intOr(B.marshPct, 0),
+    bandAt: null, bandNames: Object.keys(stone),
+  };
+}
+function withRegion(region, fn) {
+  const prev = RG;
+  RG = region ? resolveRegion(region) : null;
+  try { return fn(); } finally { RG = prev; }
 }
 
 // ---- Plane helpers ----------------------------------------------------------------------------------
@@ -484,7 +686,7 @@ function depth2Of(rockPlane) {
 }
 /** Levels a massif column of planar depth d rises above the valley floor (2.2, 5.4): ceil(d / 6) in 1..5. */
 export function heightOf(d) {
-  const G = GEN3.heights, top = Math.max(0, Math.min(G.max, D - 1 - zS));
+  const G = H3(), top = Math.max(0, Math.min(G.max, D - 1 - zS));
   if (d <= 0) return 0;
   const h = ((d + G.perLevel - 1) / G.perLevel) | 0;
   return h < 1 ? 1 : h > top ? top : h;
@@ -511,7 +713,7 @@ function rampPass(P, hgt, seed) {
     const c = y * W + x;
     if (!land(c)) continue;
     const a = lv(c);
-    if (a + 1 > D - 1 || hash2(x, y, seed) * GEN3.heights.rampIn >= 1) continue;
+    if (a + 1 > D - 1 || hash2(x, y, seed) * H3().rampIn >= 1) continue;
     for (let k = 0; k < 4; k++) {
       const n = c + off[k], o = c - off[k];
       if (!hgt[n] || lv(n) !== a + 1 || !land(o) || lv(o) !== a) continue;
@@ -532,7 +734,7 @@ function surfacePass(seed, n, opts = {}) {
   const sc = Math.min(W, H) / 128;
   const G = GEN.massif;
   const rSide = gen(st(seed, 'side', n));
-  const side = opts.side || G.sides[ri(rSide, 0, G.sides.length - 1)];
+  const side = opts.side || (RG ? RG.side : G.sides[ri(rSide, 0, G.sides.length - 1)]);
   const fr = frameOf(side);
   const minThick = Math.max(4, Math.round(G.minThick * sc));
   const maxDepthMin = Math.round(G.maxDepthMin * sc), underMin = Math.round(G.underdeepMin * sc * sc), under = Math.round(G.underdeep * sc);
@@ -551,9 +753,17 @@ function surfacePass(seed, n, opts = {}) {
   const mask = m.mask;
   m.thick.forEach((v, t) => { m.thick[t] = Math.ceil(v); });
   // 7a. river and lake, then the hills
-  const rv = riverPass(L, fr, m.thick, gen(st(seed, 'river', n)), surfSeed, sc);
-  const lake = lakePass(L, fr, rv.centre, gen(st(seed, 'lake', n)), surfSeed, sc);
-  const hills = hillPass(L, fr, rv.centre, gen(st(seed, 'hills', n)), surfSeed, sc, mask);
+  let massifTiles = 0;
+  for (let i = 0; i < PLANE; i++) if (mask[i] === 1) massifTiles++;
+  const sea = RG && RG.sea ? seaPass(L, RG.sea, gen(st(seed, 'sea', n)), surfSeed, sc) : null;
+  const rv = RG ? regionRiver(L, fr, m.thick, gen(st(seed, 'river', n)), surfSeed, sc, side) : riverPass(L, fr, m.thick, gen(st(seed, 'river', n)), surfSeed, sc);
+  const lakes = [];
+  if (!RG) { const lk = lakePass(L, fr, rv.centre, gen(st(seed, 'lake', n)), surfSeed, sc); if (lk) lakes.push(lk); }
+  else for (let k = 0; k < RG.lakes; k++) { const lk = lakePass(L, fr, rv.centre, gen(st(seed, k ? `lake:${k}` : 'lake', n)), (surfSeed + k * 0x61c88647) >>> 0, sc); if (lk) lakes.push(lk); }
+  const lake = lakes[0] || null;
+  const hills = hillPass(L, fr, rv.centre, gen(st(seed, 'hills', n)), surfSeed, sc, mask, RG && RG.hills);
+  const rocks = RG && RG.rocks ? rockPass(L, gen(st(seed, 'rocks', n)), surfSeed, mask, RG.rocks) : 0;
+  const ravines = RG && RG.ravines ? ravinePass(L, gen(st(seed, 'ravines', n)), surfSeed, sc, RG.ravines) : null;
   // the heights and the auto ramps (before the soils, so the site and the forests see the ramps)
   let rockP = Uint8Array.from(L.terrain, (t) => (t === TER.ROCK ? 1 : 0));
   depth = depth2Of(rockP);
@@ -572,6 +782,7 @@ function surfacePass(seed, n, opts = {}) {
   const hearthDef = structDef('hearth');
   const [hw, hh] = sizeOf(hearthDef || { size: [3, 3] });
   let pick = null, edges = null, tried = 0;
+  const needEdges = sea ? 2 : 3;   // a shore's sea edge is never reached on foot
   const foot = new Uint8Array(PLANE);
   for (const [, k] of site.cands) {
     if (tried++ > 60) break;
@@ -580,7 +791,7 @@ function surfacePass(seed, n, opts = {}) {
     foot.fill(0);
     for (let y = hy; y < hy + hh; y++) for (let x = hx; x < hx + hw; x++) foot[ix(x, y)] = 1;
     const e = edgesReached(L, ix(hx - 1, hy - 1), foot);
-    if (e.count >= 3) { pick = { x0, y0, hx, hy }; edges = e; break; }
+    if (e.count >= needEdges) { pick = { x0, y0, hx, hy }; edges = e; break; }
     if (!pick) pick = { x0, y0, hx, hy, weak: true }, edges = e;
   }
   let fixed = 0;
@@ -595,7 +806,7 @@ function surfacePass(seed, n, opts = {}) {
     pick = { x0, y0, hx: x0 + ((site.size - hw) >> 1), hy: y0 + ((site.size - hh) >> 1) };
     edges = edgesReached(L, ix(pick.hx - 1, pick.hy - 1), null);
   }
-  if (edges.count < 3) {
+  if (edges.count < needEdges) {
     const tm = fr.T >> 1;
     for (let t = Math.max(0, tm - 2); t <= Math.min(fr.T - 1, tm + 2); t++) for (let a = 0; a < fr.A; a++) {
       const [x, y] = fr.xy(a, t), i = ix(x, y);
@@ -646,7 +857,7 @@ function surfacePass(seed, n, opts = {}) {
   const ruins = [], loot = [], bld = [];
   const rr = gen(st(seed, 'ruins', n));
   const taken = new Uint8Array(PLANE);
-  for (let tries = 0; tries < 200 && ruins.length < 3; tries++) {
+  for (let tries = 0; tries < 200 && ruins.length < (RG ? RG.ruins : 3); tries++) {
     const cx = ri(rr, 4, W - 5), cy = ri(rr, 4, H - 5);
     if (Math.max(Math.abs(cx - hcx), Math.abs(cy - hcy)) < 26) continue;
     let ok = true;
@@ -667,7 +878,8 @@ function surfacePass(seed, n, opts = {}) {
     ruins.push(ix(cx, cy));
   }
   const rb = gen(st(seed, 'blight', n));
-  const blight = seedBlight(L, hcx, hcy, () => rf(rb));
+  let blight = RG && !RG.blightCalls ? 0 : seedBlight(L, hcx, hcy, () => rf(rb));
+  if (RG) for (let k = 1; k < RG.blightCalls; k++) blight += seedBlight(L, hcx, hcy, () => rf(rb));
   // the site's distance to the face (the guarantee: within GEN.site.faceMax tiles of ground)
   let faceMin = 255;
   for (let y = pick.y0; y < pick.y0 + site.size; y++) for (let x = pick.x0; x < pick.x0 + site.size; x++) {
@@ -680,13 +892,14 @@ function surfacePass(seed, n, opts = {}) {
     hearth: { x: pick.hx, y: pick.hy, cx: hcx, cy: hcy, w: hw, h: hh },
     lake: lake ? { x: lake.x, y: lake.y } : null, river: { fords: rv.fords.length, width: rv.w }, hills: hills.length,
     riverDist: site.toRiver[ix(hcx, hcy)], maxDepth: ds.max,
+    ...(RG ? { lakes: lakes.length, rocks, ravines, massifTiles, sea: sea ? { side: RG.sea, width: sea.width } : null, riverEdges: rv.edges || [] } : {}),
   };
 }
 const siteOk = (sf) => !sf.fixed && sf.site.faceMin <= GEN.site.faceMax + 1;
 
 /** Heights stone: outer stones near the face (planar depth <= faceOuter), granite and slate in the core (2.2). */
 function heightStone(c, d, seed) {
-  const M = mats(), x = c % W, y = (c / W) | 0, row = d <= GEN3.heights.faceOuter ? GEN3.stone.outer : GEN3.stone.middle;
+  const M = mats(), x = c % W, y = (c / W) | 0, row = d <= H3().faceOuter ? STONE().outer : STONE().middle;
   return M[row.stones[fbm(x, y, 7, seed) * 100 > row.split ? 1 : 0]];
 }
 /** Write the surface plane at zS and the massif above it (rock up to zS + h - 1, a rough top at zS + h), with the ramps. */
@@ -717,8 +930,8 @@ function aquiferMask(baseMask) {
   const hist = new Uint32Array(256);
   let valley = 0, any = 0;
   for (let c = 0; c < PLANE; c++) { if (water[c]) { any = 1; continue; } if (baseMask[c] & 16) continue; valley++; hist[d[c]]++; }
-  if (!any) return aq;
-  const want = Math.floor((valley * GEN3.soil.aquiferNearPct) / 100);
+  if (!any || (RG && !RG.aquiferPct)) return aq;
+  const want = Math.floor((valley * (RG ? RG.aquiferPct : GEN3.soil.aquiferNearPct)) / 100);
   let th = 0, acc = 0;
   for (let k = 1; k < 256; k++) { acc += hist[k]; th = k; if (acc >= want) break; }
   for (let c = 0; c < PLANE; c++) if (water[c] || (!(baseMask[c] & 16) && d[c] <= th)) aq[c] = 1;
@@ -737,9 +950,9 @@ export function bandFill(L, baseMask, seed, levels = null) {
   if (!L.fluid || L.fluid.length !== N) L.fluid = new Uint8Array(N);
   const wob = new Int8Array(PLANE), topV = new Float64Array(PLANE), subV = new Float64Array(PLANE), tv = [], sv = [];
   // per band: the stone id of each column (two-stone bands split by value noise), so the voxel loop only looks up
-  const names = Object.keys(GEN3.stone), pick = {};
+  const ST = STONE(), names = Object.keys(ST), pick = {};
   for (let k = 0; k < names.length; k++) {
-    const row = GEN3.stone[names[k]], a = new Uint8Array(PLANE).fill(M[row.stones[0]]);
+    const row = ST[names[k]], a = new Uint8Array(PLANE).fill(M[row.stones[0]]);
     if (row.stones.length > 1) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (vnoise(x + k * 97, y + k * 61, 7, sS) * 100 > row.split) a[y * W + x] = M[row.stones[1]];
     pick[names[k]] = a;
   }
@@ -748,24 +961,40 @@ export function bandFill(L, baseMask, seed, levels = null) {
     wob[c] = v < 0.36 ? -1 : v > 0.64 ? 1 : 0;
     if (!(baseMask[c] & 16)) { topV[c] = vnoise(x, y, 6, sSoil); subV[c] = vnoise(x, y, 8, sSoil ^ 0x5bd1e995); tv.push(topV[c]); sv.push(subV[c]); }
   }
-  const topTh = quantile(tv, 1 - GEN3.soil.topClayPct / 100), subTh = quantile(sv, 1 - GEN3.soil.subClayPct / 100);
+  const topTh = quantile(tv, 1 - (RG ? RG.soil.clay : GEN3.soil.topClayPct) / 100), subTh = quantile(sv, 1 - GEN3.soil.subClayPct / 100);
   const aq = aquiferMask(baseMask);
   const relName = new Map();
   for (let r = -40; r <= 0; r++) relName.set(r, stoneRowName(r));
+  // GEN3 v2: the rel -1 sand share of the region's soil mix, a flat (unwobbled) shallow ember layer, and the stone row of
+  // every voxel (the vein pass reads its band from there, since a province swap can put one stone in two bands)
+  let sandV = null, sandTh = 2, wobLo = -11;
+  if (RG) {
+    if (RG.soil.sand) {
+      sandV = new Float64Array(PLANE); const vs = [];
+      for (let c = 0; c < PLANE; c++) if (!(baseMask[c] & 16)) { sandV[c] = vnoise(c % W, (c / W) | 0, 9, sSoil ^ 0x27d4eb2f); vs.push(sandV[c]); }
+      sandTh = quantile(vs, 1 - RG.soil.sand / 100);
+    }
+    if (RG.ember.rel === -11) wobLo = -10;
+    if (!RG.bandAt || RG.bandAt.length !== N) RG.bandAt = new Uint8Array(N);
+  }
+  const rowIx = RG ? Object.fromEntries(names.map((nm, k) => [nm, k])) : null;
   for (let z = 0; z < zS; z++) {
     if (levels && !levels.has(z)) continue;
     const rel = z - zS, base = z * PLANE;
     for (let c = 0; c < PLANE; c++) {
       const i = base + c, massif = (baseMask[c] & 16) !== 0;
       let mt, fl = 0;
+      let rn = 'outer';
       if (rel >= -2 && massif) mt = pick.outer[c];
-      else if (rel === -1) mt = baseMask[c] & 8 ? M.sand : topV[c] >= topTh ? M.clay : M.loam;
+      else if (rel === -1) mt = baseMask[c] & 8 ? M.sand : sandV && sandV[c] >= sandTh ? M.sand : topV[c] >= topTh ? M.clay : M.loam;
       else if (rel === -2) { if (aq[c]) { mt = M.sand; fl = FLW.SOURCE; } else mt = subV[c] >= subTh ? M.clay : M.loam; }
       else {
         let r = rel;
-        if (rel >= -11 && rel <= -3) { r = rel + wob[c]; if (r > -3) r = -3; if (r < -11) r = -11; }
-        mt = pick[relName.get(r) || stoneRowName(r)][c];
+        if (rel >= wobLo && rel <= -3) { r = rel + wob[c]; if (r > -3) r = -3; if (r < wobLo) r = wobLo; }
+        rn = relName.get(r) || stoneRowName(r);
+        mt = pick[rn][c];
       }
+      if (rowIx) RG.bandAt[i] = rowIx[rn];
       L.terrain[i] = TER.ROCK; L.mat[i] = mt; L.ore[i] = 0; L.plant[i] = 0; L.growth[i] = 0; L.blight[i] = 0; L.fluid[i] = fl;
     }
   }
@@ -985,7 +1214,7 @@ function cavern(L, seed, id, n, prot, rows) {
     const glow = plantCode('glowcap');
     if (glow) for (const z of [zf, zl]) for (let c = 0; c < PLANE; c++) {
       const i = z * PLANE + c;
-      if (L.terrain[i] === TER.MOSS && !prot[i] && rf(R) * 100 < 6) { L.plant[i] = glow; L.growth[i] = 128 + ri(R, 0, 127); }
+      if (L.terrain[i] === TER.MOSS && !prot[i] && rf(R) * 100 < (RG ? RG.glowPct : 6)) { L.plant[i] = glow; L.growth[i] = 128 + ri(R, 0, 127); }
     }
   }
   if (id === 'reach') for (let c = 0; c < PLANE; c++) if (L.terrain[bf + c] !== TER.ROCK) L.blight[bf + c] = 255;
@@ -1014,9 +1243,9 @@ function rockBox(L, prot, cx, cy, rx, ry, z0, z1) {
   return true;
 }
 function emberPools(L, seed, prot, rows) {
-  const E = GEN3.ember, R = gen(st(seed, 'ember')), z = zOf(-12), M = mats();
+  const E = GEN3.ember, R = gen(st(seed, 'ember')), z = zOf(RG ? RG.ember.rel : -12), M = mats(), pools = RG ? RG.ember.pools : E.pools;
   if (z < 1) return 0;
-  const want = ri(R, E.pools[0], E.pools[1]);
+  const want = ri(R, pools[0], pools[1]);
   let made = 0, biggest = -1, bigN = 0;
   for (let t = 0; t < 300 && made < want; t++) {
     const r = ri(R, E.r[0], E.r[1]), cx = ri(R, r + 2, W - r - 3), cy = ri(R, r + 2, H - r - 3);
@@ -1035,7 +1264,7 @@ function emberPools(L, seed, prot, rows) {
 }
 function springs(L, seed, hgt, prot, rows) {
   const S = GEN3.springs, R = gen(st(seed, 'springs')), z = zOf(S.rel);
-  const want = ri(R, S.count[0], S.count[1]), wet = FLW.SOURCE | S.depth;
+  const cnt = RG ? RG.springs : S.count, want = ri(R, cnt[0], cnt[1]), wet = FLW.SOURCE | S.depth;
   let made = 0;
   for (let t = 0; t < 300 && made < want; t++) {
     const cx = ri(R, 4, W - 5), cy = ri(R, 4, H - 5);
@@ -1077,7 +1306,7 @@ function veinRules(belowOnly) {
     for (let k = d.depth[0]; k <= d.depth[1]; k++) bands.add(bandOfDepth(k));
     out.push({ id: d.id, ore: depositId(d.id), veins: d.veins, gem: false, bands, massif: !belowOnly, mlo: d.depth[0], mhi: Math.min(d.depth[1], 12) });
   }
-  for (const v of GEN3.veins) out.push({ id: v.id, ore: depositId(v.id), veins: v.veins, gem: !!v.gem, rel: v.rel, massif: !!v.massif && !belowOnly, mlo: 1, mhi: 12 });
+  for (const v of GEN3.veins) out.push({ id: v.id, ore: depositId(v.id), veins: v.veins, gem: !!v.gem, rel: (RG && RG.veinRel[v.id]) || v.rel, massif: !!v.massif && !belowOnly, mlo: 1, mhi: 12 });
   return out.filter((r) => r.ore > 0);
 }
 function veinPass3(L, seed, n, depth2, baseMask, belowOnly) {
@@ -1088,7 +1317,7 @@ function veinPass3(L, seed, n, depth2, baseMask, belowOnly) {
       if (L.terrain[i] !== TER.ROCK || L.ore[i] || M.noOre.has(L.mat[i])) return false;
       const z = (i / PLANE) | 0, c = i % PLANE;
       if (z >= zS) return rule.massif && (baseMask[c] & 16) !== 0 && depth2[c] >= rule.mlo && depth2[c] <= rule.mhi;
-      if (rule.bands) return rule.bands.has(M.band.get(L.mat[i]));
+      if (rule.bands) return rule.bands.has(RG && RG.bandAt ? RG.bandNames[RG.bandAt[i]] : M.band.get(L.mat[i]));
       const rel = z - zS;
       return rel >= rule.rel[0] && rel <= rule.rel[1];
     };
@@ -1101,7 +1330,8 @@ function veinPass3(L, seed, n, depth2, baseMask, belowOnly) {
     }
     if (!zs.length) continue;
     const bandsN = rule.bands ? rule.bands.size + (rule.massif ? 1 : 0) : 1;
-    const want = Math.max(1, Math.round(ri(R, rule.veins[0], rule.veins[1]) * bandsN * V.perBand * area));
+    let want = Math.max(1, Math.round(ri(R, rule.veins[0], rule.veins[1]) * bandsN * V.perBand * area));
+    if (RG && RG.ores[rule.id]) want = Math.max(1, scalePct(want, RG.ores[rule.id]));
     let placed = 0, cells = 0;
     for (let v = 0; v < want; v++) {
       let cur = -1;
@@ -1232,13 +1462,14 @@ function dormant(L, seed, hgt, prot, rows) {
   const caves = { hollows: GEN3.caverns.hollows, mere: GEN3.caverns.mere, reach: GEN3.caverns.reach };
   const floors = {};
   for (const [id, C] of Object.entries(caves)) floors[id] = zOf(C.floor) >= 0 ? floorCells(L, zOf(C.floor)) : [];
-  for (const id of Object.keys(caves)) for (const [kind, lo, hi] of T[id]) for (const v of spread(R, floors[id], ri(R, lo, hi), 10, taken)) rows.push([kind, v, rowSeed(kind, v, seed)]);
+  for (const id of Object.keys(caves)) for (const [kind, lo, hi] of T[id]) { const k = ri(R, lo, hi); for (const v of spread(R, floors[id], RG ? scalePct(k, RG.richPct) : k, 10, taken)) rows.push([kind, v, rowSeed(kind, v, seed)]); }
   // the Lamplost camp on a ledge of the Mere
   const mereLedge = floorCells(L, zOf(GEN3.caverns.mere.ledge), true);
   for (const v of spread(R, mereLedge, 1, 1, taken)) rows.push(['lamplost', v, rowSeed('lamplost', v, seed)]);
   // generated great beasts (3.12): a lair voxel in a cavern; the row's seed generates the body (gen3:beasts)
   const RB = gen(st(seed, 'beasts')), all = [].concat(floors.hollows, floors.mere, floors.reach);
-  for (const v of spread(RB, all, ri(RB, T.beasts[0], T.beasts[1]), 20, taken)) rows.push(['lair', v, rowSeed('lair', v, seed)]);
+  const nb = ri(RB, T.beasts[0], T.beasts[1]);
+  for (const v of spread(RB, all, RG ? Math.max(1, scalePct(nb, RG.wildPct)) : nb, 20, taken)) rows.push(['lair', v, rowSeed('lair', v, seed)]);
   // the Gloomwyrm's cliff eyrie: a top voxel of the highest heights
   if (hgt) {
     let top = 0;
@@ -1323,7 +1554,7 @@ export function generateBelow(L, baseMask, seed, ctx = {}) {
   info.seal = seal ? { x: seal.x, y: seal.y } : null;
   const zr = zOf(GEN3.caverns.reach.floor);
   if (zr >= 0) {
-    const R = gen(st(seed, 'seeps')), cells = floorCells(L, zr), seeps = spread(R, cells, ri(R, GEN3.seeps[0], GEN3.seeps[1]), 24, []);
+    const sp = RG ? RG.seeps : GEN3.seeps, R = gen(st(seed, 'seeps')), cells = floorCells(L, zr), seeps = spread(R, cells, ri(R, sp[0], sp[1]), 24, []);
     for (const v of seeps) rows.push(['seep', v, rowSeed('seep', v, seed)]);
     info.seeps = seeps.length;
   }
@@ -1350,16 +1581,49 @@ function checkShape() {
  * Returns the info: site, Hearth, loot rows, the pristine meta ({ dormant, amendments }), stats and re-rolls.
  */
 export function generate3(s, opts = {}) {
+  return withRegion(opts.region || null, () => generateIn(s, opts));
+}
+/** Step 1 with its re-rolls (the surface is re-rolled whole while the start site fails), as generate3 runs it. */
+function surfaceRolled(seed, opts) {
+  let sf = null, surfRerolls = 0;
+  for (let n = 0; n <= GEN3.guarantee.rerolls; n++) { sf = surfacePass(seed, n, opts); if (siteOk(sf)) break; surfRerolls = n + 1; }
+  return { sf, surfRerolls };
+}
+/** GEN3 v2 rows of the pristine meta: the region's lost artifacts (in a vault, else over a crypt) and its world beasts' surface lairs. */
+function regionRows(L, seed, sf, rows) {
+  const spots = rows.filter((r) => r[0] === 'vault' || r[0] === 'crypt').map((r) => r[1]);
+  RG.relics.forEach((rl, k) => {
+    if (!spots.length) return;
+    const v = spots[k % spots.length], key = String(rl && rl.key !== undefined ? rl.key : rl);
+    rows.push(['world_relic', v, rowSeed('world_relic', v + k, seed), key]);
+  });
+  const R = gen(st(seed, 'wlairs')), h = sf.hearth;
+  RG.lairs.forEach((lr, k) => {
+    const key = String(lr && lr.key !== undefined ? lr.key : lr);
+    for (let t = 0; t < 300; t++) {
+      const x = ri(R, 3, W - 4), y = ri(R, 3, H - 4), v = zS * PLANE + ix(x, y);
+      if (!landT(L.terrain[v]) || Math.max(Math.abs(x - h.cx), Math.abs(y - h.cy)) < 30) continue;
+      rows.push(['world_lair', v, rowSeed('world_lair', v + k, seed), key]);
+      break;
+    }
+  });
+}
+function generateIn(s, opts) {
   checkShape();
   const seed = s.seed >>> 0, L = s.L;
   if (!L.fluid || L.fluid.length !== N) L.fluid = new Uint8Array(N);
   for (const k of Object.keys(L)) L[k].fill(0);
   L.terrain.fill(TER.AIR);
-  let sf = null, surfRerolls = 0;
-  for (let n = 0; n <= GEN3.guarantee.rerolls; n++) { sf = surfacePass(seed, n, opts); if (siteOk(sf)) break; surfRerolls = n + 1; }
+  const { sf, surfRerolls } = surfaceRolled(seed, opts);
   writeSurface(L, sf, seed);
   const { mask: baseMask } = baseMaskOf(sf.P.terrain);
   const below = generateBelow(L, baseMask, seed, { hx: sf.hearth.cx, hy: sf.hearth.cy, site: sf.site, depth2: sf.depth, hgt: sf.hgt, ruins: sf.ruins });
+  if (RG && sf.ravines) {   // the ravine floors one level down (DIRT; a RAMP under each end's RAMP_TOP)
+    const b = (zS - 1) * PLANE;
+    for (const c of sf.ravines.cells) { const i = b + c; L.terrain[i] = TER.DIRT; L.ore[i] = 0; L.fluid[i] = 0; }
+    for (const c of sf.ravines.ends) L.terrain[b + c] = TER.RAMP;
+  }
+  if (RG) regionRows(L, seed, sf, below.rows);
   for (const [def, x, y, mat, init] of sf.bld) s.bld.push(newBuilding(s.bld.length, def, x, y, 0, mat, { ...init, st: 'done', z: zS }));
   for (const [def, x, y, mat, init, z] of below.bld) s.bld.push(newBuilding(s.bld.length, def, x, y, 0, mat, { ...init, st: 'done', z }));
   const loot = sf.loot.map(([k, m, n, x, y, name]) => [k, m, n, x, y, name, zS]).concat(below.loot);
@@ -1367,9 +1631,59 @@ export function generate3(s, opts = {}) {
     seed, side: sf.side, site: sf.site, hearth: sf.hearth, edges: sf.edges, ramps: sf.ramps.length, rerolls: { surface: surfRerolls, ...below.info.rerolls },
     massifRerolls: sf.rerolls, ruins: sf.ruins.length, blight: sf.blight, trees: sf.trees, lake: sf.lake, river: sf.river, hills: sf.hills, riverDist: sf.riverDist,
     below: below.info, loot, meta: { dormant: below.rows, amendments: [] }, baseMask,
+    genVersion: RG ? GEN3.version : GEN3.legacyVersion,
   };
+  if (RG) {
+    info.region = {
+      biome: RG.biome, side: sf.side, sea: sf.sea, lakes: sf.lakes, rocks: sf.rocks, ravines: sf.ravines ? sf.ravines.n : 0, massifTiles: sf.massifTiles,
+      riverEdges: sf.riverEdges, ember: RG.ember, aquiferPct: RG.aquiferPct, soil: RG.soil, blightPct: RG.blight, ruins: RG.ruins,
+      heights: RG.heights.max, edges: (opts.region && opts.region.edges) || null, climate: (opts.region && opts.region.climate) || null,
+    };
+  }
   info.fails = checkGuarantees(L, info);
   return info;
+}
+
+// ---- The region card preview (EMBERCROWN-WORLD.md 3.7) ---------------------------------------------------------------
+/** The colour keys of previewSurface's index plane (the renderer maps each to a palette colour). */
+export const PREVIEW_KEYS = Object.freeze(['grass', 'meadow', 'dirt', 'sand', 'rich', 'marsh', 'shallow', 'deep', 'ice', 'tree', 'bush',
+  'rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'ramp', 'ravine', 'blight', 'hearth', 'other']);
+const PK = Object.freeze(Object.fromEntries(PREVIEW_KEYS.map((k, i) => [k, i])));
+/**
+ * The surface of the hold that generate3(s with s.seed = seed, opts) would make, without the levels below: step 1 with
+ * its re-rolls, then the zS plane as writeSurface writes it (terrain, plant, growth, blight; massif columns ROCK) and a
+ * W x H colour-index plane (PREVIEW_KEYS). Cosmetic and never saved; the map size must be the hold's (128 x 128 x 20).
+ * Returns { w, h, side, colour, terrain, plant, growth, blight, hgt, hearth, site }.
+ */
+export function previewSurface(seed, opts = {}) {
+  checkShape();
+  return withRegion(opts.region || null, () => {
+    const { sf } = surfaceRolled(seed >>> 0, opts), P = sf.P, hgt = sf.hgt;
+    const terrain = new Uint8Array(PLANE), plant = new Uint8Array(PLANE), growth = new Uint8Array(PLANE), blight = new Uint8Array(PLANE), colour = new Uint8Array(PLANE);
+    for (let c = 0; c < PLANE; c++) {
+      if (hgt[c]) { terrain[c] = TER.ROCK; continue; }
+      terrain[c] = P.terrain[c]; plant[c] = P.plant[c]; growth[c] = P.growth[c]; blight[c] = P.blight[c];
+    }
+    for (const c of sf.ramps) if (!hgt[c]) { terrain[c] = TER.RAMP; plant[c] = 0; growth[c] = 0; }
+    const oak = plantCode('oak'), pine = plantCode('pine'), byTer = {
+      [TER.GRASS]: PK.grass, [TER.MEADOW]: PK.meadow, [TER.DIRT]: PK.dirt, [TER.SAND]: PK.sand, [TER.RICH]: PK.rich, [TER.MARSH]: PK.marsh,
+      [TER.SHALLOW]: PK.shallow, [TER.DEEP]: PK.deep, [TER.ICE]: PK.ice, [TER.RAMP]: PK.ramp, [TER.AIR]: PK.ravine, [TER.RAMP_TOP]: PK.ravine,
+    };
+    const hh = sf.hearth;
+    for (let c = 0; c < PLANE; c++) {
+      const x = c % W, y = (c / W) | 0, t = terrain[c], p = plant[c];
+      let k;
+      if (x >= hh.x && x < hh.x + hh.w && y >= hh.y && y < hh.y + hh.h) k = PK.hearth;
+      else if (hgt[c]) k = PK.rock1 + Math.min(5, hgt[c]) - 1;
+      else if (t === TER.ROCK) k = PK.rock1;
+      else if (p && (p === oak || p === pine)) k = PK.tree;
+      else if (p) k = PK.bush;
+      else if (blight[c]) k = PK.blight;
+      else k = byTer[t] !== undefined ? byTer[t] : PK.other;
+      colour[c] = k;
+    }
+    return { w: W, h: H, side: sf.side, colour, terrain, plant, growth, blight, hgt: Uint8Array.from(hgt), hearth: { ...sf.hearth }, site: { ...sf.site } };
+  });
 }
 
 /** n open voxels next to the Hearth on the surface for the starting band (deterministic ring order). */
@@ -1396,7 +1710,7 @@ export function startSpots3(s, n = 3) {
 export function generateWorld3(s, opts = {}) {
   installWorld();
   const info = generate3(s, opts);
-  const p = attachPristine(s, buildPristine(s, { worldKind: WORLD_KIND.NATIVE, genVersion: GEN3.version, meta: info.meta }));
+  const p = attachPristine(s, buildPristine(s, { worldKind: WORLD_KIND.NATIVE, genVersion: info.genVersion, meta: info.meta }));
   const h = info.hearth;
   if (structDef('hearth') && !s.bld.some((b) => b && b.def === 'hearth')) {
     const id = s.bld.length;
@@ -1412,13 +1726,18 @@ export function generateWorld3(s, opts = {}) {
   return info;
 }
 
-/** The regeneration fallback (5.1): the pristine layers of a native world from its header and seed. */
-export function regenerate3({ seed, w, h, d, zS: zs }) {
+/**
+ * The regeneration fallback (5.1): the pristine layers of a native world from its header and seed. A GEN3 v2 world
+ * (genVersion >= 2) also needs its opts.region (s.realm.embark) as `region`; without it there is nothing to rebuild from,
+ * so this throws and pristine.regeneratePristine returns null (the other fallbacks of 9.3 apply).
+ */
+export function regenerate3({ seed, w, h, d, zS: zs, genVersion = 0, region = null }) {
+  if ((genVersion | 0) >= 2 && !region) throw new Error('mapgen3: a region world needs its region inputs to regenerate');
   setMapSize(w, h, d, zs);
   const L = allocLayers();
   L.fluid = new Uint8Array(w * h * d);
   const s = { seed: seed >>> 0, w, h, d, zS: zs, L, bld: [] };
-  const info = generate3(s, {});
+  const info = generate3(s, region ? { region } : {});
   return { w, h, d, zS: zs, L, pristineMeta: info.meta };
 }
 setRegenerator(regenerate3);

@@ -6,6 +6,9 @@
 //                      appliers registered later replace A's defaults. The tick order itself is
 //                      fixed by bus.TICK_ORDER, so the install order only decides who wins a hook.
 //   foundColony(opts)  a new colony: map, the Hearth, the starting band and their stock, ready to tick.
+//                      With { realm, rx, ry } (EMBERCROWN-WORLD.md G2, 3.6, 9.1; step W2.8) the hold is founded in
+//                      region (rx, ry) of a world: its seed is the region's hold seed, mapgen3 reads opts.region and
+//                      the state carries s.realm (realmField). Without a realm the hold is the legacy one, unchanged.
 //
 // Both are deterministic: the colony depends only on (seed, opts), never on wall-clock time.
 
@@ -15,7 +18,7 @@ import { resetAppliers } from './commands.js';
 import { TER, TER_BUILDABLE, TER_PASSABLE, TER_WATER, W, H, N, PLANE, zS, idx, inB, getBit } from './grid.js';
 import { nextU32 } from './rand.js';
 import { START_TICK } from './time.js';
-import { DIFFICULTIES } from './schema.js';
+import { DIFFICULTIES, REALM_FIELD_V } from './schema.js';
 import { installContent, def, all, structDef, sizeOf } from './content.js';
 import { installCommands, addBuilding } from './apply.js';
 import { installWorld, setExplored } from '../world/terrain.js';
@@ -23,6 +26,9 @@ import { hearthStartFuel } from '../world/fuel.js';
 import { plantCode } from '../world/defs.js';
 import { buildStubMap } from '../world/stubmap.js';
 import { generateWorld3 } from '../world/mapgen3.js';
+import { regionOpts, holdSeed } from '../realm/region.js';
+import { inside, idx as ridx, isEmbarkable } from '../realm/query.js';
+import { recordParts } from '../realm/record.js';
 import { installMovement } from '../systems/pathing.js';
 import { installWork } from '../work/index.js';
 import { setMover } from '../work/jobs.js';
@@ -170,10 +176,41 @@ function freeTilesAround(s, cx, cy, n, z = 0) {
  * @returns the state, runtime built, with the Hearth (done), the band and the start stock
  */
 export const FORTRESS_D = 20, FORTRESS_ZS = 14;   // EMBERCROWN-FORTRESS.md 2.1
-export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null, d = 1 } = {}) {
+
+/** The region a hold may be founded in: inside the world and embarkable. Throws a player-readable error otherwise. */
+export function checkRegion(realm, rx, ry) {
+  if (!realm || !realm.fields || !Number.isInteger(realm.n)) throw new Error('foundColony: the world is not loaded');
+  if (!Number.isInteger(rx) || !Number.isInteger(ry) || !inside(realm, rx, ry)) throw new Error('foundColony: that region is outside the world');
+  if (!isEmbarkable(realm, ridx(realm, rx, ry))) throw new Error('foundColony: no hold can be founded in that region');
+}
+/**
+ * The s.realm field of a hold founded in region (rx, ry) of `realm` (9.1; schema.js REALM_KEYS). `embark` is the
+ * opts.region the hold was generated from; crc the world record's 3 section CRCs, the reference the load path
+ * checks the stored record against (9.2). The world has no history before W3: no liege (civ null), year 0.
+ */
+export function realmField(realm, rx, ry, { embark = null, prep = null } = {}) {
+  const years = realm.years | 0;
+  return {
+    v: REALM_FIELD_V, wid: realm.wid >>> 0, seed: realm.seed >>> 0, gv: realm.gv | 0, params: JSON.parse(JSON.stringify(realm.params || {})),
+    crc: recordParts(realm).crc.map((c) => c >>> 0), rx, ry, civ: null, embarkYear: years, year: years,
+    embark: embark || regionOpts(realm, rx, ry), prep: prep ? JSON.parse(JSON.stringify(prep)) : null,
+    bind: {}, stand: [], sites: [], wars: [], dead: [], ev: [],
+  };
+}
+
+export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id, reveal = 24, world = null, difficulty = null, storyteller = null, d = 1, realm = null, rx = 0, ry = 0, prep = null } = {}) {
+  // a hold in a world (W2.8): always a fortress; its seed is the region's hold seed (G2), whatever `seed` says
+  let region = null;
+  if (realm) {
+    checkRegion(realm, rx, ry);
+    region = regionOpts(realm, rx, ry);
+    seed = holdSeed(realm, rx, ry) >>> 0;
+    if (d < 2) d = FORTRESS_D;
+  }
   // d > 1: a fortress (Stage Z1): the world is mapgen3's and the band and stock stand on the surface level
   const deep = d > 1;
   const s = createColony(seed, deep ? { w, name, id, d, zS: FORTRESS_ZS } : { w, name, id });
+  if (realm) s.realm = realmField(realm, rx, ry, { embark: region, prep });
   s.tick = START_TICK;   // day 1, 06:00 (10.9)
   if (difficulty !== null && difficulty !== undefined) {
     if (!DIFFICULTIES.includes(difficulty)) throw new Error(`foundColony: unknown difficulty ${difficulty}`);
@@ -185,7 +222,8 @@ export function foundColony({ seed, name = 'The Hold', start = null, w = 128, id
   }
   const st = (start && def('start', start)) || all('start').find((x) => x.default) || null;
   if (st) s.colony.starts = st.id;
-  const gen = deep ? WORLDS.fortress : (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;
+  const gen = region ? (st0) => { const info = generateWorld3(st0, { region }); return { done: true, spawn: info.spawn || null, info }; }
+    : deep ? WORLDS.fortress : (world ? (typeof world === 'string' ? WORLDS[world] : world) : worldGen) || worldGen;
   const site = gen(s) || {};
   const hd = structDef('hearth');
   const [hw, hh] = sizeOf(hd, 0);

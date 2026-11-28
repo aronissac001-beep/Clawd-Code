@@ -22,7 +22,10 @@
 //   api.enter(s, o)    -> void              start the in-game shell on that state
 //   api.importBlob(bytes | text) -> Promise<card>   optional: Import a file (C14)
 //   api.isStandalone(), api.pasteColonyFromSafari()   optional: the Home Screen app's paste (11.5)
-//   api.openWorlds()   -> void              optional, W2 (embark.js): the Worlds step; without it Worlds says so
+//   api.openWorlds()   -> void              optional: replaces the Worlds screen of embark.js (W2.7a)
+// With REALM on (or ?realm=1), New hold opens the World step (embark.js worldsView 'new': Quick start first, the saved
+// worlds, Create a world); Worlds opens the same list to manage ('manage'). Founding goes through api.newColony with
+// { seed, name, start, difficulty, storyteller, realm, wid, rx, ry } (W2.8 founds in the region).
 //   opts.view          'main' (default) | 'holds' | 'settings' | 'help': the view to open on (Menu > Holds and
 //                      ruins quits to the title on 'holds')
 // mountTitle is idempotent: a second call moves the one title into the new root.
@@ -42,6 +45,7 @@ import { mountRecoverPanel } from './settingsui.js';
 import { HELP_CARDS } from './help.js';
 import { fallenCard, annalsView, loadRuinState, prepareRuinExport, shareRuinExport, exportedText, RUIN_TEXT } from './ruin.js';
 import { STAGE } from './stage.js';
+import { worldsView as embarkWorlds, closeOverlay as closeEmbark } from './embark.js';
 
 // t-keys: front.diff.*
 const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
@@ -80,6 +84,7 @@ export function frontPlan(cards) {
  * Mount the title into `root`. Returns { node, refresh(), status, show(view) }.
  */
 export function mountTitle(root, api, opts = {}) {
+  closeEmbark();
   if (mounted && mounted.root !== root) { mounted.node.remove(); mounted.root.classList.remove('ec-title-root'); }
   if (mounted && mounted.art) { try { mounted.art.destroy(); } catch (_) { /* gone */ } }
   if (typeof document !== 'undefined') document.body.classList.add('ec-ui');
@@ -133,7 +138,7 @@ export function mountTitle(root, api, opts = {}) {
     if (view === 'settings') return settingsView();
     if (view === 'help') return helpView();
     if (view === 'annals') return annalsTitleView();
-    if (view === 'worlds') return worldsView();
+    if (view === 'worlds' || view === 'world') return worldsView(view);
     mainView(cards, plan);
   };
 
@@ -152,7 +157,7 @@ export function mountTitle(root, api, opts = {}) {
       off.disabled = true; off.dataset.off = '1';
       list.append(off);
     }
-    const fresh = button('.ec-new' + (last ? '' : '.primary'), 'new', t('front.new'), t('front.newSub'), () => found(null));
+    const fresh = button('.ec-new' + (last ? '' : '.primary'), 'new', t('front.new'), t('front.newSub'), () => (realmOn() ? show('world') : found(null)));
     const more = button('.ec-new-opts', 'new-options', t('front.options'), null, () => show('options'), { 'aria-label': t('front.optionsAria'), dataset: { side: '1' } });
     list.append(pair(fresh, more));
     if (realmOn()) list.append(button('.ec-worlds', 'worlds', t('front.worlds'), t('front.worldsSub'), () => (api.openWorlds ? api.openWorlds() : show('worlds'))));
@@ -240,7 +245,8 @@ export function mountTitle(root, api, opts = {}) {
     const name = h('input.ec-copybox.ec-title-input', { type: 'text', maxlength: '40', value: pick.name, 'aria-label': t('front.nameLabel'), 'data-act': 'opt-name' });
     name.addEventListener('input', () => { pick.name = name.value.slice(0, 40) || t('front.defaultName'); });
     const seed = button('.ec-seed', 'opt-seed', t('front.map', { seed: pick.seed }), t('front.mapSub'), () => { pick.seed = randomSeedText(); refresh(); });
-    const go = button('.primary', 'opt-found', t('front.foundIt'), null, () => found({ seed: pick.seed, name: pick.name, storyteller: pick.storyteller, difficulty: pick.difficulty }));
+    // with REALM on the picks carry into the World step (the hold seed then comes from the region, G2)
+    const go = button('.primary', 'opt-found', t('front.foundIt'), null, () => (realmOn() ? show('world') : found({ seed: pick.seed, name: pick.name, storyteller: pick.storyteller, difficulty: pick.difficulty })));
     list.append(h('p.ec-title-more', { text: t('front.nameLabel') }), name, seed, go, back());
   }
 
@@ -314,9 +320,10 @@ export function mountTitle(root, api, opts = {}) {
     } catch (_) { box.append(h('p.ec-bio-d', { text: t('front.noCopies') })); }
   }
 
-  // ---- Worlds (W2): only behind the REALM flag; embark.js hands in api.openWorlds ------------------------
-  function worldsView() {
-    list.append(heading(t('front.worlds')), h('p.ec-title-more', { text: t('front.worldsNone') }), back());
+  // ---- Worlds (W2.7a, embark.js): the World step of New hold ('world') and the Worlds screen ('worlds') ----------
+  function worldsView(v) {
+    if (!realmOn()) { list.append(heading(t('front.worlds')), h('p.ec-title-more', { text: t('front.worldsNone') }), back()); return; }
+    embarkWorlds({ api, root, list, status, busy, show, refresh, pick: { name: pick.name !== t('front.defaultName') ? pick.name : undefined, difficulty: pick.difficulty, storyteller: pick.storyteller }, entered: () => { view = 'main'; } }, v === 'world' ? 'new' : 'manage');
   }
 
   // ---- the Fallen card (1.3): Annals, View the ruin, Export, Delete. No Continue, no backup -----------------
@@ -366,6 +373,7 @@ export function mountTitle(root, api, opts = {}) {
 
 /** Remove the title (entering the game). */
 export function unmountTitle() {
+  closeEmbark();
   if (!mounted) return;
   if (mounted.art) { try { mounted.art.destroy(); } catch (_) { /* gone */ } }
   mounted.node.remove();

@@ -42,6 +42,7 @@ export function snapshot(s, opts = {}) {
     meta: { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick, speed: s.speed },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st), rel: s.rel, chron: s.chron,
     ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),   // Z2: the Annals (OPTIONAL_KEYS)
+    ...(s.realm ? { realm: s.realm } : {}),   // state v5 (EMBERCROWN-WORLD.md 9.1): only while non-null
   };
   for (const [key, kind] of Object.entries(COLLECTIONS)) {
     if (key === 'items') ent.items = packItems(s.items);
@@ -66,6 +67,7 @@ function entitiesOfState(s) {
     meta: { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, d: s.d, zS: s.zS, tick: s.tick, speed: s.speed },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st), rel: s.rel, chron: s.chron,
     ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),   // Z2: the Annals (OPTIONAL_KEYS)
+    ...(s.realm ? { realm: s.realm } : {}),   // state v5 (EMBERCROWN-WORLD.md 9.1): only while non-null
   };
   for (const [key, kind] of Object.entries(COLLECTIONS)) {
     if (key === 'items') ent.items = packItems(s.items);
@@ -178,6 +180,7 @@ function build(ent, layers, runtime, fmt) {
     col: [], items: [], bld: [], zones: [], anim: [], foes: [], raids: [],
     rel: ent.rel, chron: ent.chron,
     ...(typeof ent.legend === 'string' && ent.legend ? { legend: ent.legend } : {}),
+    ...(ent.realm && typeof ent.realm === 'object' ? { realm: ent.realm } : {}),   // state v5: absent = a hold with no world
   };
   let rt, paths = null;
   if (fmt >= 2) {

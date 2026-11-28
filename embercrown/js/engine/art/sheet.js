@@ -27,6 +27,7 @@ function drawCrop(g, kind, stage, x) { const sp = cropSprite(kind, stage); g.dra
 import { pixelPath, PATH_ROUTE, edgeMarker } from './marks.js';
 import { uiArtSamples } from './ui.js';
 import { fxArtSamples } from './fx.js';
+import { atlasArtSamples } from './atlas.js';
 
 const T = TILE;
 const TITLES = { ground: 'Ground: rock faces, mined floor, ore glints', floor: 'Built floors', struct: 'Structures and furniture', item: 'Items (stack sizes 1, few, half, full)',
@@ -111,7 +112,7 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   const grassFloor = (g, W, H) => surface(g, Array.from({ length: H }, () => Array(W).fill(TER.GRASS)));
 
   // ---- the palette ---------------------------------------------------------------------------------
-  section('Palette (33 colours, js/engine/art/palette.js)');
+  section(`Palette (${PAL_LIST.length} colours, js/engine/art/palette.js)`);
   for (const n of PAL_LIST) {
     const f = document.createElement('figure'), sw = document.createElement('div'), cap = document.createElement('figcaption');
     sw.className = 'sw'; sw.style.background = PAL[n]; sw.title = n; cap.textContent = n; f.style.width = '72px';
@@ -285,6 +286,10 @@ export function bootArtSheet(params = new URLSearchParams(location.search)) {
   if (!only || only === 'fx') {
     section('FX art: particle frames and floating numbers (fx.js)');
     try { fxArtSamples(document).figures.forEach((f) => grid.appendChild(f)); } catch (e) { report.errors.push(`fx art: ${e && e.message}`); }
+  }
+  if (!only || only === 'atlas') {
+    section('World map art and biome ground sets (atlas.js, ground.js)');
+    try { atlasArtSamples(document).figures.forEach((f) => { f.dataset.atlasArt = '1'; grid.appendChild(f); }); } catch (e) { report.errors.push(`atlas art: ${e && e.message}`); }
   }
   if (!only || only === 'sfx') sfxSection();
 

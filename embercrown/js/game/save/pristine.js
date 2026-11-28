@@ -154,7 +154,7 @@ export function setRegenerator(fn) { regenerator = typeof fn === 'function' ? fn
 export function regeneratePristine(header, seed) {
   if (!regenerator || header.worldKind !== WORLD_KIND.NATIVE) return null;
   let s;
-  try { s = regenerator({ seed, w: header.w, h: header.h, d: header.d, zS: header.zS, genVersion: header.genVersion }); } catch (_) { return null; }
+  try { s = regenerator({ seed, w: header.w, h: header.h, d: header.d, zS: header.zS, genVersion: header.genVersion, region: header.region || null }); } catch (_) { return null; }
   if (!s || !s.L) return null;
   const p = buildPristine({ w: header.w, h: header.h, d: header.d, zS: header.zS, L: s.L }, { worldKind: header.worldKind, genVersion: header.genVersion, meta: s.pristineMeta || {} });
   return pristineMatches(p, header) ? p : null;

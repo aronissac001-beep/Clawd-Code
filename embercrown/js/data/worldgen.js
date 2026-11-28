@@ -40,7 +40,8 @@ export const DATA = {
 export const GEN = Object.freeze({
   // step 1: the massif along one side (N, E or W), plus 1-2 small hills
   massif: {
-    sides: ['n', 'e', 'w'],
+    sides: ['n', 'e', 'w'],    // the v1 roll (no opts.region) picks from these three, so v1 worlds keep their hash
+    regionSides: ['n', 'e', 's', 'w'], // GEN3 v2 (EMBERCROWN-WORLD.md 3.6): opts.region.side may also be 's'
     thickPct: [27, 33],        // mean thickness as % of the map's cross size (about 25-35% cover)
     wavePct: 7,                // face wave amplitude, % of the map size
     minThick: 34,              // tiles at 128: the guarantee floor (>= 30 to the edge, 3.2)
@@ -88,6 +89,29 @@ export const WORLD = Object.freeze({
     frostKillBelow: 8,      // annual crops die when the tile is this many degrees under their minTemp
     lightningPct: 15, lightningFar: 20,   // a drought day may set a tree alight (percent), at least this far from the Hearth
     freezeSeason: 3,        // shallow water freezes to ice in Deepcold and thaws in Thaw
+    // Regional climate (EMBERCROWN-WORLD.md 6.2, W2.4; read by weather.js, temperature.js and plants.js). A hold's
+    // daytime outdoor base on a day is its season point eased by day: point[k] = mean + amp * curve[k] + tilt[k],
+    // reached at the middle of season k and blended linearly toward the next season's point. A hold with a realm
+    // reads { mean, amp, rain, winter, season } from s.realm.embark.climate (js/game/realm/region.js) with the
+    // `realm` tilt and easing; a realm-less hold uses the greenvale row, which gives today's table exactly
+    // (Thaw 10, Highsun 22, Ashfall 8, Deepcold -6, flat within a season: ease 0).
+    //   limits: the season points are clamped to [lo, hi] C;
+    //   winter (taiga): the Deepcold point is at most this many C;
+    //   growMin: the growing season is the set of days whose daytime base is at least this (grain and flax);
+    //   season > 0 (tundra): the growing season is exactly `season` days, centred on mid-Highsun; season < 0
+    //     (highcrag): it is `-season` % shorter than the region's own numbers give; either way the days inside
+    //     the window are raised to growMin and the days outside it are held under growMin;
+    //   rainRef: the realm `rain` (0-255) that keeps today's rain chances; rain falls as snow on a day whose base
+    //     is at most snowMax; droughts scale by (2 * rainRef - rain) / rainRef; open water freezes on a day whose
+    //     base is at most freezeMax and thaws on the first day above it (realm holds; legacy: by season).
+    climate: {
+      curve: [0, 1, 0, -1],
+      rows: { greenvale: { mean: 8, amp: 14, tilt: [2, 0, 0, 0], ease: 0 } },
+      realm: { tilt: [0, 0, 0, 0], ease: 1 },
+      limits: [-30, 36],
+      growMin: 4,
+      rainRef: 120, rainMax: 60, snowMax: 0, freezeMax: 0,
+    },
   },
   // Fire (5.1, 7.x, 9.7): flames live on tiles; each step (every `every` ticks) a flame burns `burnPerStep`
   // of its fuel, damages what stands there and may spread to each flammable 8-neighbour with
@@ -117,7 +141,10 @@ export const WORLD = Object.freeze({
  * counts scale with the map area. Integers and plain fractions only (the mapgen lint, check-mapgen.mjs).
  */
 export const GEN3 = Object.freeze({
-  version: 1,
+  // 2 (EMBERCROWN-WORLD.md 3.6, W2.3): opts.region drives the generator. A world made without opts.region runs the v1
+  // path unchanged and is stamped legacyVersion, so its pristine header, legends and hashes are as before.
+  version: 2,
+  legacyVersion: 1,
   // the heights: a massif column of planar depth d (tiles into the massif, the Stage 2 transform) rises
   // ceil(d / perLevel) levels, 1..max, above the valley floor; 1 in rampIn one-level steps facing open ground get a ramp
   heights: { perLevel: 6, max: 5, rampIn: 3, faceOuter: 4 },
@@ -176,5 +203,45 @@ export const GEN3 = Object.freeze({
   },
   // the guarantees (2.2 step 9): a failing step re-rolls at most `rerolls` times
   guarantee: { rerolls: 4, oreNearLevels: 3, oreNearTiles: 40, ironAboveZ: 8 },
+  // ---- GEN3 v2: region inputs (EMBERCROWN-WORLD.md 1.3, 3.6; W2.3) ----------------------------------------------
+  // The knob row of each region biome (keyed by js/data/realm/biomes.js id), relative to today's GEN / GEN3; a key
+  // left out keeps today's value (greenvale is the reference row). Surface knobs: forestPct, meadowPct, richPct (% of
+  // open ground), pines (conifers only), hills and rocks ([lo, hi] counts of hills and of small rock outcrops),
+  // ravines ([lo, hi] one-level channels), sandPct (% of open ground that is sand), ruins (surface ruin count),
+  // marshPct (salt marsh share of the sea shore band). Region knobs that js/game/realm/region.js folds into
+  // opts.region: massifPct ([lo, hi] mean massif thickness, % of the cross size), heightsPerLevel, aquiferPct,
+  // topClayPct and topSandPct (the rel -1 soil mix), lakes (base lake count), ember ({ pools, rel }), blightPct
+  // ([lo, hi]), and the climate words (fronts; read by weather.js and temperature.js, W2.4 and W5).
+  biomes: {
+    greenvale: {},
+    elderwood: { forestPct: 45, meadowPct: 6, fronts: ['fog', 'fog'] },
+    ruins: { blightPct: [12, 20], ruins: 6, forestPct: 12 },
+    ashlands: { ember: { pools: [6, 8], rel: -11 }, aquiferPct: 0, forestPct: 6, fronts: ['ashfall'] },
+    fen: { aquiferPct: 80, lakes: 2, topClayPct: 40, forestPct: 10, fronts: ['fog', 'fog'] },
+    moor: { forestPct: 4, meadowPct: 30, hills: [3, 3], rocks: [8, 12], wind: 40 },
+    taiga: { pines: true, winter: -10, fronts: ['snow', 'snow', 'snow'] },
+    tundra: { forestPct: 1, pines: true, frozenSoil: true, season: 15 },
+    saltflat: { topSandPct: 60, sandPct: 30, forestPct: 2, fronts: ['drought', 'drought', 'drought'] },
+    redscar: { massifPct: [42, 48], hills: [3, 4], ravines: [3, 4], forestPct: 3 },
+    shore: { sea: true, sandPct: 8, marshPct: 30 },
+    highcrag: { massifPct: [45, 55], heightsPerLevel: 4, season: -20 },
+  },
+  // region shapes: the sea band of a shore region (tiles at 128: deep, then shallow, then the beach); rock outcrops
+  // (radius); ravines (length at 128 and width; a ramp at each end); river width by realm class 1-3
+  sea: { deep: [9, 13], shallow: 2, beach: 3 },
+  rocks: { r: [2, 3] },
+  ravine: { len: [18, 34], width: [1, 2] },
+  riverWidth: [2, 3, 5],
+  // massif thickness of a region: the 3.6 range (the 34-tile floor of GEN.massif.minThick still holds)
+  massifPct: [27, 55],
+  // rock provinces (realm `geo`: 0 basin, 1 shield, 2 basalt flood, 3 metamorphic belt, 4 ash field): stone swaps by
+  // band and ore vein weights (% of today's vein count; never below 100, so the ore guarantees hold)
+  provinces: [
+    { stones: {}, ores: { coal: 200, copper: 150 } },
+    { stones: { outer: ['granite', 'limestone'] }, ores: { gold: 200, silver: 200 } },
+    { stones: { outer: ['basalt', 'slate'] }, ores: {} },
+    { stones: {}, ores: { iron: 200, garnet: 150, sapphire: 150, emerald: 150, ruby: 150, amber: 150 } },
+    { stones: {}, ores: { lumenite: 200 } },
+  ],
 });
 

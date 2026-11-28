@@ -33,14 +33,52 @@ const isStone = (it) => categoryOf(it.k) === 'stone';
 export function haulable(s, col, it) {
   if (!it || it.f) return false;
   if (isStone(it) && stoneMode(s) !== 'always') return false;
+  // (PERF) inside a haul giver's scan, a kind, material and quality already found to need no haul from the ground
+  // needs none anywhere (see scanHauls): the scan's 1,500 unstorable ground stacks of a full hold stop here
+  const m = scanMemo ? memoGet(it) : undefined;
+  if (m === false) return false;
   if (freeCount(s, it.id, col.id) <= 0) return false;
   const i = idx(it.x, it.y, it.z | 0);
   if (isUnreachable(s, col, keyItem(it.id)) || !reachableFrom(s, col, i)) return false;
   // (W0.5) a stack already in storage moves on to a better store on the hourly audit's word (it is on the wait list):
   // the haul giver's scan of up to WORK.scanMax stacks per think tested every stored stack against every store (the
   // granary's footprint walk for each stack of food in a stockpile), and those thinks were the tick p95 spikes
-  if (worldStage2() && curPri(s, it) >= 0 && !onWaitList(s, it)) return false;
-  return needsHaulQuick(s, it);
+  const cur = curPri(s, it);
+  if (worldStage2() && cur >= 0 && !onWaitList(s, it)) return false;
+  if (!scanMemo || cur >= 0) return quickAt(s, it, cur);
+  if (m !== undefined) return m;
+  const v = quickAt(s, it, cur);
+  memoSet(it, v);
+  return v;
+}
+
+// ---- The scan memo (PERF: bot v4 seed 4's tick p95 after day 200) ------------------------------------------------
+// A think's haul scan tests up to WORK.scanMax stacks; in a full hold nearly all are ground stacks with nowhere to go,
+// and the think ticks were the p95. needsHaulQuick(s, it) at curPri -1 reads of the stack only its kind, material and
+// quality (the zone filters, the storage rules: `f` is false here) and its walk component (storesFor's slot reach).
+// Within one scan the state is only read and the colonist is fixed, and the memo is filled only from a stack that
+// passed reachableFrom (so in the colonist's component). Every stack that could still pass is in that component, and
+// the answer only falls as curPri rises (each test is "a priority above curPri"), so a `false` stored for a kind,
+// material and quality rejects any alike stack at once, and a ground stack in the component reuses either answer.
+// The memo lives for one scan (scanHauls) and nothing of it is saved: haulable's answers are exactly the unmemoized ones.
+let scanMemo = null;
+/** Run fn() (a haul giver's candidate scan: reads only) with the scan memo on. */
+export function scanHauls(fn) {
+  const prev = scanMemo;
+  scanMemo = new Map();
+  try { return fn(); } finally { scanMemo = prev; }
+}
+function memoGet(it) {
+  const a = scanMemo.get(it.k);
+  if (!a) return undefined;
+  const q = it.q | 0;
+  for (let j = 0; j < a.length; j += 3) if (a[j] === it.m && a[j + 1] === q) return a[j + 2];
+  return undefined;
+}
+function memoSet(it, v) {
+  let a = scanMemo.get(it.k);
+  if (!a) { a = []; scanMemo.set(it.k, a); }
+  a.push(it.m, it.q | 0, v);
 }
 /** Is stack `it` on E's saved haul wait list (s.colony.work.wait, ids ascending; the same kind: ids are reused)? */
 function onWaitList(s, it) {
@@ -58,8 +96,9 @@ function onWaitList(s, it) {
  * an open zone group above curPri that accepts the stack decides it here; else only a storage building whose own rule
  * ranks above curPri and takes the stack can, and then the full test runs.
  */
-export function needsHaulQuick(s, it) {
-  const cur = curPri(s, it);
+export function needsHaulQuick(s, it) { return quickAt(s, it, curPri(s, it)); }
+/** needsHaulQuick with curPri(s, it) = cur given. */
+function quickAt(s, it, cur) {
   for (const g of s.rt.zoneField) {
     if (!g.open.length || g.pri <= cur) continue;
     if (filterAccepts(g.filter, it) || g.open.some((id) => zoneAccepts(zoneById(s, id), it))) return true;

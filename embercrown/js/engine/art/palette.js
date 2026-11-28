@@ -2,10 +2,12 @@
 // and js/engine/render/* takes its colours from here: 33 colours in named ramps (dark to light),
 // warm firelight and ember accents, cool greys and blue-greys for rock and the Hollow, muted greens
 // and browns for the surface, and a few signal colours (danger red, magic teal, Hollow violet).
+// W2.5 (the world map and the biome ground sets) adds three: rose (heather), frost (rime, salt crust)
+// and leaf (blue-green conifers, sea glass): 37 of the 38 G19 allows.
 // Material tints (js/data/materials.js `tint`) map to a 3-4 shade ramp of these colours (rampOf).
 //
 // Pure data and small helpers: no DOM, no canvas, nothing allocated per call at runtime.
-//   PAL                 name -> '#rrggbb' (the 33 colours)
+//   PAL                 name -> '#rrggbb' (the 37 colours)
 //   PAL_LIST            the colours in palette order (docs and the contact sheet swatch)
 //   RAMP                ramp name -> [dark, ..., light] (3-4 colours each)
 //   STONE_RAMP          stone id -> 4-shade ramp + accent (motif and fleck colours)
@@ -32,6 +34,8 @@ export const PAL = Object.freeze({
   plum0: '#3e2a48', plum1: '#74466e',
   // signals
   danger: '#dc3a3a', teal: '#3cc8b4', violet: '#a48cf0',
+  // W2.5 biome colours: heather, rime and salt, conifer
+  rose: '#a85a78', frost: '#dce8ee', leaf: '#2f5a4e',
 });
 export const PAL_LIST = Object.freeze(Object.keys(PAL));
 
@@ -61,6 +65,12 @@ export const RAMP = Object.freeze({
   hollow: Object.freeze([P.ink, P.slate0, P.slate1, P.slate2]),
   teal: Object.freeze([P.deep, P.water, P.teal, P.mist]),
   red: Object.freeze([P.ember0, P.ember1, P.danger, P.orange]),
+  // W2.5 biome ramps (world map and the hold's ground sets)
+  heather: Object.freeze([P.plum0, P.plum1, P.rose, P.peach]),
+  rime: Object.freeze([P.slate2, P.slate3, P.frost, P.bone]),
+  pine: Object.freeze([P.moss0, P.leaf, P.moss2, P.teal]),
+  rust: Object.freeze([P.ember0, P.umber2, P.ember1, P.tan]),
+  peat: Object.freeze([P.umber0, P.umber1, P.moss1, P.umber2]),
 });
 
 /**

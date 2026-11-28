@@ -6,7 +6,9 @@ import { initStreams, seedOf } from './rand.js';
 import {
   STATE_VERSION, newColonyRecord, newStoryRecord, newIdCounters, toPlain, colonyToPlain, storyToPlain,
   checkEntity, COLLECTIONS, ROOT_KEYS, DEPTH_KEYS, OPTIONAL_KEYS, TECH_BYTES, DIFFICULTIES, DEFAULT_DIFFICULTY, normDifficulty,
+  checkRealmField,
 } from './schema.js';
+import { v4to5 } from './migrate5.js';
 import { legacyChoices, settleChoice, settledChronEntry } from '../people/perklegacy.js';
 import { allocRt, registerRebuild, rebuilderOf, RT_KEYS, RT, savedKeys } from './rtcontract.js';
 
@@ -64,6 +66,8 @@ export function v3to4(ent) {
   return ent;
 }
 if (STATE_VERSION >= 4 && migrations.length === 2) migrations.push(v3to4);
+/** migrations[3], v4 -> v5 (EMBERCROWN-WORLD.md 9.4 part 1, W2.8): core/migrate5.js (realm = null; shape only). */
+if (STATE_VERSION >= 5 && migrations.length === 3) migrations.push(v4to5);
 
 // ---- v2 -> v3 helpers: they read the ENTITIES rows by name (format 2 writes the field lists in `fl`; a format 1
 // blob, Stage 0, has none and its rows are in the schema order of its day, which these lists freeze) -----------
@@ -243,6 +247,7 @@ export function checkState(s) {
     });
   }
   for (const n2 of s.st.nemeses) for (const m of checkEntity('nem', n2)) errs.push(`st.nemeses: ${m}`);
+  for (const m of checkRealmField(s.realm)) errs.push(m);
   return errs;
 }
 
@@ -254,6 +259,10 @@ export function checkState(s) {
 // recorded before the change (fixture sidecars, the Stage 2.9 baseline) still holds. The JSON part is
 // value-based already (toPlain turns typed arrays into arrays). An entity's `z` of 0 is left out of the
 // hashed JSON: on a D = 1 map it is always 0 and carries nothing, so adding the field moves no hash.
+// State v5 (W2.8; the legacy-hash rule, EMBERCROWN-WORLD.md 12.1): the hashed meta.v is HASH_V (4) for every state
+// of v4 and later. Within one build every state has the same version, so it carries nothing, and the bump to 5
+// moves no hash. `realm` is hashed only while non-null (as `legend` only while non-empty), so a realm-less hold
+// hashes exactly as a v4 state; a realm hold's realm record (its deltas, its embark inputs) is in its hash.
 function fnv(h, a) {
   for (let i = 0; i < a.length; i++) { h ^= a[i] >>> 0; h = Math.imul(h, 0x01000193); }
   return h >>> 0;
@@ -261,18 +270,21 @@ function fnv(h, a) {
 /** FNV-1a (32-bit) of a typed array's element values; exported for tools (determinism, cache-drop). */
 export const valueHash = (a, h = 0x811c9dc5) => fnv(h, a);
 const enc = new TextEncoder();
+const HASH_V = 4;
+const hashV = (v) => (v >= HASH_V ? HASH_V : v);
 const hashPlain = (kind, e) => { const o = toPlain(kind, e); if (o && o.z === 0) delete o.z; return o; };
 /** Canonical JSON of the saved entities and records (what a save holds besides layers). */
 export function entitiesJSON(s) {
   const col = (key, kind) => s[key].map((e) => hashPlain(kind, e));
   return JSON.stringify({
-    meta: s.d > 1 ? { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, d: s.d, zS: s.zS, tick: s.tick }
-      : { v: s.v, id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick },
+    meta: s.d > 1 ? { v: hashV(s.v), id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, d: s.d, zS: s.zS, tick: s.tick }
+      : { v: hashV(s.v), id: s.id, name: s.name, seed: s.seed, w: s.w, h: s.h, tick: s.tick },
     rng: s.rng, next: s.next, colony: colonyToPlain(s.colony), st: storyToPlain(s.st),
     col: col('col', 'col'), items: col('items', 'items'), bld: col('bld', 'bld'), zones: col('zones', 'zones'),
     anim: col('anim', 'anim'), foes: col('foes', 'foes'), raids: col('raids', 'raids'), rel: s.rel, chron: s.chron,
     rt: Object.fromEntries(savedKeys(raidLive(s)).map((k) => [k, s.rt[k]])),
     ...(typeof s.legend === 'string' && s.legend ? { legend: s.legend } : {}),
+    ...(s.realm ? { realm: s.realm } : {}),   // state v5: only while non-null
   });
 }
 /** 64-bit (two FNV-1a lanes) hex hash of the whole saved state by value, including the saved runtime. */
